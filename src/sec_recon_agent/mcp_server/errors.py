@@ -29,3 +29,11 @@ class NvdConnectionError(NvdError):
 
 class MalformedNvdPayloadError(NvdError):
     """NVD response did not match the expected schema."""
+
+
+class NmapError(SecReconError):
+    """Base for Nmap parsing failures."""
+
+
+class MalformedNmapXmlError(NmapError):
+    """Nmap XML payload could not be parsed or had unexpected structure (incl. blocked XXE)."""
