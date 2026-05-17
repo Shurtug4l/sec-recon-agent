@@ -20,8 +20,15 @@ from fastapi import FastAPI
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
-from sec_recon_agent.agent.triage import build_agent
+from sec_recon_agent.agent.triage import build_agent, export_anthropic_api_key_to_env
 from sec_recon_agent.config import settings
+from sec_recon_agent.mcp_server.errors import CveNotFoundError
+
+# Exceptions whose string form is safe to surface to the SSE client.
+# Everything else is replaced with a generic message: internal exception
+# messages can leak filesystem paths, query parameters, or library
+# internals that the client should not see.
+_SAFE_TO_ECHO: tuple[type[BaseException], ...] = (CveNotFoundError,)
 
 log = structlog.get_logger()
 
@@ -81,11 +88,13 @@ def _node_event_payload(node: object) -> str:
 
 def _error_payload(exc: BaseException) -> str:
     import json
-    return json.dumps({"type": exc.__class__.__name__, "message": str(exc)})
+    message = str(exc) if isinstance(exc, _SAFE_TO_ECHO) else "Internal error; check server logs."
+    return json.dumps({"type": exc.__class__.__name__, "message": message})
 
 
 def main() -> None:
     """Entry point for `uv run sec-recon-api`."""
+    export_anthropic_api_key_to_env()
     uvicorn.run(
         "sec_recon_agent.api.stream:app",
         host=settings.agent_api_host,

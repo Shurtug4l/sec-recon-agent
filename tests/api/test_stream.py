@@ -122,7 +122,7 @@ def test_triage_emits_error_event_when_agent_raises(monkeypatch: MonkeyPatch) ->
     class _BrokenAgent:
         @asynccontextmanager
         async def iter(self, query: str) -> Any:  # noqa: A003
-            raise RuntimeError("agent boom")
+            raise RuntimeError("agent boom with internal context: /var/lib/secret")
             yield  # pragma: no cover
 
     monkeypatch.setattr(stream_module, "build_agent", lambda: _BrokenAgent())
@@ -133,4 +133,9 @@ def test_triage_emits_error_event_when_agent_raises(monkeypatch: MonkeyPatch) ->
         body = "".join(response.iter_text())
 
     assert "event: error" in body
-    assert "agent boom" in body
+    # Exception class name is fine to echo
+    assert "RuntimeError" in body
+    # Original message must NOT leak (filesystem path, internal context)
+    assert "agent boom" not in body
+    assert "/var/lib/secret" not in body
+    assert "Internal error" in body

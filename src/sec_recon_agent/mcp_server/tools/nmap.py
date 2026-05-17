@@ -15,6 +15,7 @@ from sec_recon_agent.mcp_server.models import (
     NmapPort,
     NmapScanResult,
 )
+from sec_recon_agent.mcp_server.security import fence_untrusted
 from sec_recon_agent.mcp_server.server import mcp
 
 log = structlog.get_logger()
@@ -43,8 +44,8 @@ def _parse_port(port_el: ET.Element) -> NmapPort | None:
         protocol=protocol,
         state=state,
         service=service,
-        product=product,
-        version=version,
+        product=fence_untrusted(product),
+        version=fence_untrusted(version),
     )
 
 
@@ -59,11 +60,14 @@ def _parse_host(host_el: ET.Element) -> NmapHost | None:
     if not ip:
         return None
 
+    # Cap hostnames and ports per host: a crafted Nmap XML with thousands
+    # of <hostname> or <port> children should not be able to inflate the
+    # returned payload arbitrarily.
     hostnames = [
         name for hn in host_el.findall(".//hostname") if (name := hn.get("name"))
-    ]
+    ][:50]
     ports: list[NmapPort] = []
-    for port_el in host_el.findall(".//port"):
+    for port_el in host_el.findall(".//port")[:200]:
         parsed = _parse_port(port_el)
         if parsed is not None:
             ports.append(parsed)

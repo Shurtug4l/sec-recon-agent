@@ -3,6 +3,7 @@
 import pytest
 
 from sec_recon_agent.mcp_server.errors import MalformedNmapXmlError
+from sec_recon_agent.mcp_server.security import UNTRUSTED_END, UNTRUSTED_START
 from sec_recon_agent.mcp_server.tools.nmap import nmap_parse_xml
 
 
@@ -46,8 +47,14 @@ def test_parse_extracts_host_and_ports() -> None:
     assert apache.protocol == "tcp"
     assert apache.state == "open"
     assert apache.service == "http"
-    assert apache.product == "Apache httpd"
-    assert apache.version == "2.4.49"
+    # product and version are free-text vendor banners; they must be fenced
+    # with untrusted-content markers before reaching the agent
+    assert apache.product is not None
+    assert apache.version is not None
+    assert apache.product.startswith(UNTRUSTED_START)
+    assert apache.product.endswith(UNTRUSTED_END)
+    assert "Apache httpd" in apache.product
+    assert "2.4.49" in apache.version
 
     closed = next(p for p in host.ports if p.portid == 443)
     assert closed.state == "closed"

@@ -10,6 +10,7 @@ from sec_recon_agent.mcp_server.errors import (
     MalformedNvdPayloadError,
 )
 from sec_recon_agent.mcp_server.models import CVEDetail, CveIdStr
+from sec_recon_agent.mcp_server.security import fence_untrusted
 from sec_recon_agent.mcp_server.nvd_client import (
     HTTP_TIMEOUT_SECONDS,
     NVD_BASE_URL,
@@ -86,9 +87,10 @@ def _parse_cve_payload(cve_id: str, payload: dict[str, Any]) -> CVEDetail:
         raise MalformedNvdPayloadError(f"NVD payload missing 'cve' object for {cve_id}")
 
     score, severity = _extract_cvss_v3(cve)
+    description = _extract_english_description(cve)
     return CVEDetail(
         cve_id=cve.get("id", cve_id),
-        description=_extract_english_description(cve),
+        description=fence_untrusted(description) or "",
         cvss_v3_score=score,
         cvss_v3_severity=severity,
         published=str(cve.get("published", "")),

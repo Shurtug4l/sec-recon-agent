@@ -12,6 +12,7 @@ Distance: cosine (HNSW), exposed as similarity = 1 - distance, clamped to [0, 1]
 """
 
 import asyncio
+import threading
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -21,6 +22,7 @@ import structlog
 from sec_recon_agent.config import settings
 from sec_recon_agent.mcp_server.models import CVECandidate
 from sec_recon_agent.mcp_server.nvd_client import HTTP_TIMEOUT_SECONDS, nvd_get
+from sec_recon_agent.mcp_server.security import fence_untrusted
 from sec_recon_agent.mcp_server.server import mcp
 
 log = structlog.get_logger()
@@ -28,28 +30,39 @@ log = structlog.get_logger()
 COLLECTION_NAME = "cve_descriptions"
 NVD_LOOKBACK_DAYS = 90
 NVD_PAGE_SIZE = 2000
+NVD_MAX_PAGES_PER_SEVERITY = 25  # 25 * 2000 = 50k CVEs/severity, comfortably above any 90-day window
 UPSERT_BATCH = 500
 MAX_TOP_K = 25
+MAX_QUERY_CHARS = 2000  # MiniLM-L6 truncates at ~512 tokens; cap early to bound embedding latency
 
 _collection: Any = None
+_collection_lock = threading.Lock()
 
 
 def _get_collection() -> Any:
+    # Double-checked locking. The fast path skips the lock once the collection
+    # is built. Without the lock, two concurrent first-callers can both open
+    # a PersistentClient on the same SQLite path, which corrupts the index
+    # or fails with a lock error from chroma.
     global _collection
     if _collection is not None:
         return _collection
 
-    import chromadb
-    from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
+    with _collection_lock:
+        if _collection is not None:
+            return _collection
 
-    settings.chroma_persist_dir.mkdir(parents=True, exist_ok=True)
-    client = chromadb.PersistentClient(path=str(settings.chroma_persist_dir))
-    _collection = client.get_or_create_collection(
-        name=COLLECTION_NAME,
-        embedding_function=DefaultEmbeddingFunction(),
-        metadata={"hnsw:space": "cosine"},
-    )
-    return _collection
+        import chromadb
+        from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
+
+        settings.chroma_persist_dir.mkdir(parents=True, exist_ok=True)
+        client = chromadb.PersistentClient(path=str(settings.chroma_persist_dir))
+        _collection = client.get_or_create_collection(
+            name=COLLECTION_NAME,
+            embedding_function=DefaultEmbeddingFunction(),
+            metadata={"hnsw:space": "cosine"},
+        )
+        return _collection
 
 
 def _reset_collection_cache() -> None:
@@ -100,7 +113,9 @@ async def _fetch_severity_window(
     fmt = "%Y-%m-%dT%H:%M:%S.000"
     collected: list[dict[str, Any]] = []
     index = 0
-    while True:
+    # Hard page cap so a malformed totalResults from NVD cannot push us into
+    # an effectively unbounded fetch loop that exhausts the rate budget.
+    for _ in range(NVD_MAX_PAGES_PER_SEVERITY):
         payload = await nvd_get(
             client,
             params={
@@ -123,6 +138,8 @@ async def _fetch_severity_window(
         )
         if not batch or index >= total:
             break
+    else:
+        log.warning("seed_page_cap_reached", severity=severity, cap=NVD_MAX_PAGES_PER_SEVERITY)
     return collected
 
 
@@ -180,10 +197,13 @@ async def cve_semantic_search(query: str, top_k: int = 5) -> list[CVECandidate]:
     """Find recent high-severity CVEs whose descriptions match the query semantically.
 
     Returns up to top_k CVECandidate results ranked by cosine similarity over
-    sentence-transformer embeddings of the CVE description text.
+    embeddings of the CVE description text.
     """
     if not query.strip():
         return []
+    # Cap defensively at the tool boundary: the FastAPI layer caps user input
+    # at 4000 chars, but the agent can synthesize longer queries internally.
+    query = query[:MAX_QUERY_CHARS]
     top_k = max(1, min(top_k, MAX_TOP_K))
 
     def _query_sync() -> dict[str, Any]:
@@ -202,10 +222,11 @@ async def cve_semantic_search(query: str, top_k: int = 5) -> list[CVECandidate]:
     candidates: list[CVECandidate] = []
     for cve_id, doc, dist in zip(ids, docs, distances, strict=False):
         similarity = max(0.0, min(1.0, 1.0 - float(dist)))
+        raw_summary = str(doc)[:500] if doc else ""
         candidates.append(
             CVECandidate(
                 cve_id=str(cve_id),
-                summary=(str(doc)[:500]) if doc else "",
+                summary=fence_untrusted(raw_summary) or "",
                 similarity=similarity,
             ),
         )

@@ -52,8 +52,8 @@ class NmapPort(BaseModel):
 
 class NmapHost(BaseModel):
     ip: str
-    hostnames: list[str] = Field(default_factory=list)
-    ports: list[NmapPort] = Field(default_factory=list)
+    hostnames: list[str] = Field(default_factory=list, max_length=50)
+    ports: list[NmapPort] = Field(default_factory=list, max_length=200)
 
 
 class NmapScanResult(BaseModel):

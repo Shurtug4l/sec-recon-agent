@@ -37,17 +37,20 @@ class NvdRateLimiter:
         self._lock = asyncio.Lock()
 
     async def acquire(self) -> None:
-        async with self._lock:
-            loop = asyncio.get_running_loop()
-            now = loop.time()
-            self._drop_expired(now)
-            if len(self._timestamps) >= self._max:
-                sleep_for = self._window - (now - self._timestamps[0]) + 0.1
-                log.debug("nvd_rate_limit_wait", sleep_seconds=round(sleep_for, 2))
-                await asyncio.sleep(sleep_for)
+        # Loop until we secure a token. Sleep MUST happen outside the lock,
+        # otherwise concurrent callers serialize behind the first one's sleep
+        # instead of independently waiting their share of the window.
+        while True:
+            async with self._lock:
+                loop = asyncio.get_running_loop()
                 now = loop.time()
                 self._drop_expired(now)
-            self._timestamps.append(now)
+                if len(self._timestamps) < self._max:
+                    self._timestamps.append(now)
+                    return
+                sleep_for = self._window - (now - self._timestamps[0]) + 0.1
+            log.debug("nvd_rate_limit_wait", sleep_seconds=round(sleep_for, 2))
+            await asyncio.sleep(sleep_for)
 
     def _drop_expired(self, now: float) -> None:
         while self._timestamps and now - self._timestamps[0] > self._window:
@@ -86,7 +89,9 @@ async def nvd_get(
         raise NvdConnectionError(f"NVD transport error: {exc}") from exc
 
     if resp.status_code == 429:
-        raise NvdRateLimitError(f"NVD rate limit hit (params={params})")
+        # Do not echo `params` (may contain dates, pagination indices, and in
+        # other code paths could contain identifiers worth keeping out of logs)
+        raise NvdRateLimitError("NVD rate limit hit")
     if resp.status_code >= 500:
         raise NvdServerError(f"NVD returned {resp.status_code}")
     if resp.status_code >= 400:

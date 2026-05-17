@@ -11,6 +11,7 @@ from sec_recon_agent.mcp_server.errors import (
     MalformedNvdPayloadError,
     NvdServerError,
 )
+from sec_recon_agent.mcp_server.security import UNTRUSTED_END, UNTRUSTED_START
 from sec_recon_agent.mcp_server.tools.cve import NVD_BASE_URL, cve_lookup
 
 
@@ -90,6 +91,10 @@ async def test_cve_lookup_returns_typed_detail(apache_payload: dict[str, Any]) -
     assert len(result.affected_cpes) == 1
     assert "apache" in result.affected_cpes[0]
     assert len(result.references) == 2
+    # Description is NVD-authored free text. It must reach the agent
+    # wrapped with untrusted-content markers so the LLM treats it as data.
+    assert result.description.startswith(UNTRUSTED_START)
+    assert result.description.endswith(UNTRUSTED_END)
     assert "Apache" in result.description
 
 

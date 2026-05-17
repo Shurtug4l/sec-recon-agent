@@ -19,16 +19,27 @@ from sec_recon_agent.agent.schema import TriageReport
 from sec_recon_agent.config import settings
 
 
-def build_agent() -> Agent[None, TriageReport]:
-    """Construct the triage agent wired to the local MCP server.
+def export_anthropic_api_key_to_env() -> None:
+    """Move ANTHROPIC_API_KEY from pydantic-settings into os.environ.
 
-    pydantic-settings populates Settings from .env, but Pydantic AI reads
-    ANTHROPIC_API_KEY directly from os.environ. Push it once on build so
-    callers don't need to manage that themselves.
+    Pydantic AI's Anthropic provider reads the key from os.environ rather
+    than from our Settings object. We push it once at process startup
+    (called from `api/stream.py::main` and `mcp_server/server.py::main`)
+    so SecretStr leaks the secret only at the latest moment possible.
+    Do NOT call this from request handlers.
     """
     if settings.anthropic_api_key and not os.environ.get("ANTHROPIC_API_KEY"):
         os.environ["ANTHROPIC_API_KEY"] = settings.anthropic_api_key.get_secret_value()
 
+
+def build_agent() -> Agent[None, TriageReport]:
+    """Construct the triage agent wired to the local MCP server.
+
+    The Anthropic API key must already be in os.environ when this is
+    invoked (see `export_anthropic_api_key_to_env`). Building the agent
+    inside a request handler is fine; exporting the secret per request
+    is not.
+    """
     toolset = MCPToolset(f"{settings.mcp_server_url}/sse")
 
     return Agent(
