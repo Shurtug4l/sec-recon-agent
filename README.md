@@ -37,7 +37,7 @@ client --SSE--> agent API (FastAPI :8000)
 
 ## Stack
 
-Python 3.12+ · Pydantic AI · MCP (Anthropic SDK) · FastAPI (SSE) · ChromaDB · sentence-transformers · httpx · structlog · uv
+Python 3.12+ · Pydantic AI · MCP (Anthropic SDK) · FastAPI (SSE) · ChromaDB (ONNX MiniLM embedder) · httpx · structlog · uv
 
 ## Running
 
