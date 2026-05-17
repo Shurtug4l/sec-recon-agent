@@ -37,3 +37,11 @@ class NmapError(SecReconError):
 
 class MalformedNmapXmlError(NmapError):
     """Nmap XML payload could not be parsed or had unexpected structure (incl. blocked XXE)."""
+
+
+class ExploitsError(SecReconError):
+    """Base for exploit-check failures."""
+
+
+class ExploitDbDownloadError(ExploitsError):
+    """Failed to fetch the ExploitDB CSV manifest."""
