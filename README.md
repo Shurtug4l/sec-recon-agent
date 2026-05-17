@@ -57,7 +57,7 @@ curl -N -X POST http://localhost:8000/v1/triage \
 
 ## Status
 
-Early scaffolding. See `docs/design.md` for the design rationale and threat model.
+All four MCP tools, the Pydantic AI agent, and the FastAPI SSE surface have landed. Test suite: 33 passed. See `docs/design.md` for the architecture decisions, threat model, and the security review findings applied to the code.
 
 ## License
 
