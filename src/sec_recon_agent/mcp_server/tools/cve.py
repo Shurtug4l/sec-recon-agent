@@ -1,108 +1,26 @@
-"""NVD CVE lookup tool.
+"""NVD CVE lookup tool. Returns a typed CVEDetail for a given CVE ID."""
 
-Exposes `cve_lookup(cve_id)` as an MCP tool. Talks to the NVD CVE 2.0 API,
-rate-limits with a sliding window to respect public limits (5 req/30s without
-API key, 50 with), and retries transient failures via tenacity.
-"""
-
-import asyncio
-from collections import deque
 from typing import Any
 
 import httpx
 import structlog
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
 
-from sec_recon_agent.config import settings
 from sec_recon_agent.mcp_server.errors import (
     CveNotFoundError,
     MalformedNvdPayloadError,
-    NvdConnectionError,
-    NvdRateLimitError,
-    NvdServerError,
 )
 from sec_recon_agent.mcp_server.models import CVEDetail, CveIdStr
+from sec_recon_agent.mcp_server.nvd_client import (
+    HTTP_TIMEOUT_SECONDS,
+    NVD_BASE_URL,
+    nvd_get,
+)
 from sec_recon_agent.mcp_server.server import mcp
 
 log = structlog.get_logger()
 
-NVD_BASE_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
-USER_AGENT = "sec-recon-agent/0.1"
-HTTP_TIMEOUT_SECONDS = 15.0
-
-
-class _NvdRateLimiter:
-    """Sliding-window rate limiter.
-
-    NVD enforces a per-30s budget. We track timestamps of recent calls and
-    sleep until the oldest is outside the window when the budget is full.
-    """
-
-    def __init__(self, max_requests: int, window_seconds: float = 30.0) -> None:
-        self._max = max_requests
-        self._window = window_seconds
-        self._timestamps: deque[float] = deque()
-        self._lock = asyncio.Lock()
-
-    async def acquire(self) -> None:
-        async with self._lock:
-            loop = asyncio.get_running_loop()
-            now = loop.time()
-            self._drop_expired(now)
-            if len(self._timestamps) >= self._max:
-                sleep_for = self._window - (now - self._timestamps[0]) + 0.1
-                log.debug("nvd_rate_limit_wait", sleep_seconds=round(sleep_for, 2))
-                await asyncio.sleep(sleep_for)
-                now = loop.time()
-                self._drop_expired(now)
-            self._timestamps.append(now)
-
-    def _drop_expired(self, now: float) -> None:
-        while self._timestamps and now - self._timestamps[0] > self._window:
-            self._timestamps.popleft()
-
-
-_limiter = _NvdRateLimiter(max_requests=settings.nvd_rate_limit_per_30s)
-
-
-def _build_headers() -> dict[str, str]:
-    headers = {"User-Agent": USER_AGENT}
-    if settings.nvd_api_key is not None:
-        headers["apiKey"] = settings.nvd_api_key.get_secret_value()
-    return headers
-
-
-@retry(
-    retry=retry_if_exception_type((NvdServerError, NvdConnectionError)),
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=1, max=10),
-    reraise=True,
-)
-async def _fetch_cve_raw(cve_id: str, client: httpx.AsyncClient) -> dict[str, Any]:
-    await _limiter.acquire()
-    try:
-        resp = await client.get(
-            NVD_BASE_URL,
-            params={"cveId": cve_id},
-            headers=_build_headers(),
-        )
-    except httpx.TransportError as exc:
-        raise NvdConnectionError(f"NVD transport error for {cve_id}: {exc}") from exc
-
-    if resp.status_code == 404:
-        raise CveNotFoundError(cve_id)
-    if resp.status_code == 429:
-        raise NvdRateLimitError(f"NVD rate limit hit for {cve_id}")
-    if resp.status_code >= 500:
-        raise NvdServerError(f"NVD returned {resp.status_code} for {cve_id}")
-    resp.raise_for_status()
-    payload: dict[str, Any] = resp.json()
-    return payload
+# Re-exported for tests that previously imported NVD_BASE_URL from this module.
+__all__ = ["NVD_BASE_URL", "cve_lookup"]
 
 
 def _extract_english_description(cve: dict[str, Any]) -> str:
@@ -186,11 +104,11 @@ async def cve_lookup(cve_id: CveIdStr) -> CVEDetail:
     """Fetch the full CVE record from NVD.
 
     Returns a typed CVEDetail with CVSS v3, CWE IDs, affected CPEs, and references.
-    Raises CveNotFoundError for unknown IDs.
+    Raises CveNotFoundError if NVD returns no record for the given ID.
     """
     log.info("cve_lookup_start", cve_id=cve_id)
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS) as client:
-        payload = await _fetch_cve_raw(cve_id, client)
+        payload = await nvd_get(client, params={"cveId": cve_id})
     detail = _parse_cve_payload(cve_id, payload)
     log.info(
         "cve_lookup_done",
