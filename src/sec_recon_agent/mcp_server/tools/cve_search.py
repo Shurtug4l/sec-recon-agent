@@ -28,9 +28,13 @@ from sec_recon_agent.mcp_server.server import mcp
 log = structlog.get_logger()
 
 COLLECTION_NAME = "cve_descriptions"
-NVD_LOOKBACK_DAYS = 90
+# 30-day default: yields ~5-8k recent high-severity CVEs which is enough
+# for a meaningful semantic-search corpus without saturating the NVD
+# public rate budget (~3-4 pages per severity = 6-8 requests total).
+# Larger windows are fine with NVD_API_KEY set (50 req/30s vs 5 req/30s).
+NVD_LOOKBACK_DAYS = 30
 NVD_PAGE_SIZE = 2000
-NVD_MAX_PAGES_PER_SEVERITY = 25  # 25 * 2000 = 50k CVEs/severity, comfortably above any 90-day window
+NVD_MAX_PAGES_PER_SEVERITY = 25
 UPSERT_BATCH = 500
 MAX_TOP_K = 25
 MAX_QUERY_CHARS = 2000  # MiniLM-L6 truncates at ~512 tokens; cap early to bound embedding latency

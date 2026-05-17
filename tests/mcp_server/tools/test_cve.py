@@ -9,6 +9,7 @@ from httpx import Response
 from sec_recon_agent.mcp_server.errors import (
     CveNotFoundError,
     MalformedNvdPayloadError,
+    NvdRateLimitError,
     NvdServerError,
 )
 from sec_recon_agent.mcp_server.security import UNTRUSTED_END, UNTRUSTED_START
@@ -129,4 +130,38 @@ async def test_cve_lookup_retries_on_5xx_then_raises() -> None:
     with pytest.raises(NvdServerError):
         await cve_lookup("CVE-2021-41773")
 
+    # 4 attempts: tenacity stop_after_attempt(4) in nvd_client; raised to 4
+    # after adding NvdRateLimitError to retry types so 429 has time to clear
+    # NVD's 30-second window.
+    assert route.call_count == 4
+
+
+@respx.mock
+async def test_cve_lookup_retries_on_429_then_succeeds(
+    apache_payload: dict[str, Any],
+) -> None:
+    """429 from NVD is now retried (transient: their 30s window will clear)."""
+    route = respx.get(NVD_BASE_URL, params={"cveId": "CVE-2021-41773"}).mock(
+        side_effect=[
+            Response(429),
+            Response(429),
+            Response(200, json=apache_payload),
+        ],
+    )
+
+    result = await cve_lookup("CVE-2021-41773")
+
+    assert result.cve_id == "CVE-2021-41773"
     assert route.call_count == 3
+
+
+@respx.mock
+async def test_cve_lookup_raises_when_429_persists() -> None:
+    route = respx.get(NVD_BASE_URL, params={"cveId": "CVE-2021-41773"}).mock(
+        return_value=Response(429),
+    )
+
+    with pytest.raises(NvdRateLimitError):
+        await cve_lookup("CVE-2021-41773")
+
+    assert route.call_count == 4

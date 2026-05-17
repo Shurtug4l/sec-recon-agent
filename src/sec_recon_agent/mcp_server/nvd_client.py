@@ -48,7 +48,12 @@ class NvdRateLimiter:
                 if len(self._timestamps) < self._max:
                     self._timestamps.append(now)
                     return
-                sleep_for = self._window - (now - self._timestamps[0]) + 0.1
+                # +1.0s buffer (not 0.1): NVD's enforcement clock can drift
+                # vs ours by a fraction of a second. The tight buffer means
+                # we sometimes hit 429 right after waking up. Wider buffer
+                # trades a tiny bit of throughput for fewer 429-and-retry
+                # cycles, which is a net win because the retry costs >5s.
+                sleep_for = self._window - (now - self._timestamps[0]) + 1.0
             log.debug("nvd_rate_limit_wait", sleep_seconds=round(sleep_for, 2))
             await asyncio.sleep(sleep_for)
 
@@ -68,9 +73,15 @@ def build_headers() -> dict[str, str]:
 
 
 @retry(
-    retry=retry_if_exception_type((NvdServerError, NvdConnectionError)),
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=1, max=10),
+    # 429 is now retried: NVD's per-30s budget is enforced on their clock,
+    # which can drift slightly from ours. A short local-only window means
+    # we still get 429 occasionally even when our limiter says we're OK.
+    # Tenacity backs off long enough to clear NVD's window (>30s).
+    retry=retry_if_exception_type(
+        (NvdServerError, NvdConnectionError, NvdRateLimitError),
+    ),
+    stop=stop_after_attempt(4),
+    wait=wait_exponential(multiplier=5, min=5, max=30),
     reraise=True,
 )
 async def nvd_get(
