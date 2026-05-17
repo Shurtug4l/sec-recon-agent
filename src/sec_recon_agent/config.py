@@ -16,6 +16,7 @@ class Settings(BaseSettings):
 
     anthropic_api_key: SecretStr | None = None
     nvd_api_key: SecretStr | None = None
+    github_token: SecretStr | None = None
 
     llm_provider: str = "anthropic"
     llm_model: str = "claude-sonnet-4-6"
