@@ -27,8 +27,9 @@ def ping() -> str:
 
 def _register_tools() -> None:
     """Side-effect imports so tool modules execute their @mcp.tool decorators."""
+    from sec_recon_agent.mcp_server.tools import cve  # noqa: F401
+
     # Populated as tools land:
-    # from sec_recon_agent.mcp_server.tools import cve         # noqa: F401
     # from sec_recon_agent.mcp_server.tools import cve_search  # noqa: F401
     # from sec_recon_agent.mcp_server.tools import exploits    # noqa: F401
     # from sec_recon_agent.mcp_server.tools import nmap        # noqa: F401
