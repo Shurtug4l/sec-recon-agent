@@ -37,7 +37,12 @@ export async function streamSse(opts: SseStreamOptions): Promise<void> {
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
-    buffer += decoder.decode(value, { stream: true });
+    // SSE servers commonly use CRLF (\r\n) line endings — sse-starlette,
+    // the Starlette SSE helper used by our backend, defaults to that.
+    // Normalize to LF so the \n\n frame separator and prefix checks below
+    // work uniformly. Without this normalization the parser silently
+    // accumulates the entire response in `buffer` and never emits events.
+    buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
 
     // Split out complete frames (separated by blank line).
     let frameEnd: number;
