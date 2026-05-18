@@ -146,6 +146,31 @@ Five tools fan out in parallel for one named CVE. `attack_mapping` runs once at 
 
 The runner speaks HTTP+SSE, so the eval also exercises the wire-level frame layout the frontend depends on. Out of CI by design (requires `make up`, bills the LLM).
 
+### Audit trail
+
+Every triage call appends one row to a SQLite append-only log (`data/audit.db`). Each row carries SHA-256 hashes of the query and the report, aggregate counts (CVEs, ATT&CK techniques, KEV / ransomware / high-EPSS hits), and the model + duration. The chain is sealed with `prev_event_hash` and `this_event_hash` over a canonical JSON serialization; tampering shows up as a hash mismatch.
+
+```
+       genesis_hash (64 zeros)
+                |
+                v
+        +---------------+    +---------------+    +---------------+
+event_0 | prev_hash=GEN | -> | hash chain    | -> | last event    |
+        | this_hash=H0  |    | links forward |    | head of chain |
+        +---------------+    +---------------+    +---------------+
+```
+
+Default posture: only digests + counts are stored. Plain query and report summary stay off unless explicitly enabled via `AUDIT_INCLUDE_QUERY=true` / `AUDIT_INCLUDE_SUMMARY=true`. SQLite triggers also reject UPDATE / DELETE on the table — the hash chain is the real tamper-evidence, the triggers stop accidental editing.
+
+```bash
+uv run sec-recon-audit count                # total event count
+uv run sec-recon-audit tail --limit 5       # last 5 rows, human-readable
+uv run sec-recon-audit tail --limit 5 --json
+uv run sec-recon-audit verify               # walks the full chain; exit 1 on tamper
+```
+
+Settings live in `.env` (see `.env.example`): `AUDIT_LOG_ENABLED`, `AUDIT_DB_PATH`, `AUDIT_INCLUDE_QUERY`, `AUDIT_INCLUDE_SUMMARY`. Audit failures never break a triage call (best-effort with a structured warning log).
+
 ## Table of contents
 
 - [How it works](#how-it-works)
@@ -308,7 +333,7 @@ make lint                       # backend (ruff + mypy --strict) + frontend (ESL
 
 The frontend ESLint setup uses the flat config (`frontend/eslint.config.mjs`) bridged through `FlatCompat` to `next/core-web-vitals` + `next/typescript`. CI runs `npm run lint` between `type-check` and `build`.
 
-**Suite count: 134 passing** (132 fast + 2 slow). Breakdown:
+**Suite count: 150 passing** (148 fast + 2 slow). Breakdown:
 - **36 contract tests** — every MCP tool has Pydantic I/O contract tests with `respx`-mocked HTTP. Tool fail modes (NVD 404, malformed payload, 5xx retry, 429 retry, XXE refusal, oversized CSV download) all covered. Includes `/v1/meta` endpoint contract.
 - **11 KEV contract tests** — hit, miss, ransomware flag normalization, single-fetch invariant, oversized payload, non-200, malformed JSON, missing top-level list, hostile entry tolerance, free-text truncation, untrusted-content fencing for hostile vendor payloads.
 - **9 EPSS contract tests** — hit, miss, non-200, non-JSON, missing data field, wrong-type entry, mismatched CVE defense, out-of-range scores, non-numeric scores.
@@ -317,6 +342,7 @@ The frontend ESLint setup uses the flat config (`frontend/eslint.config.mjs`) br
 - **32 adversarial parametrizations** — prompt injection (8 payloads + marker forgery), XXE variants (4), malformed CVE IDs (14), Unicode homoglyphs (5), resource exhaustion (oversize CSV, huge hostname/port lists).
 - **10 observability tests** — span emission per tool, attribute schema, privacy invariants (no secret / no user query text / no NVD description / no KEV vendor text in span attributes; EPSS span attribute allowlist).
 - **14 eval-suite unit tests** — 9 scorer tests (severity tolerance, CVE recall threshold, KEV / ransomware flag honoring) + 5 runner tests (SSE CRLF and LF tolerance, error-event surfacing, missing-final-event handling, HTTP 5xx).
+- **14 audit-trail tests** — 7 hash-chain model tests (canonical serialization, seal determinism, tamper detection at the link level) + 7 store tests (genesis chaining, subsequent-row chaining, verify on clean chain, field-mutation tamper, forged-row insert, SQLite trigger enforcement, tail ordering). Two API integration tests assert that one event lands per call (success or error path).
 
 See [`docs/design.md`](docs/design.md#defended-invariants-property-and-adversarial-tests) for the full invariant table.
 

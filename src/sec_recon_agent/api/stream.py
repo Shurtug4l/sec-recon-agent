@@ -139,8 +139,16 @@ async def triage(req: TriageRequest) -> EventSourceResponse:
     """Run the triage agent and stream progress as SSE events."""
 
     async def event_generator() -> AsyncIterator[dict[str, Any]]:
+        import time
+        import uuid
+
         agent = build_agent()
         yield {"event": "started", "data": req.model_dump_json()}
+
+        started_at = time.monotonic()
+        outcome = "success"
+        error_class: str | None = None
+        result_json: str | None = None
         try:
             async with agent.iter(req.query) as run:
                 async for node in run:
@@ -149,15 +157,119 @@ async def triage(req: TriageRequest) -> EventSourceResponse:
                         "data": _node_event_payload(node),
                     }
                 result_output = run.result.output  # type: ignore[union-attr]
-            yield {"event": "final", "data": result_output.model_dump_json()}
+            result_json = result_output.model_dump_json()
+            yield {"event": "final", "data": result_json}
         except Exception as exc:
+            outcome = "error"
+            error_class = exc.__class__.__name__
             log.exception("triage_failed", error=str(exc))
             yield {
                 "event": "error",
                 "data": _error_payload(exc),
             }
+        finally:
+            duration_ms = int((time.monotonic() - started_at) * 1000)
+            # Best-effort: never fail the request because the audit log
+            # failed. Worst case we log a warning and drop the event.
+            try:
+                _audit_triage(
+                    event_id=uuid.uuid4().hex,
+                    query=req.query,
+                    result_json=result_json,
+                    outcome=outcome,
+                    error_class=error_class,
+                    duration_ms=duration_ms,
+                )
+            except Exception:
+                log.warning("audit_append_failed", exc_info=True)
 
     return EventSourceResponse(event_generator())
+
+
+def _audit_triage(
+    *,
+    event_id: str,
+    query: str,
+    result_json: str | None,
+    outcome: str,
+    error_class: str | None,
+    duration_ms: int,
+) -> None:
+    """Append one TriageEvent to the audit store. Settings gate everything."""
+    if not settings.audit_log_enabled:
+        return
+
+    import json
+
+    from sec_recon_agent.audit.models import (
+        GENESIS_HASH,
+        TriageEvent,
+        sha256_hex,
+        summarize_for_audit,
+        utcnow_iso,
+    )
+
+    report_dict: dict[str, Any] = {}
+    report_summary_plain: str | None = None
+    if result_json is not None:
+        try:
+            report_dict = json.loads(result_json)
+            if isinstance(report_dict.get("summary"), str):
+                report_summary_plain = report_dict["summary"][:500]
+        except (json.JSONDecodeError, TypeError):
+            report_dict = {}
+
+    summary = summarize_for_audit(report_dict)
+    raw_for_hash = result_json if result_json is not None else ""
+
+    event = TriageEvent(
+        event_id=event_id,
+        ts=utcnow_iso(),
+        query_sha256=sha256_hex(query),
+        query_length=len(query),
+        query_plain=query if settings.audit_include_query else None,
+        report_sha256=sha256_hex(raw_for_hash),
+        severity=summary["severity"] if isinstance(summary["severity"], str) else None,
+        confidence=(
+            summary["confidence"] if isinstance(summary["confidence"], str) else None
+        ),
+        cves_count=int(summary["cves_count"] or 0),
+        attack_techniques_count=int(summary["attack_techniques_count"] or 0),
+        kev_hits=int(summary["kev_hits"] or 0),
+        ransomware_hits=int(summary["ransomware_hits"] or 0),
+        high_epss_hits=int(summary["high_epss_hits"] or 0),
+        report_summary_plain=(
+            report_summary_plain if settings.audit_include_summary else None
+        ),
+        model=f"{settings.llm_provider}:{settings.llm_model}",
+        duration_ms=duration_ms,
+        outcome=outcome,
+        error_class=error_class,
+        prev_event_hash=GENESIS_HASH,  # AuditStore.append overwrites under its lock
+    )
+    _get_audit_store().append(event)
+
+
+_AUDIT_STORE: "Any | None" = None
+
+
+def _get_audit_store() -> Any:
+    """Lazy singleton so test fixtures can monkeypatch settings.audit_db_path
+    before the first call."""
+    global _AUDIT_STORE
+    if _AUDIT_STORE is None:
+        from sec_recon_agent.audit.store import AuditStore
+
+        _AUDIT_STORE = AuditStore(settings.audit_db_path)
+    return _AUDIT_STORE
+
+
+def _reset_audit_store() -> None:
+    """Test-only: drop the cached store so a new db_path takes effect."""
+    global _AUDIT_STORE
+    if _AUDIT_STORE is not None:
+        _AUDIT_STORE.close()
+    _AUDIT_STORE = None
 
 
 def _node_event_payload(node: object) -> str:
