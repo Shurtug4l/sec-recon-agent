@@ -99,6 +99,30 @@ export function TriageProvider({ children }: { children: React.ReactNode }) {
             body: { query },
             signal: ctrl.signal,
             onEvent: (event) => {
+              // CRITICAL: capture outer-scope variables and persist to history
+              // BEFORE dispatching setState. React 18+ defers setState updater
+              // execution to the render phase (asynchronous w.r.t. dispatch);
+              // doing the capture inside the updater means the assignment
+              // happens AFTER the surrounding await chain has already moved on
+              // to the `finally` block — at which point finalReport is still
+              // null and we patch the history entry with the wrong values.
+              if (event.type === "final") {
+                finalReport = event.data;
+                update(id, {
+                  report: event.data,
+                  error: null,
+                  durationMs: Date.now() - startedAt,
+                });
+              } else if (event.type === "error") {
+                finalError = `${event.data.type}: ${event.data.message}`;
+                update(id, {
+                  report: null,
+                  error: finalError,
+                  durationMs: Date.now() - startedAt,
+                });
+              }
+
+              // Pure setState updater — no side effects. State machine only.
               setState((prev) => {
                 switch (event.type) {
                   case "started":
@@ -106,7 +130,6 @@ export function TriageProvider({ children }: { children: React.ReactNode }) {
                   case "node":
                     return { ...prev, nodes: [...prev.nodes, event.data.node] };
                   case "final":
-                    finalReport = event.data;
                     return {
                       ...prev,
                       report: event.data,
@@ -114,10 +137,9 @@ export function TriageProvider({ children }: { children: React.ReactNode }) {
                       durationMs: Date.now() - startedAt,
                     };
                   case "error":
-                    finalError = `${event.data.type}: ${event.data.message}`;
                     return {
                       ...prev,
-                      error: finalError,
+                      error: `${event.data.type}: ${event.data.message}`,
                       isRunning: false,
                       durationMs: Date.now() - startedAt,
                     };
@@ -140,14 +162,25 @@ export function TriageProvider({ children }: { children: React.ReactNode }) {
             durationMs: Date.now() - startedAt,
           }));
         } finally {
-          // Persist the final outcome to the history entry. Functional
-          // update inside useHistory guarantees we hit the latest list,
-          // even if many runs interleaved.
-          update(id, {
-            report: finalReport,
-            error: finalError,
-            durationMs: Date.now() - startedAt,
-          });
+          // Safety net: if the onEvent path above already patched the
+          // history (the success / explicit-error path), this is a no-op
+          // because the entry already has the right shape. The finally
+          // matters only for stream-level failures (cancel, network drop)
+          // where no `final` or `error` event was emitted.
+          if (finalReport === null && finalError === null) {
+            update(id, {
+              report: null,
+              error: ctrl.signal.aborted ? "Cancelled" : "Stream ended without result",
+              durationMs: Date.now() - startedAt,
+            });
+          } else if (finalError !== null && finalReport === null) {
+            // Error captured via catch (not via SSE error event); still patch.
+            update(id, {
+              report: null,
+              error: finalError,
+              durationMs: Date.now() - startedAt,
+            });
+          }
         }
       })();
     },
