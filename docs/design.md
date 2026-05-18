@@ -32,14 +32,20 @@ Browser
                                      v
                        +------------------------------+
                        |  MCP Server (FastMCP)        |  :8001
-                       |  4 typed tools               |
+                       |  7 typed tools               |
                        +---+---+---+---+--------------+
                            |   |   |   |
                 NVD CVE 2.0|   |   |   |defusedxml (nmap_parse_xml)
+                           |   |   |   |
+                  ChromaDB |   |   |   |Exploit-DB CSV + GitHub Search
+              (cve_search) |   |   |   |(exploit_check, parallel fan-out)
+                           |   |   |   |
+                           |   |   |   |CISA KEV catalog (kev_check, 24h disk cache)
                            |   |   |
-                  ChromaDB |   |   |Exploit-DB CSV + GitHub Search
-              (cve_search) |   |   |(exploit_check, parallel fan-out)
+                           |   |   |FIRST EPSS API (epss_score, single-shot)
                            |   |
+                           |   |MITRE ATT&CK (attack_mapping, bundled JSON)
+                           |
                            +-- cve_lookup (httpx, rate-limited, retry)
 ```
 
@@ -47,7 +53,7 @@ Four processes, deliberately. The frontend, the agent API, and the MCP server ar
 
 ## Component breakdown
 
-**`src/sec_recon_agent/mcp_server/`** — owns the FastMCP instance, the typed I/O models for tools, the shared NVD client (rate limiter, retry, header builder), the cross-cutting `security.py` primitive, and the four tool modules. `errors.py` defines the exception hierarchy; `nvd_client.py` centralizes the sliding-window rate limiter so `cve_lookup` and the `cve_search` seed pipeline share one rate budget.
+**`src/sec_recon_agent/mcp_server/`** — owns the FastMCP instance, the typed I/O models for tools, the shared NVD client (rate limiter, retry, header builder), the cross-cutting `security.py` primitive, and the seven tool modules (`cve.py`, `cve_search.py`, `exploits.py`, `kev.py`, `epss.py`, `nmap.py`, `attack.py`). `errors.py` defines the exception hierarchy; `nvd_client.py` centralizes the sliding-window rate limiter so `cve_lookup` and the `cve_search` seed pipeline share one rate budget.
 
 **`src/sec_recon_agent/agent/`** — the Pydantic AI agent definition (`triage.py`), its output schema (`schema.py`: `TriageReport`, `CVEReference`, `Severity`, `Confidence`), and the system prompt (`prompts.py`, in its own module so it can be versioned and reviewed independently from the agent wiring). The agent uses `MCPToolset` (Pydantic AI's current MCP API; replaces the deprecated `MCPServerSSE`) to discover and call tools.
 
@@ -78,6 +84,12 @@ Four processes, deliberately. The frontend, the agent API, and the MCP server ar
 **Why Tailwind + shadcn-style primitives over a component library (Mantine, MUI, Chakra).** shadcn's "copy not import" model keeps the dependency surface small (only Radix primitives and `class-variance-authority`) and lets the Catppuccin palette drop in via CSS variables without overriding library defaults. A heavy library would lock the design language and add ~1 MB of JS bundle for components we use sparingly. Framer-motion was tried and dropped because its 11.x TypeScript types fight TS 5.7 strict mode on `motion.button + onClick` and the polish gain did not justify the type-system contortions; entry animations now use Tailwind keyframes.
 
 **Why the browser talks only to `/api/triage` and not to FastAPI directly.** Two reasons. (1) No CORS opened on the agent API; the backend stays single-tenant by design (no auth, no per-client rate limit). (2) The proxy is the right place to add future cross-cutting concerns (rate limit per IP, request logging for audit, auth handshake) without changing FastAPI itself. Today the proxy is a 20-line passthrough.
+
+**Why CISA KEV as a first-class tool, not a flag inside `cve_lookup`.** KEV membership is a different kind of signal from anything NVD provides: it is the federal-government list of CVEs *known to be actively exploited in the wild* (Binding Operational Directive 22-01). Surfacing it as `kev_check` keeps the tool surface composable (the agent can call it on a CVE that came from semantic search without round-tripping through `cve_lookup` first) and isolates the catalog-refresh and host-locked-download concerns from the NVD client. The catalog is small (~2 MB) and updated daily; a 24h disk cache + in-memory index makes per-CVE lookups O(1) after the first hit.
+
+**Why EPSS alongside KEV (not instead of it).** KEV answers "is this CVE known to be exploited right now?". EPSS answers "how likely is this CVE to be exploited in the next 30 days?". The two signals are orthogonal: a CVE can be on KEV without a high EPSS score (because EPSS is a forward-looking probabilistic model and KEV reflects observed exploitation), and a CVE can have a very high EPSS score without being on KEV (the model is calibrated against post-publication exploitation, so emerging high-risk CVEs surface in EPSS first). Both feed `recommended_action` so the agent can prioritize beyond CVSS, which has long been known to over-weight theoretical impact relative to real-world exploitation likelihood. EPSS is fetched per-CVE (no bulk pre-fetch) because the API is rate-friendly and the access pattern is sparse — there is no payoff in pre-loading the full dataset.
+
+**Why a per-CVE prioritization heuristic in the system prompt, not a deterministic post-processor.** The agent already calls KEV and EPSS as tools; encoding the priority order (KEV > ransomware > EPSS >= 0.5 > CVSS) in the system prompt rather than in `recommended_action`-generation code keeps the agent the single source of truth for the natural-language remediation guidance. A deterministic post-processor would have to either duplicate the prose generation or post-edit the agent's output. The trade-off is that the heuristic depends on the LLM following instructions; the structured `TriageReport.cves[].in_kev_catalog` field stays the contract for any downstream automation that needs deterministic behavior.
 
 ## Threat model
 
@@ -165,7 +177,7 @@ Unit + contract tests, no integration suite. Specifically:
 
 - **Tool I/O contracts.** Every tool has tests verifying its Pydantic output shape against mocked HTTP via `respx`. Failure modes (NVD 404, malformed payload, NVD 5xx retry exhaustion, XXE refusal, oversized download) are covered.
 - **Cross-cutting primitives.** `fence_untrusted` has its own unit tests. The marker invariant is asserted in every tool that applies fencing.
-- **Agent wiring.** Smoke tests verify the agent constructs, the system prompt declares all four tool names verbatim (drift detector), and the untrusted-content guardrail is present.
+- **Agent wiring.** Smoke tests verify the agent constructs, the system prompt declares all seven tool names verbatim (drift detector), and the untrusted-content guardrail is present.
 - **API surface.** FastAPI `TestClient` covers health, request validation (missing/empty query), the SSE event sequence (`started` → `node` → `final`), and the error-event sanitization invariant.
 
 Marked `@pytest.mark.slow` (3 tests): full seed + semantic search round-trip with real ChromaDB and the ONNX embedder. ~30 s first session run (ONNX model cache), <1 s subsequent.

@@ -7,7 +7,10 @@ import {
   CheckCircle2,
   Clock,
   Crosshair,
+  Flame,
   ShieldX,
+  Skull,
+  TrendingUp,
 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -60,6 +63,30 @@ export function StatisticsTab({ entries }: { entries: HistoryEntry[] }) {
           hint={stats.errorRuns > 0 ? `${stats.errorRuns} errored` : "no errors"}
           icon={CheckCircle2}
           accent="success"
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <KpiCard
+          label="CISA KEV"
+          value={stats.kevCount}
+          hint="actively exploited"
+          icon={Flame}
+          accent={stats.kevCount > 0 ? "critical" : "default"}
+        />
+        <KpiCard
+          label="Ransomware"
+          value={stats.ransomwareCount}
+          hint="known ransomware use"
+          icon={Skull}
+          accent={stats.ransomwareCount > 0 ? "critical" : "default"}
+        />
+        <KpiCard
+          label="High EPSS"
+          value={stats.highEpssCount}
+          hint="probability >= 0.5"
+          icon={TrendingUp}
+          accent={stats.highEpssCount > 0 ? "high" : "default"}
         />
       </div>
 

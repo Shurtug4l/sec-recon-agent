@@ -37,6 +37,42 @@ class CVEReference(BaseModel):
     exploits_public: bool
     affected_products: list[str] = Field(default_factory=list, max_length=20)
     nvd_url: HttpUrl
+    in_kev_catalog: bool = Field(
+        default=False,
+        description=(
+            "True when CISA KEV reports the CVE as actively exploited "
+            "in the wild. Highest-priority remediation signal."
+        ),
+    )
+    kev_due_date: str | None = Field(
+        default=None,
+        description=(
+            "ISO date by which CISA requires federal agencies to remediate. "
+            "Set only when in_kev_catalog is True."
+        ),
+    )
+    known_ransomware_use: bool | None = Field(
+        default=None,
+        description=(
+            "CISA-reported association with known ransomware campaigns. "
+            "None when KEV did not provide the flag."
+        ),
+    )
+    epss_probability: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "EPSS probability of exploitation in the next 30 days. "
+            "None when the CVE is not in the EPSS dataset."
+        ),
+    )
+    epss_percentile: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="EPSS rank relative to all scored CVEs.",
+    )
 
 
 class TriageReport(BaseModel):

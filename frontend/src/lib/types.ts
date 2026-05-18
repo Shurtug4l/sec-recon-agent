@@ -14,6 +14,12 @@ export interface CVEReference {
   exploits_public: boolean;
   affected_products: string[];
   nvd_url: string;
+  // Operational signals (added when the agent calls kev_check / epss_score).
+  in_kev_catalog: boolean;
+  kev_due_date: string | null;
+  known_ransomware_use: boolean | null;
+  epss_probability: number | null;
+  epss_percentile: number | null;
 }
 
 export interface AttackMitigation {
