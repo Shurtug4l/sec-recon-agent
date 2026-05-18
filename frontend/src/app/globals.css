@@ -92,3 +92,44 @@
     @apply bg-muted text-muted-foreground;
   }
 }
+
+/* Print-to-PDF. The 'Export PDF' button on the TriageReportView calls
+ * window.print(); these rules hide chrome and show only the report,
+ * forcing a light-on-white render regardless of the current theme. */
+@media print {
+  @page {
+    size: A4;
+    margin: 18mm 16mm;
+  }
+  html, body {
+    background: #ffffff !important;
+    color: #111111 !important;
+  }
+  body * {
+    visibility: hidden;
+  }
+  #printable-report,
+  #printable-report * {
+    visibility: visible;
+  }
+  #printable-report {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    color: #111111 !important;
+  }
+  #printable-report a {
+    color: #1d4ed8 !important;
+    text-decoration: underline;
+  }
+  /* Recharts and other interactive widgets are not meaningful on paper. */
+  #printable-report .recharts-wrapper,
+  #printable-report button {
+    display: none !important;
+  }
+  /* Avoid splitting a CVE / technique card across two pages when avoidable. */
+  #printable-report > div > div,
+  #printable-report > div > section {
+    break-inside: avoid;
+  }
+}

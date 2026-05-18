@@ -50,9 +50,11 @@ export function SeverityBarChart({ data }: { data: Array<{ severity: string; cou
             color: "hsl(var(--popover-foreground))",
             fontSize: 12,
           }}
+          labelStyle={{ color: "hsl(var(--popover-foreground))", fontWeight: 600 }}
+          itemStyle={{ color: "hsl(var(--popover-foreground))" }}
           cursor={{ fill: "hsl(var(--accent))", opacity: 0.3 }}
         />
-        <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+        <Bar dataKey="count" radius={[6, 6, 0, 0]} isAnimationActive={false}>
           {data.map((entry) => (
             <Cell
               key={entry.severity}

@@ -53,6 +53,8 @@ interface TriageContextValue {
   selectedId: string | null;
   selectEntry: (id: string | null) => void;
   clearHistory: () => void;
+  draftQuery: string;
+  setDraftQuery: (query: string) => void;
 }
 
 const TriageContext = createContext<TriageContextValue | null>(null);
@@ -60,6 +62,7 @@ const TriageContext = createContext<TriageContextValue | null>(null);
 export function TriageProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<TriageRunState>(INITIAL);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [draftQuery, setDraftQuery] = useState<string>("");
   const abortRef = useRef<AbortController | null>(null);
   const { entries, hydrated, add, update, clear } = useHistory();
 
@@ -199,6 +202,17 @@ export function TriageProvider({ children }: { children: React.ReactNode }) {
     // no entry to update.
   }, [clear]);
 
+  const selectEntry = useCallback(
+    (id: string | null) => {
+      setSelectedId(id);
+      if (id) {
+        const entry = entries.find((e) => e.id === id);
+        if (entry) setDraftQuery(entry.query);
+      }
+    },
+    [entries],
+  );
+
   const value: TriageContextValue = {
     state,
     run,
@@ -207,8 +221,10 @@ export function TriageProvider({ children }: { children: React.ReactNode }) {
     entries,
     hydrated,
     selectedId,
-    selectEntry: setSelectedId,
+    selectEntry,
     clearHistory,
+    draftQuery,
+    setDraftQuery,
   };
 
   return <TriageContext.Provider value={value}>{children}</TriageContext.Provider>;

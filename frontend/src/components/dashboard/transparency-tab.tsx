@@ -93,9 +93,12 @@ export function TransparencyTab() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Wrench className="h-4 w-4" /> Tool inventory
+            <Badge variant="secondary" className="ml-1 font-mono text-[10px]">
+              {meta.tools.length} typed
+            </Badge>
           </CardTitle>
           <p className="text-[11px] text-muted-foreground">
-            The four typed tools the agent can call. Their I/O contracts live in{" "}
+            The {meta.tools.length} typed tools the agent can call. Their I/O contracts live in{" "}
             <code className="font-mono">src/sec_recon_agent/mcp_server/models.py</code>.
           </p>
         </CardHeader>
@@ -146,7 +149,7 @@ export function TransparencyTab() {
           <ul className="space-y-1.5 text-sm">
             <li className="flex gap-2">
               <span className="select-none text-muted-foreground">·</span>
-              Make HTTP calls outside the four declared tools (no shell, no arbitrary fetch).
+              Make HTTP calls outside the {meta.tools.length} declared tools (no shell, no arbitrary fetch).
             </li>
             <li className="flex gap-2">
               <span className="select-none text-muted-foreground">·</span>
