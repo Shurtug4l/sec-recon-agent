@@ -1,0 +1,118 @@
+name: docker-scan
+
+# Builds both container images and runs Trivy against each. Separate
+# workflow from the lint/test ones because (a) it pulls a sizeable image
+# DB on every run and (b) image security is a different cadence concern
+# from code correctness: a fresh CVE in a base image can fail this job
+# without any code change, and that should not block an unrelated PR's
+# lint run.
+#
+# Severity gating is split deliberately:
+#   - CRITICAL findings exit the job non-zero (a real blocker).
+#   - HIGH findings stay informational; they uploaded to the SARIF
+#     summary on the PR but do not fail the workflow.
+#
+# Trigger on the same path footprint as the workflows that consume the
+# images, plus weekly on a schedule so a new advisory against the base
+# image is surfaced even when no PR is in flight.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Dockerfile"
+      - "frontend/Dockerfile"
+      - ".github/workflows/ci-docker-scan.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "Dockerfile"
+      - "frontend/Dockerfile"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
+      - ".github/workflows/ci-docker-scan.yml"
+  schedule:
+    # Monday 06:30 UTC; just after the Dependabot Monday window so any
+    # auto-bump that landed earlier in the week gets scanned again.
+    - cron: "30 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: docker-scan-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write  # upload SARIF to the GitHub Security tab.
+
+jobs:
+  scan:
+    name: scan ${{ matrix.image.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: backend
+            context: "."
+            dockerfile: "Dockerfile"
+            tag: "sec-recon-agent:scan"
+            target: "runtime"
+          - name: frontend
+            context: "./frontend"
+            dockerfile: "frontend/Dockerfile"
+            tag: "sec-recon-frontend:scan"
+            target: ""
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.image.name }} image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.dockerfile }}
+          target: ${{ matrix.image.target }}
+          push: false
+          load: true
+          tags: ${{ matrix.image.tag }}
+          cache-from: type=gha,scope=${{ matrix.image.name }}
+          cache-to: type=gha,scope=${{ matrix.image.name }},mode=max
+
+      # CRITICAL gate — this is the actual blocking signal.
+      - name: Trivy scan (CRITICAL gate)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ matrix.image.tag }}
+          format: table
+          severity: CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+
+      # HIGH summary — non-blocking, uploaded to the GitHub Security tab.
+      - name: Trivy scan (HIGH summary, SARIF)
+        if: always()
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ matrix.image.tag }}
+          format: sarif
+          output: trivy-${{ matrix.image.name }}.sarif
+          severity: HIGH
+          exit-code: "0"
+          ignore-unfixed: true
+          vuln-type: os,library
+
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-${{ matrix.image.name }}.sarif
+          category: trivy-${{ matrix.image.name }}
