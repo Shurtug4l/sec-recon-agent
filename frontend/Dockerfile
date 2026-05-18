@@ -3,7 +3,7 @@
 # ============================================================================
 # Builder: install dependencies and build Next.js in standalone mode.
 # ============================================================================
-FROM node:22-alpine AS deps
+FROM node:26-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 # Deterministic install: `npm ci` refuses to mutate package.json or the
@@ -12,7 +12,7 @@ COPY package.json package-lock.json ./
 # (RC tag on the dep range, GA in the wild).
 RUN npm ci --no-audit --no-fund --legacy-peer-deps
 
-FROM node:22-alpine AS builder
+FROM node:26-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -22,7 +22,7 @@ RUN npm run build
 # ============================================================================
 # Runtime: minimal Node image with the standalone Next.js server.
 # ============================================================================
-FROM node:22-alpine AS runtime
+FROM node:26-alpine AS runtime
 
 # node:22-alpine ships with a `node` user (uid 1000) — reuse it instead
 # of creating a parallel one (the explicit `adduser` would collide on gid 1000).
