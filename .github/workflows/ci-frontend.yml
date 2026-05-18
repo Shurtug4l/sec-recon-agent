@@ -33,11 +33,15 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        # --legacy-peer-deps mirrors the Dockerfile; Next.js 15's peer range
-        # is pinned to a React 19 RC tag that GA satisfies in practice.
-        run: npm install --no-audit --no-fund --legacy-peer-deps
+        # `npm ci` requires the lockfile to be in sync with package.json
+        # and never mutates either; that is the deterministic install path
+        # we want in CI. --legacy-peer-deps mirrors the Dockerfile: Next 15
+        # peers a React 19 RC tag that GA satisfies in practice.
+        run: npm ci --no-audit --no-fund --legacy-peer-deps
 
       # Lint deliberately skipped:
       # - `next lint` is interactive on first run (prompts Strict / Base /
