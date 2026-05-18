@@ -65,7 +65,10 @@ def fake_agent_factory(fake_report: TriageReport) -> Any:
         async def iter(self, query: str) -> Any:
             yield _FakeRun(self._output)
 
-    def _factory() -> _FakeAgent:
+    def _factory(model_override: str | None = None) -> _FakeAgent:
+        # Test factory ignores model override — the fake agent does not
+        # actually call an LLM, so any model string is equally fine.
+        del model_override
         return _FakeAgent(fake_report)
 
     return _factory
@@ -148,6 +151,37 @@ def test_triage_streams_started_and_final_events(
     assert payload["severity"] == "high"
 
 
+def test_triage_rejects_unknown_model_override(monkeypatch: MonkeyPatch) -> None:
+    """A body that sets an unknown `model` must surface as an error
+    event with the allowlist-violation message preserved.
+
+    `resolve_model` raises ValueError before any LLM / MCP work happens,
+    so this test routes through the real build_agent code path; the
+    factory monkeypatch in other tests is unnecessary here.
+    """
+
+    def _build_agent_calling_real_resolve(model_override: str | None = None) -> Any:
+        from sec_recon_agent.agent.triage import resolve_model
+
+        resolve_model(model_override)  # may raise ValueError
+        raise AssertionError("test expects resolve_model to raise before this point")
+
+    monkeypatch.setattr(stream_module, "build_agent", _build_agent_calling_real_resolve)
+
+    client = TestClient(app)
+    with client.stream(
+        "POST",
+        "/v1/triage",
+        json={"query": "test", "model": "gpt-4-secret"},
+    ) as response:
+        assert response.status_code == 200
+        body = "".join(response.iter_text())
+
+    assert "event: error" in body
+    assert "allowlist" in body
+    assert "gpt-4-secret" in body
+
+
 def test_triage_appends_one_audit_event_on_success(
     monkeypatch: MonkeyPatch,
     fake_agent_factory: Any,
@@ -205,7 +239,11 @@ def test_triage_appends_audit_event_on_error(monkeypatch: MonkeyPatch, tmp_path:
             raise RuntimeError("boom")
             yield  # pragma: no cover
 
-    monkeypatch.setattr(stream_module, "build_agent", lambda: _BrokenAgent())
+    monkeypatch.setattr(
+        stream_module,
+        "build_agent",
+        lambda model_override=None: _BrokenAgent(),
+    )
 
     client = TestClient(app)
     with client.stream("POST", "/v1/triage", json={"query": "test"}) as response:
@@ -230,7 +268,11 @@ def test_triage_emits_error_event_when_agent_raises(monkeypatch: MonkeyPatch) ->
             raise RuntimeError("agent boom with internal context: /var/lib/secret")
             yield  # pragma: no cover
 
-    monkeypatch.setattr(stream_module, "build_agent", lambda: _BrokenAgent())
+    monkeypatch.setattr(
+        stream_module,
+        "build_agent",
+        lambda model_override=None: _BrokenAgent(),
+    )
 
     client = TestClient(app)
     with client.stream("POST", "/v1/triage", json={"query": "test"}) as response:

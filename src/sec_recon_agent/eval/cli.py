@@ -74,7 +74,29 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="optional path to dump structured results as JSON",
     )
+    parser.add_argument(
+        "--model",
+        default=None,
+        help=(
+            "override LLM model for this run (haiku / sonnet / opus or a "
+            "full identifier on the backend allowlist). Default: deployment "
+            "default."
+        ),
+    )
+    parser.add_argument(
+        "--models",
+        default=None,
+        help=(
+            "comma-separated list of models to compare (e.g. 'haiku,sonnet,opus'). "
+            "Runs the full golden set against each and prints a side-by-side "
+            "table. Mutually exclusive with --model."
+        ),
+    )
     args = parser.parse_args(argv)
+
+    if args.model and args.models:
+        print("--model and --models are mutually exclusive", file=sys.stderr)
+        return 2
 
     cases = _filter_cases(args.filter)
     if not cases:
@@ -89,11 +111,28 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    print(f"running {len(cases)} case(s) against {args.api_url} ...")
+    if args.models:
+        models = [m.strip() for m in args.models.split(",") if m.strip()]
+        return _run_comparison(cases, args, models)
+    return _run_single(cases, args, args.model)
+
+
+def _run_single(
+    cases: tuple[GoldenCase, ...],
+    args: argparse.Namespace,
+    model: str | None,
+) -> int:
+    label = model or "default"
+    print(f"running {len(cases)} case(s) against {args.api_url} (model={label}) ...")
     json_payload: list[dict[str, Any]] = []
     passed = 0
     for case in cases:
-        result = run_case(case, api_url=args.api_url, timeout_seconds=args.timeout)
+        result = run_case(
+            case,
+            api_url=args.api_url,
+            timeout_seconds=args.timeout,
+            model=model,
+        )
         if result.report is None:
             print(
                 f"  [ERR ] {case.id:<30} {result.error}  {result.elapsed_seconds:5.1f}s",
@@ -101,6 +140,7 @@ def main(argv: list[str] | None = None) -> int:
             json_payload.append(
                 {
                     "case": asdict(case),
+                    "model": label,
                     "error": result.error,
                     "elapsed_seconds": result.elapsed_seconds,
                 },
@@ -112,6 +152,7 @@ def main(argv: list[str] | None = None) -> int:
         json_payload.append(
             {
                 "case": asdict(case),
+                "model": label,
                 "verdict": asdict(verdict),
                 "report": result.report.model_dump(mode="json"),
                 "elapsed_seconds": result.elapsed_seconds,
@@ -130,6 +171,87 @@ def main(argv: list[str] | None = None) -> int:
     # Exit code: 0 if all passed, 1 otherwise (handy for CI gating once
     # the suite is stable enough to be a blocking signal).
     return 0 if passed == total else 1
+
+
+def _run_comparison(
+    cases: tuple[GoldenCase, ...],
+    args: argparse.Namespace,
+    models: list[str],
+) -> int:
+    """Run the same case set against each model and print a side-by-side table."""
+    per_model: dict[str, list[dict[str, Any]]] = {}
+    per_model_pass: dict[str, int] = {}
+
+    for model in models:
+        print(f"\n=== model: {model} ===")
+        rows: list[dict[str, Any]] = []
+        passed = 0
+        for case in cases:
+            result = run_case(
+                case,
+                api_url=args.api_url,
+                timeout_seconds=args.timeout,
+                model=model,
+            )
+            if result.report is None:
+                rows.append(
+                    {
+                        "case_id": case.id,
+                        "passed": False,
+                        "cve_recall": 0.0,
+                        "elapsed_seconds": result.elapsed_seconds,
+                        "error": result.error,
+                    },
+                )
+                print(f"  [ERR ] {case.id:<30} {result.error}")
+                continue
+            verdict = score(case, result.report)
+            passed += int(verdict.passed)
+            rows.append(
+                {
+                    "case_id": case.id,
+                    "passed": verdict.passed,
+                    "cve_recall": verdict.cve_recall,
+                    "severity_ok": verdict.severity_ok,
+                    "elapsed_seconds": result.elapsed_seconds,
+                },
+            )
+            print(_format_row(case, verdict, result.elapsed_seconds))
+        per_model[model] = rows
+        per_model_pass[model] = passed
+        print(
+            f"  -> {passed}/{len(cases)} passed "
+            f"({passed / max(len(cases), 1):.0%})",
+        )
+
+    # Side-by-side summary
+    print("\n=== comparison summary ===")
+    header = f"  {'case':<30} " + "  ".join(f"{m:>10}" for m in models)
+    print(header)
+    for i, case in enumerate(cases):
+        cells = []
+        for model in models:
+            row = per_model[model][i]
+            cells.append("PASS" if row.get("passed") else "FAIL")
+        print(f"  {case.id:<30} " + "  ".join(f"{c:>10}" for c in cells))
+    print()
+    for model in models:
+        total = len(cases)
+        rate = per_model_pass[model] / total if total else 0.0
+        print(f"  {model:<20} {per_model_pass[model]}/{total} ({rate:.0%})")
+
+    if args.json_output:
+        with open(args.json_output, "w", encoding="utf-8") as f:
+            json.dump(
+                {model: per_model[model] for model in models},
+                f,
+                indent=2,
+                default=str,
+            )
+        print(f"json report written to {args.json_output}")
+
+    all_pass = all(per_model_pass[m] == len(cases) for m in models)
+    return 0 if all_pass else 1
 
 
 if __name__ == "__main__":

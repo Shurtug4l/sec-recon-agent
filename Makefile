@@ -53,5 +53,8 @@ obs-down:  ## Stop the observability stack (keeps the data volume).
 eval:  ## Run the end-to-end golden-set eval against a live stack (needs `make up`). Bills the LLM.
 	@uv run sec-recon-eval $(EVAL_ARGS)
 
+eval-compare:  ## Run the eval suite across haiku/sonnet/opus and print a side-by-side table. Bills the LLM.
+	@uv run sec-recon-eval --models haiku,sonnet,opus $(EVAL_ARGS)
+
 clean:  ## Stop services and DELETE the ChromaDB volume. Destructive.
 	docker compose down --volumes
