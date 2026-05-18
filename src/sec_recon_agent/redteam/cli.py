@@ -25,6 +25,7 @@ from sec_recon_agent.redteam.payloads import (
 )
 from sec_recon_agent.redteam.scorer import (
     PayloadVerdict,
+    aggregate_by_atlas_technique,
     score_payload,
     summarize,
 )
@@ -35,7 +36,14 @@ def _filter_payloads(filter_expr: str | None) -> tuple[InjectionPayload, ...]:
         return PAYLOADS
     tokens = {t.strip() for t in filter_expr.split(",") if t.strip()}
     return tuple(
-        p for p in PAYLOADS if p.id in tokens or p.category in tokens or set(p.tags) & tokens
+        p
+        for p in PAYLOADS
+        if (
+            p.id in tokens
+            or p.category in tokens
+            or set(p.tags) & tokens
+            or set(p.atlas_techniques) & tokens
+        )
     )
 
 
@@ -62,7 +70,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--filter",
         default=None,
-        help="comma-separated list of payload ids or categories (default: all).",
+        help=(
+            "comma-separated list of payload ids, categories, tags, or "
+            "MITRE ATLAS technique IDs (e.g. 'AML.T0055,direct'). "
+            "Default: all."
+        ),
     )
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_SECONDS)
     parser.add_argument(
@@ -154,10 +166,32 @@ def main(argv: list[str] | None = None) -> int:
             rate = cat_resisted / cat_total if cat_total else 0.0
             print(f"  {cat:<16} {cat_resisted}/{cat_total} ({rate:.0%})")
 
+    # Per-MITRE-ATLAS-technique breakdown
+    atlas_aggregates = aggregate_by_atlas_technique(verdicts)
+    if atlas_aggregates:
+        print("\nper MITRE ATLAS technique:")
+        for agg in atlas_aggregates:
+            print(
+                f"  {agg.technique:<14} "
+                f"{agg.resisted}/{agg.total} ({agg.rate:.0%})",
+            )
+
     if args.json_output:
         with open(args.json_output, "w", encoding="utf-8") as f:
             json.dump(
-                {"summary": summary, "records": json_records},
+                {
+                    "summary": summary,
+                    "records": json_records,
+                    "atlas_breakdown": [
+                        {
+                            "technique": a.technique,
+                            "total": a.total,
+                            "resisted": a.resisted,
+                            "rate": a.rate,
+                        }
+                        for a in atlas_aggregates
+                    ],
+                },
                 f,
                 indent=2,
                 default=str,
