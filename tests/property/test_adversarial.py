@@ -113,7 +113,7 @@ async def test_marker_forgery_in_payload_does_not_truncate_fence() -> None:
     assert result.description.startswith(UNTRUSTED_START)
     assert result.description.endswith(UNTRUSTED_END)
     # The full original payload sits between the outermost markers.
-    inner = result.description[len(UNTRUSTED_START):-len(UNTRUSTED_END)].strip()
+    inner = result.description[len(UNTRUSTED_START) : -len(UNTRUSTED_END)].strip()
     assert payload in inner
 
 
@@ -168,20 +168,20 @@ def test_xxe_variants_refused(xml: str) -> None:
 # ============================================================================
 
 MALFORMED_CVE_IDS = [
-    "cve-2024-0001",                  # lowercase
-    "CVE-24-0001",                    # 2-digit year
-    "CVE-2024-1",                     # too few sequence digits
-    "CVE-2024-",                      # empty sequence
-    "CVE-2024-0001 ",                 # trailing space
-    " CVE-2024-0001",                 # leading space
-    "CVE-2024-0001\n",                # trailing newline
-    "CVE-2024-0001/../../etc/passwd", # path traversal attempt
-    "CVE-2024-0001;DROP TABLE",       # SQL injection attempt
-    "CVE-2024-0001?evil=1",           # URL query injection attempt
-    "",                               # empty
-    "CVE-",                           # truncated
-    "CVE-2024-0001\x00",              # null byte
-    "C" + "V" * 100,                  # long garbage
+    "cve-2024-0001",  # lowercase
+    "CVE-24-0001",  # 2-digit year
+    "CVE-2024-1",  # too few sequence digits
+    "CVE-2024-",  # empty sequence
+    "CVE-2024-0001 ",  # trailing space
+    " CVE-2024-0001",  # leading space
+    "CVE-2024-0001\n",  # trailing newline
+    "CVE-2024-0001/../../etc/passwd",  # path traversal attempt
+    "CVE-2024-0001;DROP TABLE",  # SQL injection attempt
+    "CVE-2024-0001?evil=1",  # URL query injection attempt
+    "",  # empty
+    "CVE-",  # truncated
+    "CVE-2024-0001\x00",  # null byte
+    "C" + "V" * 100,  # long garbage
 ]
 
 
@@ -204,6 +204,7 @@ async def test_malformed_cve_ids_rejected_before_http(bad_id: str) -> None:
 # Size caps and pagination bounds are the only thing standing between a
 # hostile upstream and OOM. Each cap must be exercised.
 # ============================================================================
+
 
 @pytest.fixture(autouse=True)
 def isolated_exploitdb_state(monkeypatch, tmp_path) -> None:
@@ -230,9 +231,7 @@ async def test_exploitdb_oversized_response_aborts() -> None:
 def test_nmap_caps_huge_hostname_list() -> None:
     """A crafted Nmap XML with thousands of <hostname> elements must be
     capped at 50 in the returned NmapHost.hostnames list."""
-    hostnames = "".join(
-        f'<hostname name="h{i}.example" type="user"/>' for i in range(500)
-    )
+    hostnames = "".join(f'<hostname name="h{i}.example" type="user"/>' for i in range(500))
     xml = f"""<?xml version="1.0"?>
 <nmaprun start="0">
   <host>
@@ -250,8 +249,7 @@ def test_nmap_caps_huge_port_list() -> None:
     """A crafted Nmap XML with thousands of <port> elements must be capped
     at 200 in the returned NmapHost.ports list."""
     ports = "".join(
-        f'<port protocol="tcp" portid="{i}"><state state="open"/></port>'
-        for i in range(1, 1001)
+        f'<port protocol="tcp" portid="{i}"><state state="open"/></port>' for i in range(1, 1001)
     )
     xml = f"""<?xml version="1.0"?>
 <nmaprun start="0">
@@ -274,11 +272,11 @@ def test_nmap_caps_huge_port_list() -> None:
 # ============================================================================
 
 HOMOGLYPH_CVE_IDS = [
-    "СVE-2024-0001",       # Cyrillic C + "VE-..."
-    "CVE​-2024-0001",       # zero-width space between CVE and -
-    "CVE-2024-0001‮",       # right-to-left override appended
-    "CVE-2024 -0001",       # non-breaking space instead of hyphen
-    "CVE－2024－0001",   # full-width hyphens
+    "СVE-2024-0001",  # Cyrillic C + "VE-..."
+    "CVE​-2024-0001",  # zero-width space between CVE and -
+    "CVE-2024-0001‮",  # right-to-left override appended
+    "CVE-2024 -0001",  # non-breaking space instead of hyphen
+    "CVE－2024－0001",  # full-width hyphens
 ]
 
 

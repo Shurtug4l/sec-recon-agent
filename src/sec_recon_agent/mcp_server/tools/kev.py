@@ -33,8 +33,7 @@ log = structlog.get_logger()
 _tracer = get_tracer()
 
 KEV_CATALOG_URL = (
-    "https://www.cisa.gov/sites/default/files/feeds/"
-    "known_exploited_vulnerabilities.json"
+    "https://www.cisa.gov/sites/default/files/feeds/" "known_exploited_vulnerabilities.json"
 )
 KEV_TRUSTED_HOST = "cisa.gov"
 KEV_CACHE_FILENAME = "cisa_kev_catalog.json"
@@ -90,7 +89,7 @@ async def _download_kev_catalog(path: Path) -> None:
         raise KevDownloadError(f"Transport error fetching KEV catalog: {exc}") from exc
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(bytes(buffer))  # noqa: ASYNC240
+    path.write_bytes(bytes(buffer))
     log.info("kev_catalog_download_done", bytes=len(buffer), path=str(path))
 
 

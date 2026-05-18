@@ -37,9 +37,13 @@ def _load_attack_data() -> dict[str, Any]:
     with _attack_data_lock:
         if _attack_data is not None:
             return _attack_data
-        raw = resources.files("sec_recon_agent.mcp_server.data").joinpath(
-            "mitre_attack.json",
-        ).read_text(encoding="utf-8")
+        raw = (
+            resources.files("sec_recon_agent.mcp_server.data")
+            .joinpath(
+                "mitre_attack.json",
+            )
+            .read_text(encoding="utf-8")
+        )
         _attack_data = json.loads(raw)
         log.info(
             "mitre_attack_loaded",

@@ -47,6 +47,15 @@ export default function Home() {
       }
     : null;
 
+  // For the Markdown export header: the live run pulls the query from
+  // the matching history entry (created at run start); a selected
+  // history entry uses its own query.
+  const liveEntry =
+    isLiveSelection && state.currentEntryId
+      ? entries.find((e) => e.id === state.currentEntryId)
+      : null;
+  const displayedQuery = isLiveSelection ? liveEntry?.query : selected?.query;
+
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <Header />
@@ -91,7 +100,12 @@ export default function Home() {
                   </Card>
                 )}
 
-                {displayState.report && <TriageReportView report={displayState.report} />}
+                {displayState.report && (
+                  <TriageReportView
+                    report={displayState.report}
+                    query={displayedQuery}
+                  />
+                )}
 
                 {displayState.durationMs !== null && !displayState.isRunning && (
                   <p className="text-right text-[10px] text-muted-foreground">

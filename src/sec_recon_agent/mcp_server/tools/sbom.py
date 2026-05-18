@@ -43,7 +43,7 @@ SBOM_MAX_COMPONENTS = 500
 # stray free-text line should not become a phantom component.
 _REQ_LINE = re.compile(
     r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*"
-    r"(?:\[[^\]]*\])?"                       # optional extras
+    r"(?:\[[^\]]*\])?"  # optional extras
     r"\s*(?:(==|>=|<=|>|<|~=|!=)\s*([A-Za-z0-9][A-Za-z0-9._+\-]*))?"
     r"\s*(?:;.*)?$",
 )
@@ -121,9 +121,7 @@ def _parse_spdx(payload: dict[str, Any]) -> list[SbomComponent]:
         name = entry.get("name")
         if not isinstance(name, str) or not name.strip():
             continue
-        version = (
-            entry.get("versionInfo") if isinstance(entry.get("versionInfo"), str) else None
-        )
+        version = entry.get("versionInfo") if isinstance(entry.get("versionInfo"), str) else None
         purl: str | None = None
         for ref in entry.get("externalRefs") or []:
             if not isinstance(ref, dict):
