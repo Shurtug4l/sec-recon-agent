@@ -78,6 +78,27 @@ def test_health_returns_ok() -> None:
     assert response.json() == {"status": "ok"}
 
 
+def test_meta_returns_system_prompt_and_tool_inventory() -> None:
+    """The transparency endpoint must surface the literal system prompt
+    plus a stable tool inventory. The frontend's dashboard depends on
+    both being present and well-shaped."""
+    client = TestClient(app)
+    response = client.get("/v1/meta")
+    assert response.status_code == 200
+    body = response.json()
+    assert "system_prompt" in body
+    assert "model" in body
+    assert "tools" in body
+    # System prompt must include the untrusted-content boundary mention;
+    # if it drifts, the transparency view loses its key value.
+    assert "untrusted" in body["system_prompt"].lower()
+    # Tool inventory: four tools, names match the MCP tool surface.
+    names = {t["name"] for t in body["tools"]}
+    assert names == {"cve_lookup", "cve_semantic_search", "exploit_check", "nmap_parse_xml"}
+    for tool in body["tools"]:
+        assert tool["description"]  # non-empty
+
+
 def test_triage_validates_missing_query() -> None:
     client = TestClient(app)
     response = client.post("/v1/triage", json={})

@@ -37,6 +37,7 @@ The whole stack runs with `make up`: backend (MCP server + FastAPI agent) + fron
 - [Stack](#stack)
 - [Running](#running)
 - [The frontend](#the-frontend)
+- [Dashboard](#dashboard-dashboard)
 - [Observability](#observability)
 - [Testing](#testing)
 - [Security posture](#security-posture)
@@ -147,6 +148,16 @@ The browser is the primary interface. Highlights:
 
 See [`docs/frontend.md`](docs/frontend.md) for the component map and the SSE wire protocol.
 
+### Dashboard (`/dashboard`)
+
+A separate page with three tabs:
+
+- **Statistics** — KPI cards (total runs, average time, critical count, success rate), severity histogram, tool-call pie chart, top-CVEs table. All computed client-side from the local history.
+- **Observability** — per-run timeline reconstructed from the `reasoning_chain`, with a link to the Jaeger UI for the cross-process span tree.
+- **Transparency** — the literal system prompt the LLM sees (copyable), the four-tool inventory with descriptions, runtime metadata (model, output schema, content boundary), and the explicit list of what the agent CANNOT do (no shell, no out-of-band fetch, no key visibility, no PII in spans).
+
+The transparency tab fetches `GET /v1/meta` via the Next.js proxy; the endpoint exposes the system prompt and tool list so the UI can render them without coupling to file paths or live MCP connectivity.
+
 ## Observability
 
 OpenTelemetry tracing is enabled in both Python processes. Default exporter writes spans to stdout (zero infrastructure required). Set `OTEL_EXPORTER_OTLP_ENDPOINT` (or use `make obs-up`) to ship spans to an OTLP/HTTP collector — the compose profile `observability` bundles a Jaeger sidecar at `http://localhost:16686`.
@@ -170,8 +181,8 @@ uv run pytest tests/property    # property + adversarial only
 make lint                       # ruff + mypy --strict
 ```
 
-**Suite count: 88 passing.** Breakdown:
-- **35 contract tests** — every MCP tool has Pydantic I/O contract tests with `respx`-mocked HTTP. Tool fail modes (NVD 404, malformed payload, 5xx retry, 429 retry, XXE refusal, oversized CSV download) all covered.
+**Suite count: 89 passing.** Breakdown:
+- **36 contract tests** — every MCP tool has Pydantic I/O contract tests with `respx`-mocked HTTP. Tool fail modes (NVD 404, malformed payload, 5xx retry, 429 retry, XXE refusal, oversized CSV download) all covered. Includes `/v1/meta` endpoint contract.
 - **11 property tests** — Hypothesis invariants on `fence_untrusted`, `CveIdStr` regex, Pydantic field constraints.
 - **32 adversarial parametrizations** — prompt injection (8 payloads + marker forgery), XXE variants (4), malformed CVE IDs (14), Unicode homoglyphs (5), resource exhaustion (oversize CSV, huge hostname/port lists).
 - **8 observability tests** — span emission per tool, attribute schema, privacy invariants (no secret / no user query text / no NVD description in span attributes).

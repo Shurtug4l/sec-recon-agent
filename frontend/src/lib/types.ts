@@ -41,3 +41,15 @@ export interface HistoryEntry {
   durationMs: number | null;
   error: string | null;
 }
+
+// /v1/meta response — system prompt + tool inventory for the transparency view.
+export interface ToolMeta {
+  name: string;
+  description: string;
+}
+
+export interface AgentMeta {
+  system_prompt: string;
+  model: string;
+  tools: ToolMeta[];
+}

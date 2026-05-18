@@ -1,11 +1,14 @@
 """FastAPI surface for the triage agent.
 
-Two endpoints:
+Endpoints:
 - POST /v1/triage: streams agent progress over Server-Sent Events. Emits
   a `started` event, one `node` event per agent step (model request,
   tool call, tool result), and a final `final` event carrying the
   TriageReport JSON.
 - GET /v1/health: liveness probe.
+- GET /v1/meta: exposes the system prompt and the tool inventory so the
+  UI's transparency view can show what the agent is told and what it can
+  reach. Read-only, no auth, single-tenant demo.
 
 The agent reaches the MCP server over its own HTTP+SSE connection; the
 API process and the MCP server are independent.
@@ -20,6 +23,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
+from sec_recon_agent.agent.prompts import SYSTEM_PROMPT
 from sec_recon_agent.agent.triage import build_agent, export_anthropic_api_key_to_env
 from sec_recon_agent.config import settings
 from sec_recon_agent.mcp_server.errors import CveNotFoundError
@@ -47,6 +51,63 @@ class TriageRequest(BaseModel):
 @app.get("/v1/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+class ToolMeta(BaseModel):
+    name: str
+    description: str
+
+
+class MetaResponse(BaseModel):
+    system_prompt: str
+    model: str
+    tools: list[ToolMeta]
+
+
+@app.get("/v1/meta", response_model=MetaResponse)
+async def meta() -> MetaResponse:
+    """Expose the agent's "what is it told" and "what can it reach" so a
+    transparency UI can render them. The system prompt is the literal
+    string the LLM receives. The tool list is curated here, not introspected
+    from the MCP server: the four tools are part of the project contract,
+    not a runtime discovery (which would couple this endpoint to live MCP
+    connectivity)."""
+    return MetaResponse(
+        system_prompt=SYSTEM_PROMPT,
+        model=f"{settings.llm_provider}:{settings.llm_model}",
+        tools=[
+            ToolMeta(
+                name="cve_lookup",
+                description=(
+                    "Fetch the full NVD record for a known CVE ID. "
+                    "Returns CVSS v3 score and severity, CWE IDs, affected "
+                    "CPEs, references."
+                ),
+            ),
+            ToolMeta(
+                name="cve_semantic_search",
+                description=(
+                    "Vector search over an indexed corpus of recent "
+                    "high-severity CVEs. Use when the user describes a "
+                    "product or symptom without naming a CVE."
+                ),
+            ),
+            ToolMeta(
+                name="exploit_check",
+                description=(
+                    "Look up public exploits and PoCs for a CVE. Queries "
+                    "Exploit-DB and GitHub Code Search in parallel."
+                ),
+            ),
+            ToolMeta(
+                name="nmap_parse_xml",
+                description=(
+                    "Parse Nmap XML scan output into structured hosts, "
+                    "ports, services, and version banners. defusedxml-safe."
+                ),
+            ),
+        ],
+    )
 
 
 @app.post("/v1/triage")
