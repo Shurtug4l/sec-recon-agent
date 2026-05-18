@@ -35,7 +35,7 @@ triage:  ## Send a query to the running agent. Usage: make triage Q="your questi
 test:  ## Run the pytest suite locally (outside Docker).
 	uv run pytest -q
 
-lint:  ## Run ruff + mypy locally.
+lint:  ## Run ruff + mypy locally (backend only; frontend linting deferred).
 	uv run ruff check src tests
 	uv run mypy src
 
