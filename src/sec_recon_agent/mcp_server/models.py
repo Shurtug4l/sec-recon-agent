@@ -67,6 +67,35 @@ class KevCheck(BaseModel):
     notes: str | None = Field(default=None, max_length=2050)
 
 
+class SbomComponent(BaseModel):
+    """A single software component normalized out of an SBOM.
+
+    `purl` (Package URL, https://github.com/package-url/purl-spec) is the
+    canonical cross-ecosystem identifier when present in the source SBOM
+    (CycloneDX always carries it; SPDX often does; requirements.txt never).
+    `ecosystem` is the soft hint used to route ecosystem-specific lookups
+    later (pypi, npm, maven, etc.).
+    """
+
+    name: str = Field(min_length=1, max_length=200)
+    version: str | None = Field(default=None, max_length=100)
+    ecosystem: str | None = Field(default=None, max_length=40)
+    purl: str | None = Field(default=None, max_length=500)
+
+
+class SbomComponentList(BaseModel):
+    """Result of sbom_ingest: a deduplicated list of components plus
+    metadata about the source SBOM."""
+
+    format: str  # 'cyclonedx', 'spdx', 'requirements'
+    component_count: int = Field(ge=0)
+    components: list[SbomComponent] = Field(default_factory=list, max_length=500)
+    truncated: bool = Field(
+        default=False,
+        description="True when the source had more components than the cap.",
+    )
+
+
 class EpssScore(BaseModel):
     """Result of a FIRST.org EPSS lookup.
 

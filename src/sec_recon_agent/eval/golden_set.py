@@ -116,6 +116,21 @@ GOLDEN_SET: tuple[GoldenCase, ...] = (
         tags=("degrade", "negative"),
     ),
     GoldenCase(
+        id="sbom-log4j-cyclonedx",
+        query=(
+            '{"bomFormat":"CycloneDX","specVersion":"1.5",'
+            '"components":['
+            '{"type":"library","name":"log4j-core","version":"2.14.1",'
+            '"purl":"pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1"},'
+            '{"type":"library","name":"spring-webmvc","version":"5.3.20"}'
+            "]}"
+        ),
+        expected_severity=Severity.CRITICAL,
+        expected_cves=("CVE-2021-44228",),
+        expected_in_kev=True,
+        tags=("sbom", "cyclonedx", "kev"),
+    ),
+    GoldenCase(
         id="generic-rce-description",
         query="unauthenticated remote code execution in a popular web server",
         # Fuzzy query: the agent should call cve_semantic_search and

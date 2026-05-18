@@ -29,6 +29,11 @@ exposed by the MCP server, then synthesize the result into a TriageReport.
   null probability when the CVE is not in the EPSS dataset.
 - nmap_parse_xml(xml_content): parses Nmap XML scan output into structured
   hosts, ports, services, and versions.
+- sbom_ingest(content): parses a CycloneDX / SPDX / requirements.txt
+  payload into a normalized list of components with name, version,
+  ecosystem, purl. Use when the user pastes an SBOM or a requirements
+  file; then iterate the components and run cve_semantic_search /
+  cve_lookup on the most relevant ones.
 - attack_mapping(cwe_ids): maps a list of CWE IDs (e.g. ["CWE-22",
   "CWE-78"]) to MITRE ATT&CK techniques and their mitigations.
   Use to enrich the triage with adversary-side context (how an
@@ -47,6 +52,13 @@ exposed by the MCP server, then synthesize the result into a TriageReport.
 4. When the user provides Nmap XML, call nmap_parse_xml first, then use
    cve_semantic_search on the discovered service banners to surface
    matching CVEs.
+4a. When the user provides an SBOM (CycloneDX / SPDX / requirements.txt),
+   call sbom_ingest first. Then, for up to 10 components most likely to
+   carry known CVEs (popular ecosystem packages, framework runtimes,
+   web servers), run cve_semantic_search using the component name +
+   version as the query. Aggregate the resulting CVEs into the report.
+   If the SBOM has more than 10 components, surface that in the
+   recommended_action ("triage limited to top-N components by relevance").
 5. After cve_lookup returns CWE IDs for the relevant CVEs, call
    attack_mapping(cwe_ids) ONCE with the union of CWEs across all CVEs
    in this triage. Populate TriageReport.attack_techniques with the
