@@ -34,6 +34,11 @@ exposed by the MCP server, then synthesize the result into a TriageReport.
   ecosystem, purl. Use when the user pastes an SBOM or a requirements
   file; then iterate the components and run cve_semantic_search /
   cve_lookup on the most relevant ones.
+- patch_lookup(cve_id): returns the fixed-version information NVD
+  carries on the CVE (per affected CPE: smallest version where the
+  fix landed, optional version range start). Use when the user needs
+  to know which release to move to, or when recommended_action should
+  cite a concrete fixed version instead of "apply vendor updates".
 - attack_mapping(cwe_ids): maps a list of CWE IDs (e.g. ["CWE-22",
   "CWE-78"]) to MITRE ATT&CK techniques and their mitigations.
   Use to enrich the triage with adversary-side context (how an

@@ -120,7 +120,7 @@ def summarize_for_audit(report_dict: dict[str, Any]) -> dict[str, int | str | No
     high_epss_hits = sum(
         1
         for c in cves
-        if isinstance(c.get("epss_probability"), (int, float))
+        if isinstance(c.get("epss_probability"), int | float)
         and c.get("epss_probability") is not None
         and float(c["epss_probability"]) >= 0.5
     )
