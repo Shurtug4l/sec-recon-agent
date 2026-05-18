@@ -354,13 +354,16 @@ W3C `traceparent` propagation flows from `frontend → /api/triage → agent-api
 ## Testing
 
 ```bash
-make test                       # full suite, ~3 min (network-mocked, no LLM)
-uv run pytest -m "not slow"     # skip ChromaDB round-trip (~5 s instead of 3 min)
-uv run pytest tests/property    # property + adversarial only
-make lint                       # backend (ruff + mypy --strict) + frontend (ESLint flat)
+make test                                # full suite, ~3 min (network-mocked, no LLM)
+uv run pytest -m "not slow"              # skip ChromaDB round-trip (~5 s instead of 3 min)
+uv run pytest -m "not slow" --cov        # add coverage summary (fail under 70%)
+uv run pytest tests/property             # property + adversarial only
+make lint                                # backend (ruff + mypy --strict) + frontend (ESLint flat)
 ```
 
 The frontend ESLint setup uses the flat config (`frontend/eslint.config.mjs`) bridged through `FlatCompat` to `next/core-web-vitals` + `next/typescript`. CI runs `npm run lint` between `type-check` and `build`.
+
+The backend CI runs on a Python version matrix (3.12 + 3.13) so the declared `requires-python = ">=3.12"` is actually exercised, not just declared. Coverage on the fast suite holds at **~87%** with a soft 70% floor (`tool.coverage.report.fail_under`).
 
 **Suite count: 184 passing** (182 fast + 2 slow). Breakdown:
 - **36 contract tests** — every MCP tool has Pydantic I/O contract tests with `respx`-mocked HTTP. Tool fail modes (NVD 404, malformed payload, 5xx retry, 429 retry, XXE refusal, oversized CSV download) all covered. Includes `/v1/meta` endpoint contract.
@@ -496,6 +499,24 @@ curl -N -X POST http://localhost:8000/v1/triage \
 `/v1/health` remains open under any configuration — required so container orchestrators (Docker, Kubernetes) can run liveness probes without holding a key.
 
 ## Development workflow
+
+### Local setup
+
+```bash
+uv sync --extra dev                  # backend deps + dev tooling
+uv run pre-commit install            # writes .git/hooks/pre-commit
+cd frontend && npm install --legacy-peer-deps && cd ..
+```
+
+`pre-commit` runs `ruff --fix`, `ruff format`, a tightly-scoped `mypy --strict src/`, plus the standard `pre-commit-hooks` suite (trailing-whitespace, end-of-file-fixer, YAML / TOML / merge-conflict / oversized-file checks) on every `git commit`. To run it manually across the whole tree:
+
+```bash
+uv run pre-commit run --all-files
+```
+
+Frontend lint stays in CI only: the npm install footprint is heavier than what a local hook should impose, and the frontend ESLint + TypeScript pipeline is already enforced by the `type-check + build` required check on every PR.
+
+### Branch protection
 
 `main` is a protected branch on GitHub. The protection rules are:
 

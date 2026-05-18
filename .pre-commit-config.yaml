@@ -1,0 +1,48 @@
+# Pre-commit hooks run locally before each `git commit`. They mirror the
+# fast checks the backend CI runs, so a failing commit fails fast on the
+# developer's machine instead of burning a CI cycle.
+#
+# Bootstrap:
+#   uv sync --extra dev          # installs pre-commit
+#   uv run pre-commit install    # writes .git/hooks/pre-commit
+#
+# Run on the whole tree:
+#   uv run pre-commit run --all-files
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Pinned major; Dependabot will bump via the github-actions ecosystem.
+    rev: v0.7.4
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+        types_or: [python, pyi]
+      - id: ruff-format
+        types_or: [python, pyi]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: \.snap$
+      - id: end-of-file-fixer
+        exclude: \.snap$
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=512"]
+
+  # mypy --strict against src/ only. Tests are excluded to keep the
+  # local loop fast (the matching test types are picked up by ruff +
+  # pytest itself; mypy on tests adds little signal for a lot of time).
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy --strict (src)
+        entry: uv run --frozen mypy
+        language: system
+        types: [python]
+        files: ^src/
+        pass_filenames: false
+        args: ["src"]
