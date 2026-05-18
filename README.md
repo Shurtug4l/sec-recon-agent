@@ -316,6 +316,10 @@ curl -N -X POST http://localhost:8000/v1/triage \
 make triage Q="Apache 2.4.49 on port 80. Risk?"
 ```
 
+### Markdown export
+
+Every TriageReport carries an **Export .md** button on the report card. It builds a Markdown document — severity / confidence header, summary, recommended action, per-CVE details (CVSS, KEV, ransomware, EPSS, NVD link, vendor blurb), MITRE ATT&CK techniques with mitigations, and the full reasoning chain — and triggers a browser download (`triage-<timestamp>.md`). Pure client-side, no backend route.
+
 ## The frontend
 
 The browser is the primary interface. Highlights:
