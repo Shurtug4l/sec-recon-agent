@@ -51,6 +51,11 @@ class TriageRequest(BaseModel):
     # cve_semantic_search's truncation at 1000 chars) provide the
     # downstream safety net.
     query: str = Field(min_length=1, max_length=100_000)
+    # Optional per-request LLM override. Subject to the allowlist in
+    # agent/triage.py::ALLOWED_MODELS (plus haiku/sonnet/opus aliases).
+    # Used by sec-recon-eval --model for differential evaluation; the
+    # frontend never sets it.
+    model: str | None = Field(default=None, max_length=64)
 
 
 @app.get("/v1/health")
@@ -156,7 +161,16 @@ async def triage(req: TriageRequest) -> EventSourceResponse:
         import time
         import uuid
 
-        agent = build_agent()
+        try:
+            agent = build_agent(model_override=req.model)
+        except ValueError as exc:
+            # Bad model override -> emit one error event and bail.
+            yield {"event": "started", "data": req.model_dump_json()}
+            yield {
+                "event": "error",
+                "data": _error_payload(exc, safe_message=str(exc)),
+            }
+            return
         yield {"event": "started", "data": req.model_dump_json()}
 
         started_at = time.monotonic()
@@ -298,9 +312,15 @@ def _node_event_payload(node: object) -> str:
     return json.dumps({"node": node.__class__.__name__})
 
 
-def _error_payload(exc: BaseException) -> str:
+def _error_payload(exc: BaseException, safe_message: str | None = None) -> str:
     import json
-    message = str(exc) if isinstance(exc, _SAFE_TO_ECHO) else "Internal error; check server logs."
+
+    if safe_message is not None:
+        message = safe_message
+    elif isinstance(exc, _SAFE_TO_ECHO):
+        message = str(exc)
+    else:
+        message = "Internal error; check server logs."
     return json.dumps({"type": exc.__class__.__name__, "message": message})
 
 

@@ -33,18 +33,66 @@ def export_anthropic_api_key_to_env() -> None:
         os.environ["ANTHROPIC_API_KEY"] = settings.anthropic_api_key.get_secret_value()
 
 
-def build_agent() -> Agent[None, TriageReport]:
+# Allowlist of LLM model identifiers the API will honor when a per-request
+# override is supplied via TriageRequest.model. Keeping it explicit prevents
+# (a) accidentally pointing the agent at an unintended provider or sandbox
+# model via a body param, and (b) the comparison eval suite from being
+# weaponized as a probe for arbitrary model strings.
+ALLOWED_MODELS: frozenset[str] = frozenset(
+    {
+        "claude-haiku-4-5-20251001",
+        "claude-sonnet-4-6",
+        "claude-opus-4-7",
+    },
+)
+
+# Short aliases the eval CLI can pass in place of the full identifier.
+MODEL_ALIASES: dict[str, str] = {
+    "haiku": "claude-haiku-4-5-20251001",
+    "sonnet": "claude-sonnet-4-6",
+    "opus": "claude-opus-4-7",
+}
+
+
+def resolve_model(override: str | None) -> str:
+    """Return the model identifier to use for one triage call.
+
+    `override` may be:
+      - None: use settings.llm_model (the default for the deployment);
+      - a short alias (haiku / sonnet / opus): expand via MODEL_ALIASES;
+      - a full identifier: must appear in ALLOWED_MODELS.
+
+    Any other value raises ValueError; the API surface translates that
+    into HTTP 400.
+    """
+    if override is None:
+        return settings.llm_model
+    candidate = MODEL_ALIASES.get(override, override)
+    if candidate not in ALLOWED_MODELS:
+        raise ValueError(
+            f"model {override!r} is not on the allowlist; "
+            f"choose one of {sorted(ALLOWED_MODELS)}",
+        )
+    return candidate
+
+
+def build_agent(model_override: str | None = None) -> Agent[None, TriageReport]:
     """Construct the triage agent wired to the local MCP server.
 
     The Anthropic API key must already be in os.environ when this is
     invoked (see `export_anthropic_api_key_to_env`). Building the agent
     inside a request handler is fine; exporting the secret per request
     is not.
+
+    `model_override` lets one request bypass `settings.llm_model` (the
+    deployment default) in favor of a specific Anthropic model. The
+    override goes through `resolve_model` which enforces an allowlist.
     """
+    model = resolve_model(model_override)
     toolset = MCPToolset(f"{settings.mcp_server_url}/sse")
 
     return Agent(
-        model=f"{settings.llm_provider}:{settings.llm_model}",
+        model=f"{settings.llm_provider}:{model}",
         output_type=TriageReport,
         toolsets=[toolset],
         system_prompt=SYSTEM_PROMPT,

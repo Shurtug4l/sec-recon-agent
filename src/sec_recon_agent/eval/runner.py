@@ -66,18 +66,26 @@ def run_case(
     case: GoldenCase,
     api_url: str = DEFAULT_API_URL,
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+    model: str | None = None,
 ) -> CaseResult:
-    """Send the case's query to the live API and parse the final report."""
+    """Send the case's query to the live API and parse the final report.
+
+    `model` overrides the deployment default for this one call; must be
+    on the backend's allowlist (haiku / sonnet / opus aliases also work).
+    """
     import time
 
     url = api_url.rstrip("/") + "/v1/triage"
+    body: dict[str, str] = {"query": case.query}
+    if model is not None:
+        body["model"] = model
     started = time.monotonic()
     try:
         with httpx.Client(timeout=timeout_seconds) as client:
             with client.stream(
                 "POST",
                 url,
-                json={"query": case.query},
+                json=body,
                 headers={"Accept": "text/event-stream"},
             ) as response:
                 if response.status_code != 200:

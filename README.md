@@ -336,7 +336,7 @@ make lint                       # backend (ruff + mypy --strict) + frontend (ESL
 
 The frontend ESLint setup uses the flat config (`frontend/eslint.config.mjs`) bridged through `FlatCompat` to `next/core-web-vitals` + `next/typescript`. CI runs `npm run lint` between `type-check` and `build`.
 
-**Suite count: 163 passing** (161 fast + 2 slow). Breakdown:
+**Suite count: 169 passing** (167 fast + 2 slow). Breakdown:
 - **36 contract tests** — every MCP tool has Pydantic I/O contract tests with `respx`-mocked HTTP. Tool fail modes (NVD 404, malformed payload, 5xx retry, 429 retry, XXE refusal, oversized CSV download) all covered. Includes `/v1/meta` endpoint contract.
 - **11 KEV contract tests** — hit, miss, ransomware flag normalization, single-fetch invariant, oversized payload, non-200, malformed JSON, missing top-level list, hostile entry tolerance, free-text truncation, untrusted-content fencing for hostile vendor payloads.
 - **9 EPSS contract tests** — hit, miss, non-200, non-JSON, missing data field, wrong-type entry, mismatched CVE defense, out-of-range scores, non-numeric scores.
@@ -359,7 +359,12 @@ make up                                          # start MCP server + agent API 
 make eval                                        # run the full golden set against http://127.0.0.1:8000
 make eval EVAL_ARGS='--filter kev,by-id'         # run subset by tag or case id
 make eval EVAL_ARGS='--json-output /tmp/eval.json'
+make eval EVAL_ARGS='--model sonnet'             # one run against a specific allowlisted model
+make eval-compare                                # run the suite against haiku + sonnet + opus and print side-by-side
+make eval-compare EVAL_ARGS='--filter kev'       # comparison limited to one tag
 ```
+
+`--model` and `--models` route through a per-request body field that the backend validates against an explicit allowlist (`ALLOWED_MODELS` in `agent/triage.py`). The aliases `haiku` / `sonnet` / `opus` expand to the full Anthropic model identifiers. An unknown value comes back as an error event with the allowlist violation surfaced, never as a silent fallback to the default.
 
 The suite is deliberately not in CI: it requires a live stack and bills the LLM provider. Run on demand before merging changes to the system prompt or the model.
 
