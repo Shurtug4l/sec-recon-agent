@@ -57,7 +57,10 @@ curl -N -X POST http://localhost:8000/v1/triage \
 
 ## Status
 
-All four MCP tools, the Pydantic AI agent, and the FastAPI SSE surface have landed. Test suite: 33 passed. See `docs/design.md` for the architecture decisions, threat model, and the security review findings applied to the code.
+All four MCP tools, the Pydantic AI agent, and the FastAPI SSE surface have landed. Test suite: 35 passed. See:
+
+- `docs/design.md` — architecture decisions, threat model, and the security review findings applied to the code.
+- `examples/triage_walkthrough.md` — three real sessions against the live agent (specific CVE, product description, Nmap XML), captured 2026-05-18.
 
 ## License
 
