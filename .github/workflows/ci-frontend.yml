@@ -1,6 +1,9 @@
 name: frontend
 
 on:
+  # See ci-backend.yml for the rationale: path filters on push only;
+  # pull_request runs unconditionally so the required-check gate is
+  # always satisfied by a real run.
   push:
     branches: [main]
     paths:
@@ -8,9 +11,6 @@ on:
       - ".github/workflows/ci-frontend.yml"
   pull_request:
     branches: [main]
-    paths:
-      - "frontend/**"
-      - ".github/workflows/ci-frontend.yml"
   workflow_dispatch:
 
 concurrency:
