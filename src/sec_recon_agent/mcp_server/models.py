@@ -41,6 +41,41 @@ class ExploitCheck(BaseModel):
     github_poc_urls: list[HttpUrl] = Field(default_factory=list, max_length=10)
 
 
+class KevCheck(BaseModel):
+    """Result of a CISA KEV catalog lookup.
+
+    `in_catalog` is the operational signal the agent cares about: True means
+    the CVE is on CISA's Known Exploited Vulnerabilities list and federal
+    agencies are required to patch it by `due_date`. The remaining fields
+    are CISA-provided metadata for human review.
+    """
+
+    cve_id: CveIdStr
+    in_catalog: bool
+    vendor_project: str | None = None
+    product: str | None = None
+    vulnerability_name: str | None = Field(default=None, max_length=500)
+    date_added: str | None = None
+    due_date: str | None = None
+    required_action: str | None = Field(default=None, max_length=1000)
+    known_ransomware_use: bool | None = None
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class EpssScore(BaseModel):
+    """Result of a FIRST.org EPSS lookup.
+
+    EPSS estimates the probability a CVE will be exploited in the wild in
+    the next 30 days. Returns None when the CVE is not in the EPSS dataset
+    (typically pre-publication or non-public CVEs).
+    """
+
+    cve_id: CveIdStr
+    probability: float | None = Field(default=None, ge=0.0, le=1.0)
+    percentile: float | None = Field(default=None, ge=0.0, le=1.0)
+    score_date: str | None = None
+
+
 class NmapPort(BaseModel):
     portid: int = Field(ge=1, le=65535)
     protocol: str
