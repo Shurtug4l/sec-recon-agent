@@ -106,6 +106,14 @@ async def meta() -> MetaResponse:
                     "ports, services, and version banners. defusedxml-safe."
                 ),
             ),
+            ToolMeta(
+                name="attack_mapping",
+                description=(
+                    "Map a list of CWE IDs to MITRE ATT&CK techniques and "
+                    "their mitigations. Enriches the triage with "
+                    "adversary-side context and defense-side guidance."
+                ),
+            ),
         ],
     )
 

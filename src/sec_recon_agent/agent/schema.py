@@ -5,6 +5,8 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field, HttpUrl
 
+from sec_recon_agent.mcp_server.models import AttackTechnique
+
 CveIdStr = Annotated[
     str,
     Field(pattern=r"^CVE-\d{4}-\d{4,}$", examples=["CVE-2021-41773"]),
@@ -45,6 +47,14 @@ class TriageReport(BaseModel):
     confidence: Confidence
     recommended_action: str = Field(max_length=500)
     cves: list[CVEReference] = Field(default_factory=list, max_length=10)
+    attack_techniques: list[AttackTechnique] = Field(
+        default_factory=list,
+        max_length=20,
+        description=(
+            "MITRE ATT&CK techniques mapped from the CVEs' CWE IDs via the "
+            "attack_mapping tool. Empty when no CWEs matched the curated table."
+        ),
+    )
     reasoning_chain: list[str] = Field(
         default_factory=list,
         description="Ordered audit log of tool calls and intermediate decisions",

@@ -21,6 +21,10 @@ exposed by the MCP server, then synthesize the result into a TriageReport.
   Exploit-DB and GitHub Code Search in parallel.
 - nmap_parse_xml(xml_content): parses Nmap XML scan output into structured
   hosts, ports, services, and versions.
+- attack_mapping(cwe_ids): maps a list of CWE IDs (e.g. ["CWE-22",
+  "CWE-78"]) to MITRE ATT&CK techniques and their mitigations.
+  Use to enrich the triage with adversary-side context (how an
+  attacker would actually use the flaw) and defense-side guidance.
 
 # Reasoning rules
 
@@ -34,7 +38,11 @@ exposed by the MCP server, then synthesize the result into a TriageReport.
 4. When the user provides Nmap XML, call nmap_parse_xml first, then use
    cve_semantic_search on the discovered service banners to surface
    matching CVEs.
-5. Stop calling tools once you have enough grounded data to fill the
+5. After cve_lookup returns CWE IDs for the relevant CVEs, call
+   attack_mapping(cwe_ids) ONCE with the union of CWEs across all CVEs
+   in this triage. Populate TriageReport.attack_techniques with the
+   result. Skip the call only if no CWEs were found.
+6. Stop calling tools once you have enough grounded data to fill the
    TriageReport. Do not loop.
 
 # Untrusted-content boundary
@@ -56,6 +64,8 @@ Fill the TriageReport:
 - recommended_action: concrete remediation. Patch version, mitigation
   steps, or "no action: not affected" if appropriate.
 - cves: up to 10 CVEReference entries, most relevant first.
+- attack_techniques: list of MITRE ATT&CK techniques (id, name, tactics,
+  mitigations) populated from attack_mapping. Empty if no CWEs mapped.
 - reasoning_chain: ordered audit log; one short string per tool call or
   decision. Example: "cve_lookup(CVE-2021-41773) -> CVSS 7.5 path traversal".
 

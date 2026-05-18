@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  Crosshair,
   ShieldX,
 } from "lucide-react";
 
@@ -116,6 +117,42 @@ export function StatisticsTab({ entries }: { entries: HistoryEntry[] }) {
                   </span>
                 </div>
               </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {stats.topAttackTechniques.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Crosshair className="h-4 w-4" />
+              Top ATT&CK techniques
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            {stats.topAttackTechniques.map((technique) => (
+              <a
+                key={technique.id}
+                href={technique.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-between rounded-md px-3 py-2 text-sm transition-colors hover:bg-accent"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="font-mono text-primary">{technique.id}</span>
+                  <span className="truncate">{technique.name}</span>
+                </div>
+                <div className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
+                  <span className="hidden truncate sm:inline">
+                    {technique.tactics.slice(0, 2).join(", ")}
+                  </span>
+                  <span className="tabular-nums">
+                    {technique.count}
+                    {technique.count > 1 && " refs"}
+                  </span>
+                </div>
+              </a>
             ))}
           </CardContent>
         </Card>

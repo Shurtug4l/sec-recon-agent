@@ -92,9 +92,15 @@ def test_meta_returns_system_prompt_and_tool_inventory() -> None:
     # System prompt must include the untrusted-content boundary mention;
     # if it drifts, the transparency view loses its key value.
     assert "untrusted" in body["system_prompt"].lower()
-    # Tool inventory: four tools, names match the MCP tool surface.
+    # Tool inventory: five tools, names match the MCP tool surface.
     names = {t["name"] for t in body["tools"]}
-    assert names == {"cve_lookup", "cve_semantic_search", "exploit_check", "nmap_parse_xml"}
+    assert names == {
+        "cve_lookup",
+        "cve_semantic_search",
+        "exploit_check",
+        "nmap_parse_xml",
+        "attack_mapping",
+    }
     for tool in body["tools"]:
         assert tool["description"]  # non-empty
 

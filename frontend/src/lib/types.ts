@@ -16,12 +16,28 @@ export interface CVEReference {
   nvd_url: string;
 }
 
+export interface AttackMitigation {
+  id: string;        // M-XXXX
+  name: string;
+  url: string;
+}
+
+export interface AttackTechnique {
+  id: string;        // T-XXXX or T-XXXX.YYY
+  name: string;
+  tactics: string[];
+  url: string;
+  mitigations: AttackMitigation[];
+  related_cwes: string[];
+}
+
 export interface TriageReport {
   summary: string;
   severity: Severity;
   confidence: Confidence;
   recommended_action: string;
   cves: CVEReference[];
+  attack_techniques: AttackTechnique[];
   reasoning_chain: string[];
 }
 

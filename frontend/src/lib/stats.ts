@@ -14,10 +14,23 @@ export interface AggregateStats {
   byConfidence: Array<{ confidence: string; count: number }>;
   toolCalls: Array<{ tool: string; count: number }>;
   topCves: Array<{ cveId: string; count: number; cvss: number | null }>;
+  topAttackTechniques: Array<{
+    id: string;
+    name: string;
+    tactics: string[];
+    url: string;
+    count: number;
+  }>;
 }
 
 const SEVERITY_ORDER: Severity[] = ["critical", "high", "medium", "low", "info"];
-const KNOWN_TOOLS = ["cve_lookup", "cve_semantic_search", "exploit_check", "nmap_parse_xml"];
+const KNOWN_TOOLS = [
+  "cve_lookup",
+  "cve_semantic_search",
+  "exploit_check",
+  "nmap_parse_xml",
+  "attack_mapping",
+];
 
 export function aggregate(entries: HistoryEntry[]): AggregateStats {
   const completed = entries.filter((e) => e.report !== null);
@@ -34,6 +47,10 @@ export function aggregate(entries: HistoryEntry[]): AggregateStats {
   const toolCallCounts: Record<string, number> = {};
   for (const t of KNOWN_TOOLS) toolCallCounts[t] = 0;
   const cveCounter = new Map<string, { count: number; cvss: number | null }>();
+  const attackCounter = new Map<
+    string,
+    { name: string; tactics: string[]; url: string; count: number }
+  >();
 
   let durationSum = 0;
   let durationN = 0;
@@ -66,6 +83,20 @@ export function aggregate(entries: HistoryEntry[]): AggregateStats {
         cveCounter.set(cve.cve_id, { count: 1, cvss: cve.cvss_v3_score });
       }
     }
+
+    for (const technique of entry.report.attack_techniques ?? []) {
+      const existing = attackCounter.get(technique.id);
+      if (existing) {
+        existing.count++;
+      } else {
+        attackCounter.set(technique.id, {
+          name: technique.name,
+          tactics: technique.tactics,
+          url: technique.url,
+          count: 1,
+        });
+      }
+    }
   }
 
   const bySeverity = SEVERITY_ORDER.map((s) => ({ severity: s, count: severityCounts[s] }));
@@ -79,6 +110,11 @@ export function aggregate(entries: HistoryEntry[]): AggregateStats {
     .sort((a, b) => b.count - a.count || (b.cvss ?? 0) - (a.cvss ?? 0))
     .slice(0, 10);
 
+  const topAttackTechniques = [...attackCounter.entries()]
+    .map(([id, v]) => ({ id, name: v.name, tactics: v.tactics, url: v.url, count: v.count }))
+    .sort((a, b) => b.count - a.count || a.id.localeCompare(b.id))
+    .slice(0, 10);
+
   return {
     totalRuns: entries.length,
     completedRuns: completed.length,
@@ -90,6 +126,7 @@ export function aggregate(entries: HistoryEntry[]): AggregateStats {
     byConfidence,
     toolCalls,
     topCves,
+    topAttackTechniques,
   };
 }
 

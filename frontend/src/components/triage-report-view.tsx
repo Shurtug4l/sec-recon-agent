@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ExternalLink, ShieldCheck, ShieldX } from "lucide-react";
+import { ChevronDown, Crosshair, ExternalLink, ShieldCheck, ShieldX, Wrench } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -136,7 +136,75 @@ export function TriageReportView({ report }: { report: TriageReport }) {
         </div>
       )}
 
+      {report.attack_techniques.length > 0 && (
+        <AttackSection techniques={report.attack_techniques} />
+      )}
+
       <ReasoningChain steps={report.reasoning_chain} />
+    </div>
+  );
+}
+
+function AttackSection({ techniques }: { techniques: TriageReport["attack_techniques"] }) {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        <Crosshair className="h-3 w-3" />
+        MITRE ATT&CK ({techniques.length})
+      </div>
+      {techniques.map((technique) => (
+        <Card key={technique.id} className="overflow-hidden">
+          <CardHeader className="space-y-2 pb-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <a
+                href={technique.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-sm font-semibold text-primary hover:underline"
+              >
+                {technique.id}
+                <ExternalLink className="ml-1 inline h-3 w-3" />
+              </a>
+              <span className="text-sm font-medium">{technique.name}</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-1">
+              {technique.tactics.map((tactic) => (
+                <Badge key={tactic} variant="secondary" className="text-[10px]">
+                  {tactic}
+                </Badge>
+              ))}
+              {technique.related_cwes.length > 0 && (
+                <span className="ml-2 text-[10px] text-muted-foreground">
+                  triggered by {technique.related_cwes.join(", ")}
+                </span>
+              )}
+            </div>
+          </CardHeader>
+          {technique.mitigations.length > 0 && (
+            <CardContent className="pt-0">
+              <div className="mb-1.5 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+                <Wrench className="h-3 w-3" />
+                Mitigations
+              </div>
+              <ul className="space-y-1 text-xs">
+                {technique.mitigations.map((m) => (
+                  <li key={m.id} className="flex items-start gap-2">
+                    <a
+                      href={m.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono text-primary hover:underline"
+                    >
+                      {m.id}
+                    </a>
+                    <span className="leading-snug">{m.name}</span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          )}
+        </Card>
+      ))}
     </div>
   );
 }

@@ -59,3 +59,30 @@ class NmapHost(BaseModel):
 class NmapScanResult(BaseModel):
     scan_start: str | None = None
     hosts: list[NmapHost] = Field(default_factory=list)
+
+
+# --- MITRE ATT&CK ---------------------------------------------------------
+
+
+class AttackMitigation(BaseModel):
+    """A defensive control associated with one or more ATT&CK techniques."""
+
+    id: str = Field(pattern=r"^M\d{4}$")
+    name: str
+    url: HttpUrl
+
+
+class AttackTechnique(BaseModel):
+    """A MITRE ATT&CK technique mapped from one or more CWE IDs.
+
+    The same technique is returned only once per attack_mapping call even
+    if multiple CWEs point to it; the `related_cwes` field records which
+    of the input CWEs triggered the match.
+    """
+
+    id: str = Field(pattern=r"^T\d{4}(\.\d{3})?$")
+    name: str
+    tactics: list[str] = Field(default_factory=list, max_length=12)
+    url: HttpUrl
+    mitigations: list[AttackMitigation] = Field(default_factory=list, max_length=15)
+    related_cwes: list[str] = Field(default_factory=list, max_length=20)
