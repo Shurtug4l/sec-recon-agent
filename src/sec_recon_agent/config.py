@@ -1,9 +1,10 @@
 """Centralized settings loaded from environment variables."""
 
 from pathlib import Path
+from typing import Annotated
 
-from pydantic import Field, SecretStr
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, SecretStr, field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -17,6 +18,32 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr | None = None
     nvd_api_key: SecretStr | None = None
     github_token: SecretStr | None = None
+
+    # API authentication: comma-separated list of accepted keys. When
+    # the list is empty (default), /v1/triage and /v1/meta are open.
+    # When set, every protected endpoint requires
+    # `Authorization: Bearer <key>` or `X-API-Key: <key>`. Health stays
+    # public.
+    #
+    # NoDecode opts out of pydantic-settings's default "parse env value
+    # as JSON" for list[] fields — we want plain CSV input, handled by
+    # the validator below.
+    api_keys: Annotated[list[SecretStr], NoDecode] = Field(default_factory=list)
+    # Per-IP rate limit on /v1/triage, in requests per minute. 0 or
+    # None disables the limiter. Set to e.g. 30 for a dev deployment;
+    # production behind a real WAF would set this much lower or rely
+    # on the WAF instead.
+    rate_limit_per_minute: int | None = Field(default=None, ge=0, le=10_000)
+
+    @field_validator("api_keys", mode="before")
+    @classmethod
+    def _split_api_keys(cls, raw: object) -> object:
+        """Accept either a Python list or a comma-separated env string."""
+        if raw is None or raw == "":
+            return []
+        if isinstance(raw, str):
+            return [k.strip() for k in raw.split(",") if k.strip()]
+        return raw
 
     llm_provider: str = "anthropic"
     # Default cheapest-tier model. Override via LLM_MODEL env (claude-sonnet-4-6

@@ -71,6 +71,12 @@ services:
       LLM_PROVIDER: "${LLM_PROVIDER:-anthropic}"
       LLM_MODEL: "${LLM_MODEL:-claude-haiku-4-5-20251001}"
       OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
+      # Auth + rate limit. Empty values disable the controls.
+      API_KEYS: "${API_KEYS:-}"
+      RATE_LIMIT_PER_MINUTE: "${RATE_LIMIT_PER_MINUTE:-}"
+      AUDIT_LOG_ENABLED: "${AUDIT_LOG_ENABLED:-true}"
+      AUDIT_INCLUDE_QUERY: "${AUDIT_INCLUDE_QUERY:-false}"
+      AUDIT_INCLUDE_SUMMARY: "${AUDIT_INCLUDE_SUMMARY:-false}"
     ports:
       # Only bind to localhost; the demo is single-tenant and has no auth.
       # Edit to 0.0.0.0 only if you intentionally want network exposure.
@@ -117,6 +123,9 @@ services:
     container_name: sec-recon-frontend
     environment:
       AGENT_API_URL: "http://agent-api:8000"
+      # Server-side only — used by the Next.js proxy when calling
+      # /v1/triage and /v1/meta. Never exposed to the browser bundle.
+      AGENT_API_KEY: "${AGENT_API_KEY:-}"
       NODE_ENV: "production"
     ports:
       - "127.0.0.1:3000:3000"
