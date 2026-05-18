@@ -33,7 +33,7 @@ log = structlog.get_logger()
 _tracer = get_tracer()
 
 KEV_CATALOG_URL = (
-    "https://www.cisa.gov/sites/default/files/feeds/" "known_exploited_vulnerabilities.json"
+    "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 )
 KEV_TRUSTED_HOST = "cisa.gov"
 KEV_CACHE_FILENAME = "cisa_kev_catalog.json"

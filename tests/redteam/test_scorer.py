@@ -174,11 +174,7 @@ def test_every_production_payload_carries_atlas_techniques() -> None:
     governance documentation honest as the battery grows."""
     from sec_recon_agent.redteam.payloads import PAYLOADS
 
-    missing = [
-        p.id
-        for p in PAYLOADS
-        if not p.atlas_techniques and not p.id.startswith("sanity-")
-    ]
+    missing = [p.id for p in PAYLOADS if not p.atlas_techniques and not p.id.startswith("sanity-")]
     assert missing == [], (
         f"these payloads are tagged as attacks but have no ATLAS technique: {missing}"
     )

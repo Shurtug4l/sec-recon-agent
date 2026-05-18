@@ -58,8 +58,7 @@ def apache_payload() -> dict[str, Any]:
                                     "cpeMatch": [
                                         {
                                             "criteria": (
-                                                "cpe:2.3:a:apache:http_server:"
-                                                "2.4.49:*:*:*:*:*:*:*"
+                                                "cpe:2.3:a:apache:http_server:2.4.49:*:*:*:*:*:*:*"
                                             )
                                         }
                                     ]
