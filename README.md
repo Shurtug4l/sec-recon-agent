@@ -1,5 +1,10 @@
 # sec-recon-agent
 
+[![backend](https://github.com/Shurtug4l/sec-recon-agent/actions/workflows/ci-backend.yml/badge.svg)](https://github.com/Shurtug4l/sec-recon-agent/actions/workflows/ci-backend.yml)
+[![frontend](https://github.com/Shurtug4l/sec-recon-agent/actions/workflows/ci-frontend.yml/badge.svg)](https://github.com/Shurtug4l/sec-recon-agent/actions/workflows/ci-frontend.yml)
+[![python](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/)
+[![license](https://img.shields.io/badge/license-MIT-green)](#license)
+
 Type-safe security triage built on Pydantic AI and a custom Model Context Protocol server, behind a Next.js + React frontend.
 
 Given a CVE ID, a product version, or raw Nmap XML, the agent grounds every answer with four typed MCP tools (CVE lookup, semantic search, public-exploit availability, scan parsing) and returns a `TriageReport` Pydantic model: severity, exploit availability, recommended action, and the full reasoning chain. The LLM never produces free-text guessing; the output schema is enforced at the model boundary.

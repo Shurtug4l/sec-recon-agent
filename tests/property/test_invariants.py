@@ -21,7 +21,6 @@ from sec_recon_agent.mcp_server.security import (
     fence_untrusted,
 )
 
-
 # ----------------------------------------------------------------------------
 # fence_untrusted: the untrusted-content wrapper at the tool boundary.
 # Three invariants:

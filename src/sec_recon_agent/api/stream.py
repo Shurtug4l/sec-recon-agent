@@ -134,7 +134,7 @@ async def triage(req: TriageRequest) -> EventSourceResponse:
                     }
                 result_output = run.result.output  # type: ignore[union-attr]
             yield {"event": "final", "data": result_output.model_dump_json()}
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.exception("triage_failed", error=str(exc))
             yield {
                 "event": "error",

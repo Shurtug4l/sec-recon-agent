@@ -1,6 +1,5 @@
 """Contract tests for the attack_mapping MCP tool."""
 
-import pytest
 
 from sec_recon_agent.mcp_server.tools.attack import attack_mapping
 

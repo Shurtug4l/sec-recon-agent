@@ -13,7 +13,6 @@ from typing import Any
 import pytest
 import respx
 from httpx import Response
-from opentelemetry import trace
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor

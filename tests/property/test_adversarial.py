@@ -23,7 +23,6 @@ import respx
 from httpx import Response
 
 from sec_recon_agent.mcp_server.errors import (
-    CveNotFoundError,
     ExploitDbDownloadError,
     MalformedNmapXmlError,
 )
@@ -35,7 +34,6 @@ from sec_recon_agent.mcp_server.tools.exploits import (
     exploit_check,
 )
 from sec_recon_agent.mcp_server.tools.nmap import nmap_parse_xml
-
 
 # ============================================================================
 # 1. Prompt injection corpus.
@@ -150,7 +148,11 @@ XXE_PAYLOADS = [
 ]
 
 
-@pytest.mark.parametrize("xml", XXE_PAYLOADS, ids=["classic", "external_dtd", "parameter_entity", "billion_laughs"])
+@pytest.mark.parametrize(
+    "xml",
+    XXE_PAYLOADS,
+    ids=["classic", "external_dtd", "parameter_entity", "billion_laughs"],
+)
 def test_xxe_variants_refused(xml: str) -> None:
     with pytest.raises(MalformedNmapXmlError):
         nmap_parse_xml(xml)

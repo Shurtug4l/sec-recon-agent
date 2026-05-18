@@ -38,4 +38,4 @@ class Settings(BaseSettings):
         return f"http://{self.mcp_server_host}:{self.mcp_server_port}"
 
 
-settings = Settings()  # type: ignore[call-arg]
+settings = Settings()

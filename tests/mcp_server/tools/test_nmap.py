@@ -6,7 +6,6 @@ from sec_recon_agent.mcp_server.errors import MalformedNmapXmlError
 from sec_recon_agent.mcp_server.security import UNTRUSTED_END, UNTRUSTED_START
 from sec_recon_agent.mcp_server.tools.nmap import nmap_parse_xml
 
-
 SAMPLE_NMAP_XML = """<?xml version="1.0"?>
 <nmaprun start="1730000000" version="7.94">
   <host>

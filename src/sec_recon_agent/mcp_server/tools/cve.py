@@ -10,12 +10,12 @@ from sec_recon_agent.mcp_server.errors import (
     MalformedNvdPayloadError,
 )
 from sec_recon_agent.mcp_server.models import CVEDetail, CveIdStr
-from sec_recon_agent.mcp_server.security import fence_untrusted
 from sec_recon_agent.mcp_server.nvd_client import (
     HTTP_TIMEOUT_SECONDS,
     NVD_BASE_URL,
     nvd_get,
 )
+from sec_recon_agent.mcp_server.security import fence_untrusted
 from sec_recon_agent.mcp_server.server import mcp
 from sec_recon_agent.observability import get_tracer
 
@@ -99,7 +99,7 @@ def _parse_cve_payload(cve_id: str, payload: dict[str, Any]) -> CVEDetail:
         last_modified=str(cve.get("lastModified", "")),
         cwe_ids=_extract_cwe_ids(cve),
         affected_cpes=_extract_cpes(cve),
-        references=_extract_references(cve),  # type: ignore[arg-type]
+        references=_extract_references(cve),
     )
 
 

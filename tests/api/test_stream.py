@@ -62,7 +62,7 @@ def fake_agent_factory(fake_report: TriageReport) -> Any:
             self._output = output
 
         @asynccontextmanager
-        async def iter(self, query: str) -> Any:  # noqa: A003
+        async def iter(self, query: str) -> Any:
             yield _FakeRun(self._output)
 
     def _factory() -> _FakeAgent:
@@ -148,7 +148,7 @@ def test_triage_streams_started_and_final_events(
 def test_triage_emits_error_event_when_agent_raises(monkeypatch: MonkeyPatch) -> None:
     class _BrokenAgent:
         @asynccontextmanager
-        async def iter(self, query: str) -> Any:  # noqa: A003
+        async def iter(self, query: str) -> Any:
             raise RuntimeError("agent boom with internal context: /var/lib/secret")
             yield  # pragma: no cover
 

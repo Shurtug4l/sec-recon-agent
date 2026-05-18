@@ -5,14 +5,15 @@ entity expansion. Untrusted scan XML often comes from third parties, so
 the parser is deliberately conservative.
 """
 
-import structlog
-from defusedxml import ElementTree as ET
-from defusedxml.common import DefusedXmlException
 # defusedxml does not re-export the Element class on every Python version
 # (3.13 lost the re-export; 3.14 may still have it). Use the stdlib type
 # for type hints — it is the actual runtime class returned by
 # defusedxml's fromstring(), defusedxml only swaps the parser.
-from xml.etree.ElementTree import Element as XmlElement  # noqa: I001
+from xml.etree.ElementTree import Element as XmlElement
+
+import structlog
+from defusedxml import ElementTree as ET  # noqa: N817  # ET is the conventional alias
+from defusedxml.common import DefusedXmlException
 
 from sec_recon_agent.mcp_server.errors import MalformedNmapXmlError
 from sec_recon_agent.mcp_server.models import (

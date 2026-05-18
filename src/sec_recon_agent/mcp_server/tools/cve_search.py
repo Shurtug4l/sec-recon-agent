@@ -13,7 +13,7 @@ Distance: cosine (HNSW), exposed as similarity = 1 - distance, clamped to [0, 1]
 
 import asyncio
 import threading
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -63,9 +63,12 @@ def _get_collection() -> Any:
 
         settings.chroma_persist_dir.mkdir(parents=True, exist_ok=True)
         client = chromadb.PersistentClient(path=str(settings.chroma_persist_dir))
+        # ChromaDB's stubs declare a tighter EmbeddingFunction generic than
+        # DefaultEmbeddingFunction satisfies; the implementations are
+        # equivalent at runtime.
         _collection = client.get_or_create_collection(
             name=COLLECTION_NAME,
-            embedding_function=DefaultEmbeddingFunction(),
+            embedding_function=DefaultEmbeddingFunction(),  # type: ignore[arg-type]
             metadata={"hnsw:space": "cosine"},
         )
         return _collection
@@ -152,7 +155,7 @@ async def _fetch_severity_window(
 async def _seed_index_async(lookback_days: int = NVD_LOOKBACK_DAYS) -> int:
     collection = _get_collection()
 
-    end = datetime.now(timezone.utc)
+    end = datetime.now(UTC)
     start = end - timedelta(days=lookback_days)
     log.info("seed_starting", lookback_days=lookback_days)
 
@@ -223,7 +226,10 @@ async def cve_semantic_search(query: str, top_k: int = 5) -> list[CVECandidate]:
 
         def _query_sync() -> dict[str, Any]:
             collection = _get_collection()
-            return collection.query(query_texts=[query], n_results=top_k)
+            result_dict: dict[str, Any] = collection.query(
+                query_texts=[query], n_results=top_k,
+            )
+            return result_dict
 
         try:
             result = await asyncio.to_thread(_query_sync)

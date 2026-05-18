@@ -1,6 +1,6 @@
 """Agent output contracts. The public surface returned to API clients."""
 
-from enum import Enum
+from enum import StrEnum
 from typing import Annotated
 
 from pydantic import BaseModel, Field, HttpUrl
@@ -13,7 +13,7 @@ CveIdStr = Annotated[
 ]
 
 
-class Severity(str, Enum):
+class Severity(StrEnum):
     CRITICAL = "critical"
     HIGH = "high"
     MEDIUM = "medium"
@@ -21,7 +21,7 @@ class Severity(str, Enum):
     INFO = "info"
 
 
-class Confidence(str, Enum):
+class Confidence(StrEnum):
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"
