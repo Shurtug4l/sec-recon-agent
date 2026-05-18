@@ -26,8 +26,9 @@ htmlcov/
 .idea/
 .vscode/
 
-data/cve_index/
-data/cve_raw/
+# Local data directory: ChromaDB index, ExploitDB CSV cache, any raw dumps.
+# Nothing under data/ should ever be committed; runtime artefacts only.
+data/
 *.db
 *.sqlite
 
