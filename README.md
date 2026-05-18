@@ -319,17 +319,29 @@ curl -N -X POST http://localhost:8000/v1/triage \
 make triage Q="Apache 2.4.49 on port 80. Risk?"
 ```
 
-### Markdown export
+### Markdown and PDF export
 
-Every TriageReport carries an **Export .md** button on the report card. It builds a Markdown document — severity / confidence header, summary, recommended action, per-CVE details (CVSS, KEV, ransomware, EPSS, NVD link, vendor blurb), MITRE ATT&CK techniques with mitigations, and the full reasoning chain — and triggers a browser download (`triage-<timestamp>.md`). Pure client-side, no backend route.
+Every TriageReport carries two export buttons on the report card.
+
+**Export .md** builds a Markdown document — severity / confidence header, summary, recommended action, per-CVE details (CVSS, KEV, ransomware, EPSS, NVD link, vendor blurb), MITRE ATT&CK techniques with mitigations, and the full reasoning chain — and triggers a browser download (`triage-<timestamp>.md`). Pure client-side, no backend route.
+
+**Export PDF** calls `window.print()` together with an `@media print` stylesheet (`globals.css`) that scopes visibility to the report block, hides chrome (header, sidebar, form, buttons), and forces an A4 layout with 18mm margins and a light-on-white render regardless of the active theme. The user picks "Save as PDF" in the system print dialog. Zero new dependencies, native multi-page, pixel-perfect.
 
 ## The frontend
 
-The browser is the primary interface. Highlights:
+The browser is the primary interface. The header is a macro-tab nav with four entries: **Home** (`/`), **Triage** (`/triage`), **Dashboard** (`/dashboard`), **Guide** (`/guide`). Theme toggle and a GitHub link sit at the end of the bar.
 
-- **Form + examples** — textarea with three example chips (specific CVE, product description, Nmap XML), 4000-char counter, Triage / Stop buttons.
+### Pages
+
+- **Home (`/`)** — Landing: hero, design pillars (type-safety, grounded answers, adversary-aware, privacy-by-default), a 9-tool surface grid, a composed architecture diagram (vertical pipeline of `Browser -> Next.js proxy -> Agent API -> MCP Server` plus a data-source fan-out grid), and quick-nav cards into the other pages.
+- **Triage (`/triage`)** — Form + history sidebar + live report. Textarea with four example chips (named CVE, product version, service list, CycloneDX SBOM), resize-y up to 180px min-height, 100,000-char counter, Triage / Stop buttons. Draft text persists across navigation via the `TriageProvider` context, and selecting an entry from the sidebar seeds the textarea with that entry's query.
+- **Dashboard (`/dashboard`)** — three tabs; see below.
+- **Guide (`/guide`)** — Framework explainer with a sticky TOC. One card per framework / standard the agent grounds answers in: CVE / NVD / CVSS / CWE, CISA KEV, FIRST EPSS, MITRE ATT&CK, MITRE ATLAS, SBOM (CycloneDX 1.x JSON / SPDX 2.x JSON / requirements.txt strict subset of PEP 508), Nmap XML + defusedxml, OWASP LLM Top 10 (2025), ISO/IEC 42001:2023 (38 Annex A controls), Pydantic AI, MCP. Each card has "What it is" / "Why it appears here" / "Used by" tool chips / primary references.
+
+### Triage report
+
 - **Live SSE** — each agent step (`UserPromptNode`, `ModelRequestNode`, `CallToolsNode`, `End`) renders as a row as it streams in, with a spinner on the in-flight step.
-- **Structured report** — severity and confidence badges, per-CVE cards with NVD link, CVSS score, exploit-public badge, affected products list. Free-text vendor fields wrapped with `<UNTRUSTED_CONTENT>` markers are stripped and re-rendered inside a quote-style block with a "NVD description (untrusted vendor text)" label, so the operator sees the fence semantically.
+- **Structured report** — severity and confidence badges, per-CVE cards with NVD link, CVSS score, exploit-public badge, KEV / ransomware / EPSS badges, affected products list. Free-text vendor fields wrapped with `<UNTRUSTED_CONTENT>` markers are stripped and re-rendered inside a quote-style block with a "NVD description (untrusted vendor text)" label, so the operator sees the fence semantically.
 - **Reasoning chain** — collapsible audit log at the bottom of every report.
 - **History sidebar** — last 30 runs in `localStorage`, severity badge per entry, click to recall. Visible on `lg+` viewports.
 - **Theme** — Catppuccin Macchiato (dark) + Latte (light), toggle persisted in `localStorage`.
@@ -341,9 +353,9 @@ See [`docs/frontend.md`](docs/frontend.md) for the component map and the SSE wir
 
 A separate page with three tabs:
 
-- **Statistics** — KPI cards (total runs, average time, critical count, success rate), severity histogram, tool-call pie chart, top-CVEs table. All computed client-side from the local history.
+- **Statistics** — KPI cards (total runs, average time, critical count, success rate), severity histogram, tool-call pie chart, top-CVEs table. All computed client-side from the local history. Recharts tooltips are themed against `--popover` / `--popover-foreground` so they read correctly in both Macchiato and Latte.
 - **Observability** — per-run timeline reconstructed from the `reasoning_chain`, with a link to the Jaeger UI for the cross-process span tree.
-- **Transparency** — the literal system prompt the LLM sees (copyable), the four-tool inventory with descriptions, runtime metadata (model, output schema, content boundary), and the explicit list of what the agent CANNOT do (no shell, no out-of-band fetch, no key visibility, no PII in spans).
+- **Transparency** — the literal system prompt the LLM sees (copyable), the nine-tool inventory with descriptions (count rendered from `meta.tools.length`, never hardcoded), runtime metadata (model, output schema, content boundary), and the explicit list of what the agent CANNOT do (no shell, no out-of-band fetch, no key visibility, no PII in spans).
 
 The transparency tab fetches `GET /v1/meta` via the Next.js proxy; the endpoint exposes the system prompt and tool list so the UI can render them without coupling to file paths or live MCP connectivity.
 
