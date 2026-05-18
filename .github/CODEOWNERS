@@ -1,0 +1,14 @@
+# Default code owner for the whole repo.
+# GitHub uses this to auto-request reviews on PRs (no-op for a single-
+# author repo, but ensures any future contributor PR is routed correctly).
+*                       @Shurtug4l
+
+# Security-sensitive areas get an explicit second mention so a future
+# contributor can grep CODEOWNERS to see which files are tagged as
+# "treat with extra care".
+/SECURITY.md            @Shurtug4l
+/src/sec_recon_agent/audit/                 @Shurtug4l
+/src/sec_recon_agent/mcp_server/security.py @Shurtug4l
+/src/sec_recon_agent/agent/prompts.py       @Shurtug4l
+/src/sec_recon_agent/redteam/               @Shurtug4l
+/.github/workflows/                         @Shurtug4l
