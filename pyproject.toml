@@ -31,6 +31,7 @@ dependencies = [
     "opentelemetry-instrumentation-httpx>=0.48b0",
     "opentelemetry-instrumentation-fastapi>=0.48b0",
     "opentelemetry-exporter-otlp-proto-http>=1.27.0",
+    "slowapi>=0.1.9",
 ]
 
 [project.optional-dependencies]
@@ -71,6 +72,12 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "N", "ASYNC", "S", "A", "C4", "DTZ", "RUF"]
 ignore = ["S101"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI relies on Depends() / Security() / Header() being called in
+# parameter defaults; that is the documented usage. Whitelist them so
+# B008 does not flag every endpoint.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Security", "fastapi.Header"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S", "ASYNC"]

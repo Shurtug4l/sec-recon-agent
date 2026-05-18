@@ -14,14 +14,20 @@ The agent reaches the MCP server over its own HTTP+SSE connection; the
 API process and the MCP server are independent.
 """
 
+import hmac
 from collections.abc import AsyncIterator
 from typing import Any
 
 import structlog
 import uvicorn
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from sse_starlette.sse import EventSourceResponse
+from starlette.responses import JSONResponse
 
 from sec_recon_agent.agent.prompts import SYSTEM_PROMPT
 from sec_recon_agent.agent.triage import build_agent, export_anthropic_api_key_to_env
@@ -42,6 +48,88 @@ app = FastAPI(
     description="Type-safe security triage via Pydantic AI + MCP.",
     version="0.1.0",
 )
+
+# ---------------------------------------------------------------------------
+# Authentication
+# ---------------------------------------------------------------------------
+# Two accepted carriers: `Authorization: Bearer <key>` (the canonical form for
+# API keys behind a reverse proxy) and `X-API-Key: <key>` (convenient for
+# curl tests). Both go through the same allowlist + constant-time compare.
+# When no API keys are configured, the dependency is a no-op so local
+# development does not need ceremony.
+
+_bearer_scheme = HTTPBearer(auto_error=False)
+_x_api_key_scheme = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+def _candidate_keys(
+    bearer: HTTPAuthorizationCredentials | None,
+    x_api_key: str | None,
+) -> list[str]:
+    keys: list[str] = []
+    if bearer is not None and bearer.scheme.lower() == "bearer":
+        keys.append(bearer.credentials)
+    if x_api_key:
+        keys.append(x_api_key)
+    return keys
+
+
+def _key_matches_allowlist(presented: str) -> bool:
+    """Constant-time comparison against every configured key."""
+    presented_bytes = presented.encode("utf-8")
+    found = False
+    for stored in settings.api_keys:
+        # Compare every entry even after a match — keeps the timing flat.
+        if hmac.compare_digest(presented_bytes, stored.get_secret_value().encode("utf-8")):
+            found = True
+    return found
+
+
+async def verify_api_key(
+    bearer: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+    x_api_key: str | None = Depends(_x_api_key_scheme),
+) -> None:
+    """No-op when `settings.api_keys` is empty; otherwise requires one of
+    the configured keys via Bearer or X-API-Key header."""
+    if not settings.api_keys:
+        return
+    for presented in _candidate_keys(bearer, x_api_key):
+        if _key_matches_allowlist(presented):
+            return
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="missing or invalid API key",
+        headers={"WWW-Authenticate": 'Bearer realm="sec-recon-agent"'},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Rate limiting
+# ---------------------------------------------------------------------------
+# Per-IP using slowapi. When `settings.rate_limit_per_minute` is falsy we
+# install the limiter but use a string that effectively never trips, so
+# the dependency wiring stays uniform between dev and production.
+
+def _rate_limit_string() -> str:
+    rate = settings.rate_limit_per_minute or 0
+    if rate <= 0:
+        return "1000000/minute"  # effectively unlimited
+    return f"{rate}/minute"
+
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+
+
+@app.exception_handler(RateLimitExceeded)
+async def _rate_limit_exceeded_handler(_request: Request, _exc: RateLimitExceeded) -> JSONResponse:
+    # Generic message — never echo the configured limit upstream; the
+    # specific limit is operational info that does not belong in client
+    # responses.
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content={"detail": "rate limit exceeded"},
+    )
 
 
 class TriageRequest(BaseModel):
@@ -74,7 +162,7 @@ class MetaResponse(BaseModel):
     tools: list[ToolMeta]
 
 
-@app.get("/v1/meta", response_model=MetaResponse)
+@app.get("/v1/meta", response_model=MetaResponse, dependencies=[Depends(verify_api_key)])
 async def meta() -> MetaResponse:
     """Expose the agent's "what is it told" and "what can it reach" so a
     transparency UI can render them. The system prompt is the literal
@@ -153,9 +241,13 @@ async def meta() -> MetaResponse:
     )
 
 
-@app.post("/v1/triage")
-async def triage(req: TriageRequest) -> EventSourceResponse:
+@app.post("/v1/triage", dependencies=[Depends(verify_api_key)])
+@limiter.limit(_rate_limit_string)
+async def triage(request: Request, req: TriageRequest) -> EventSourceResponse:
     """Run the triage agent and stream progress as SSE events."""
+    # `request` is unused inside the body but slowapi needs it as the
+    # first parameter to read the client address. Silence the linter.
+    del request
 
     async def event_generator() -> AsyncIterator[dict[str, Any]]:
         import time

@@ -10,9 +10,13 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const headers: Record<string, string> = { Accept: "application/json" };
+  const key = process.env.AGENT_API_KEY;
+  if (key) headers["Authorization"] = `Bearer ${key}`;
+
   const upstream = await fetch(`${AGENT_API_URL}/v1/meta`, {
     method: "GET",
-    headers: { Accept: "application/json" },
+    headers,
   });
   if (!upstream.ok) {
     return new Response(
