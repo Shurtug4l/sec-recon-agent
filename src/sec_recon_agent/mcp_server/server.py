@@ -32,7 +32,9 @@ def _register_tools() -> None:
         attack,  # noqa: F401
         cve,  # noqa: F401
         cve_search,  # noqa: F401
+        epss,  # noqa: F401
         exploits,  # noqa: F401
+        kev,  # noqa: F401
         nmap,  # noqa: F401
     )
 

@@ -45,3 +45,27 @@ class ExploitsError(SecReconError):
 
 class ExploitDbDownloadError(ExploitsError):
     """Failed to fetch the ExploitDB CSV manifest."""
+
+
+class KevError(SecReconError):
+    """Base for CISA KEV catalog failures."""
+
+
+class KevDownloadError(KevError):
+    """Failed to fetch the CISA KEV catalog."""
+
+
+class MalformedKevPayloadError(KevError):
+    """CISA KEV JSON did not match the expected schema."""
+
+
+class EpssError(SecReconError):
+    """Base for FIRST EPSS API failures."""
+
+
+class EpssRequestError(EpssError):
+    """Network or HTTP failure querying the EPSS API."""
+
+
+class MalformedEpssPayloadError(EpssError):
+    """EPSS API response did not match the expected schema."""
