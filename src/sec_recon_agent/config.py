@@ -19,7 +19,9 @@ class Settings(BaseSettings):
     github_token: SecretStr | None = None
 
     llm_provider: str = "anthropic"
-    llm_model: str = "claude-sonnet-4-6"
+    # Default cheapest-tier model. Override via LLM_MODEL env (claude-sonnet-4-6
+    # or claude-opus-4-7) for stronger reasoning at higher cost per query.
+    llm_model: str = "claude-haiku-4-5-20251001"
 
     mcp_server_host: str = "127.0.0.1"
     mcp_server_port: int = Field(default=8001, ge=1024, le=65535)

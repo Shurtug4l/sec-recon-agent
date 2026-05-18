@@ -69,7 +69,7 @@ services:
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY must be set in .env or the host environment}"
       LOG_LEVEL: "${LOG_LEVEL:-INFO}"
       LLM_PROVIDER: "${LLM_PROVIDER:-anthropic}"
-      LLM_MODEL: "${LLM_MODEL:-claude-sonnet-4-6}"
+      LLM_MODEL: "${LLM_MODEL:-claude-haiku-4-5-20251001}"
       OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
     ports:
       # Only bind to localhost; the demo is single-tenant and has no auth.
