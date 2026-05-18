@@ -387,6 +387,26 @@ def test_api_keys_parses_csv_from_env(monkeypatch: MonkeyPatch) -> None:
     ]
 
 
+def test_rate_limit_empty_env_string_disables_limiter(monkeypatch: MonkeyPatch) -> None:
+    """docker-compose interpolates an unset host var to "" via
+    ${RATE_LIMIT_PER_MINUTE:-}; that empty string must not crash Settings
+    and must mean "limiter disabled" (None), matching the documented
+    default."""
+    from sec_recon_agent.config import Settings
+
+    monkeypatch.setenv("RATE_LIMIT_PER_MINUTE", "")
+    fresh = Settings()
+    assert fresh.rate_limit_per_minute is None
+
+
+def test_rate_limit_numeric_env_string_parsed(monkeypatch: MonkeyPatch) -> None:
+    from sec_recon_agent.config import Settings
+
+    monkeypatch.setenv("RATE_LIMIT_PER_MINUTE", "30")
+    fresh = Settings()
+    assert fresh.rate_limit_per_minute == 30
+
+
 def test_triage_emits_error_event_when_agent_raises(monkeypatch: MonkeyPatch) -> None:
     class _BrokenAgent:
         @asynccontextmanager
