@@ -164,4 +164,20 @@ Environment variables of note:
 - `GITHUB_TOKEN` — optional; without it, GitHub PoC search in `exploit_check` degrades to `[]`.
 - `CHROMA_PERSIST_DIR` — ChromaDB on-disk index location; defaults to `./data/cve_index`.
 
-Observability hooks intentionally absent: no Prometheus exporter, no OpenTelemetry. `structlog` writes JSON to stdout, which is enough for a container-deployed setup to scrape from the runtime logs.
+### Observability
+
+OpenTelemetry tracing is enabled in both processes. `setup_tracing(service_name)` runs once at startup (see `src/sec_recon_agent/observability.py`), instruments httpx auto-magically (so every NVD / GitHub / ExploitDB call gets a span), and instruments the FastAPI app via `FastAPIInstrumentor.instrument_app()`. Each MCP tool emits one manual span around its body with attributes like `tool.name`, `cve.id`, `tool.success`, `cve.cvss_v3_score`, `hosts.count`, `query.length`.
+
+Trace propagation between the two processes flows through W3C `traceparent` headers on the HTTP+SSE transport. The httpx instrumentation injects the header; FastAPI/Starlette accept it.
+
+Default exporter is `ConsoleSpanExporter` (spans printed to stdout, zero infrastructure). Setting `OTEL_EXPORTER_OTLP_ENDPOINT` (e.g. `http://jaeger:4318`) switches to OTLP/HTTP. The compose profile `observability` brings up a Jaeger sidecar (`jaegertracing/all-in-one`, UI on `:16686`, OTLP HTTP receiver on `:4318`) and the `obs-up` Makefile target wires the env var automatically.
+
+What is **not** in span attributes (privacy / security):
+- User query text (potentially adversarial; only `query.length` is recorded)
+- API keys (`ANTHROPIC_API_KEY`, `NVD_API_KEY`, `GITHUB_TOKEN`)
+- NVD descriptions or any vendor-authored free text (untrusted)
+- LLM responses
+
+Two tests in `tests/test_observability.py` enforce these invariants by firing a canary query / payload and asserting no span attribute contains the canary substring.
+
+`structlog` continues to write structured logs to stdout in parallel; log lines are not OTel-correlated yet (that is a follow-on enrichment).

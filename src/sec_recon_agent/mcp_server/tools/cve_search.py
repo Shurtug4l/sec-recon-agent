@@ -24,8 +24,10 @@ from sec_recon_agent.mcp_server.models import CVECandidate
 from sec_recon_agent.mcp_server.nvd_client import HTTP_TIMEOUT_SECONDS, nvd_get
 from sec_recon_agent.mcp_server.security import fence_untrusted
 from sec_recon_agent.mcp_server.server import mcp
+from sec_recon_agent.observability import get_tracer
 
 log = structlog.get_logger()
+_tracer = get_tracer()
 
 COLLECTION_NAME = "cve_descriptions"
 # 30-day default: yields ~5-8k recent high-severity CVEs which is enough
@@ -203,36 +205,52 @@ async def cve_semantic_search(query: str, top_k: int = 5) -> list[CVECandidate]:
     Returns up to top_k CVECandidate results ranked by cosine similarity over
     embeddings of the CVE description text.
     """
-    if not query.strip():
-        return []
-    # Cap defensively at the tool boundary: the FastAPI layer caps user input
-    # at 4000 chars, but the agent can synthesize longer queries internally.
-    query = query[:MAX_QUERY_CHARS]
-    top_k = max(1, min(top_k, MAX_TOP_K))
+    with _tracer.start_as_current_span("tool.cve_semantic_search") as span:
+        # query.length is a useful operational signal; query text itself
+        # is NOT recorded (it may contain user PII or instruction-like
+        # content from a hostile prompt).
+        span.set_attribute("tool.name", "cve_semantic_search")
+        span.set_attribute("query.length", len(query))
+        span.set_attribute("query.top_k", top_k)
+        if not query.strip():
+            span.set_attribute("tool.success", True)
+            span.set_attribute("results.count", 0)
+            return []
+        # Cap defensively at the tool boundary: the FastAPI layer caps user
+        # input at 4000 chars, but the agent can synthesize longer queries.
+        query = query[:MAX_QUERY_CHARS]
+        top_k = max(1, min(top_k, MAX_TOP_K))
 
-    def _query_sync() -> dict[str, Any]:
-        collection = _get_collection()
-        return collection.query(query_texts=[query], n_results=top_k)
+        def _query_sync() -> dict[str, Any]:
+            collection = _get_collection()
+            return collection.query(query_texts=[query], n_results=top_k)
 
-    result = await asyncio.to_thread(_query_sync)
+        try:
+            result = await asyncio.to_thread(_query_sync)
+        except Exception as exc:
+            span.set_attribute("tool.success", False)
+            span.record_exception(exc)
+            raise
 
-    ids_batches = result.get("ids") or [[]]
-    doc_batches = result.get("documents") or [[]]
-    dist_batches = result.get("distances") or [[]]
-    ids = ids_batches[0] if ids_batches else []
-    docs = doc_batches[0] if doc_batches else []
-    distances = dist_batches[0] if dist_batches else []
+        ids_batches = result.get("ids") or [[]]
+        doc_batches = result.get("documents") or [[]]
+        dist_batches = result.get("distances") or [[]]
+        ids = ids_batches[0] if ids_batches else []
+        docs = doc_batches[0] if doc_batches else []
+        distances = dist_batches[0] if dist_batches else []
 
-    candidates: list[CVECandidate] = []
-    for cve_id, doc, dist in zip(ids, docs, distances, strict=False):
-        similarity = max(0.0, min(1.0, 1.0 - float(dist)))
-        raw_summary = str(doc)[:500] if doc else ""
-        candidates.append(
-            CVECandidate(
-                cve_id=str(cve_id),
-                summary=fence_untrusted(raw_summary) or "",
-                similarity=similarity,
-            ),
-        )
-    log.info("cve_semantic_search_done", query_len=len(query), hits=len(candidates))
-    return candidates
+        candidates: list[CVECandidate] = []
+        for cve_id, doc, dist in zip(ids, docs, distances, strict=False):
+            similarity = max(0.0, min(1.0, 1.0 - float(dist)))
+            raw_summary = str(doc)[:500] if doc else ""
+            candidates.append(
+                CVECandidate(
+                    cve_id=str(cve_id),
+                    summary=fence_untrusted(raw_summary) or "",
+                    similarity=similarity,
+                ),
+            )
+        span.set_attribute("tool.success", True)
+        span.set_attribute("results.count", len(candidates))
+        log.info("cve_semantic_search_done", query_len=len(query), hits=len(candidates))
+        return candidates

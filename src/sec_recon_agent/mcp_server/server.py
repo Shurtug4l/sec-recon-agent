@@ -9,6 +9,7 @@ import structlog
 from mcp.server.fastmcp import FastMCP
 
 from sec_recon_agent.config import settings
+from sec_recon_agent.observability import setup_tracing
 
 log = structlog.get_logger()
 
@@ -34,6 +35,7 @@ def _register_tools() -> None:
 
 
 def main() -> None:
+    setup_tracing("sec-recon-mcp-server")
     _register_tools()
     log.info(
         "mcp_server_starting",

@@ -23,6 +23,7 @@ from sse_starlette.sse import EventSourceResponse
 from sec_recon_agent.agent.triage import build_agent, export_anthropic_api_key_to_env
 from sec_recon_agent.config import settings
 from sec_recon_agent.mcp_server.errors import CveNotFoundError
+from sec_recon_agent.observability import setup_tracing
 
 # Exceptions whose string form is safe to surface to the SSE client.
 # Everything else is replaced with a generic message: internal exception
@@ -94,6 +95,10 @@ def _error_payload(exc: BaseException) -> str:
 
 def main() -> None:
     """Entry point for `uv run sec-recon-api`."""
+    setup_tracing("sec-recon-agent-api")
+    # Instrument the FastAPI app after the tracer provider is in place.
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    FastAPIInstrumentor.instrument_app(app)
     export_anthropic_api_key_to_env()
     uvicorn.run(
         "sec_recon_agent.api.stream:app",

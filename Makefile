@@ -39,5 +39,12 @@ lint:  ## Run ruff + mypy locally.
 	uv run ruff check src tests
 	uv run mypy src
 
+obs-up:  ## Start the stack WITH the Jaeger sidecar and OTLP enabled. UI on :16686.
+	@OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318 docker compose --profile observability up -d
+	@echo "Jaeger UI: http://localhost:16686"
+
+obs-down:  ## Stop the observability stack (keeps the data volume).
+	docker compose --profile observability down
+
 clean:  ## Stop services and DELETE the ChromaDB volume. Destructive.
 	docker compose down --volumes

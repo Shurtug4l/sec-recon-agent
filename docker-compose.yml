@@ -25,6 +25,10 @@ services:
       NVD_API_KEY: "${NVD_API_KEY:-}"
       GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
       LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      # OTEL_EXPORTER_OTLP_ENDPOINT empty -> spans go to stdout. Set to
+      # `http://jaeger:4318` to ship to the Jaeger sidecar (started with
+      # `make obs-up` or `docker compose --profile observability up`).
+      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
       # ANTHROPIC_API_KEY is not needed by the MCP process; only the agent uses it.
     volumes:
       - sec-recon-data:/app/data
@@ -66,6 +70,7 @@ services:
       LOG_LEVEL: "${LOG_LEVEL:-INFO}"
       LLM_PROVIDER: "${LLM_PROVIDER:-anthropic}"
       LLM_MODEL: "${LLM_MODEL:-claude-sonnet-4-6}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
     ports:
       # Only bind to localhost; the demo is single-tenant and has no auth.
       # Edit to 0.0.0.0 only if you intentionally want network exposure.
@@ -104,6 +109,22 @@ services:
     profiles: ["seed"]
     security_opt:
       - no-new-privileges:true
+
+  # OpenTelemetry collector + UI for spans emitted by mcp-server and agent-api.
+  # Enabled with `--profile observability`. The OTLP HTTP endpoint at :4318
+  # is what the app processes target; the UI lives on :16686.
+  jaeger:
+    image: jaegertracing/all-in-one:1.65.0
+    container_name: sec-recon-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "127.0.0.1:16686:16686"  # Jaeger UI
+      - "127.0.0.1:4318:4318"    # OTLP/HTTP receiver (also reachable as jaeger:4318 inside compose)
+    profiles: ["observability"]
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
 
 volumes:
   sec-recon-data:

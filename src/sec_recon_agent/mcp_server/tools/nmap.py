@@ -22,8 +22,10 @@ from sec_recon_agent.mcp_server.models import (
 )
 from sec_recon_agent.mcp_server.security import fence_untrusted
 from sec_recon_agent.mcp_server.server import mcp
+from sec_recon_agent.observability import get_tracer
 
 log = structlog.get_logger()
+_tracer = get_tracer()
 
 
 def _parse_port(port_el: XmlElement) -> NmapPort | None:
@@ -87,22 +89,30 @@ def nmap_parse_xml(xml_content: str) -> NmapScanResult:
     XML is parsed with defusedxml: DTDs, external entities, and entity
     expansion are refused, so untrusted scan output cannot trigger XXE.
     """
-    try:
-        # forbid_dtd=True is tighter than defusedxml's default (which only
-        # blocks entity *expansion* and external fetches but allows DTD
-        # *declarations*). Real Nmap XML output has no DTD; rejecting any
-        # DTD declaration removes the entire entity attack surface.
-        root = ET.fromstring(xml_content, forbid_dtd=True)
-    except (ET.ParseError, DefusedXmlException) as exc:
-        raise MalformedNmapXmlError(f"Nmap XML parse failed: {exc}") from exc
+    with _tracer.start_as_current_span("tool.nmap_parse_xml") as span:
+        span.set_attribute("tool.name", "nmap_parse_xml")
+        span.set_attribute("xml.size_bytes", len(xml_content))
+        try:
+            # forbid_dtd=True is tighter than defusedxml's default (which
+            # only blocks entity expansion and external fetches but allows
+            # DTD declarations). Real Nmap XML output has no DTD.
+            root = ET.fromstring(xml_content, forbid_dtd=True)
+        except (ET.ParseError, DefusedXmlException) as exc:
+            span.set_attribute("tool.success", False)
+            span.record_exception(exc)
+            raise MalformedNmapXmlError(f"Nmap XML parse failed: {exc}") from exc
 
-    if root.tag != "nmaprun":
-        raise MalformedNmapXmlError(
-            f"Expected root element 'nmaprun', got '{root.tag}'",
-        )
+        if root.tag != "nmaprun":
+            span.set_attribute("tool.success", False)
+            raise MalformedNmapXmlError(
+                f"Expected root element 'nmaprun', got '{root.tag}'",
+            )
 
-    scan_start = root.get("start")
-    hosts = [parsed for host_el in root.findall("host") if (parsed := _parse_host(host_el))]
+        scan_start = root.get("start")
+        hosts = [parsed for host_el in root.findall("host") if (parsed := _parse_host(host_el))]
 
-    log.info("nmap_parse_done", hosts=len(hosts), ports=sum(len(h.ports) for h in hosts))
-    return NmapScanResult(scan_start=scan_start, hosts=hosts)
+        span.set_attribute("tool.success", True)
+        span.set_attribute("hosts.count", len(hosts))
+        span.set_attribute("ports.count_total", sum(len(h.ports) for h in hosts))
+        log.info("nmap_parse_done", hosts=len(hosts), ports=sum(len(h.ports) for h in hosts))
+        return NmapScanResult(scan_start=scan_start, hosts=hosts)

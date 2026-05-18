@@ -17,8 +17,10 @@ from sec_recon_agent.mcp_server.nvd_client import (
     nvd_get,
 )
 from sec_recon_agent.mcp_server.server import mcp
+from sec_recon_agent.observability import get_tracer
 
 log = structlog.get_logger()
+_tracer = get_tracer()
 
 # Re-exported for tests that previously imported NVD_BASE_URL from this module.
 __all__ = ["NVD_BASE_URL", "cve_lookup"]
@@ -108,15 +110,28 @@ async def cve_lookup(cve_id: CveIdStr) -> CVEDetail:
     Returns a typed CVEDetail with CVSS v3, CWE IDs, affected CPEs, and references.
     Raises CveNotFoundError if NVD returns no record for the given ID.
     """
-    log.info("cve_lookup_start", cve_id=cve_id)
-    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS) as client:
-        payload = await nvd_get(client, params={"cveId": cve_id})
-    detail = _parse_cve_payload(cve_id, payload)
-    log.info(
-        "cve_lookup_done",
-        cve_id=detail.cve_id,
-        cvss=detail.cvss_v3_score,
-        severity=detail.cvss_v3_severity,
-        cpes=len(detail.affected_cpes),
-    )
-    return detail
+    with _tracer.start_as_current_span("tool.cve_lookup") as span:
+        # cve.id is a structured identifier and safe to record. The full
+        # description is NOT recorded (it contains untrusted vendor text).
+        span.set_attribute("tool.name", "cve_lookup")
+        span.set_attribute("cve.id", cve_id)
+        log.info("cve_lookup_start", cve_id=cve_id)
+        try:
+            async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS) as client:
+                payload = await nvd_get(client, params={"cveId": cve_id})
+            detail = _parse_cve_payload(cve_id, payload)
+        except Exception as exc:
+            span.set_attribute("tool.success", False)
+            span.record_exception(exc)
+            raise
+        span.set_attribute("tool.success", True)
+        span.set_attribute("cve.cvss_v3_score", detail.cvss_v3_score or 0.0)
+        span.set_attribute("cve.cpes_count", len(detail.affected_cpes))
+        log.info(
+            "cve_lookup_done",
+            cve_id=detail.cve_id,
+            cvss=detail.cvss_v3_score,
+            severity=detail.cvss_v3_severity,
+            cpes=len(detail.affected_cpes),
+        )
+        return detail

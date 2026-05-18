@@ -55,6 +55,16 @@ make down                  # stop, keep the data volume
 
 Both services are bound to `127.0.0.1` only by default and run as a non-root user (`secrecon`, uid 1000) with `read_only: true` and `no-new-privileges`.
 
+### With observability (Jaeger sidecar)
+
+```bash
+make obs-up                # starts MCP + API + jaeger; spans go to OTLP
+open http://localhost:16686  # Jaeger UI
+make obs-down              # stops the observability stack
+```
+
+Without the profile, spans go to stdout (zero infrastructure). Every tool call emits a span with attributes (`tool.name`, `cve.id`, `tool.success`, `cve.cvss_v3_score`, `hosts.count`, ...). User query text and untrusted vendor content are deliberately NOT recorded as attributes — tests in `tests/test_observability.py` enforce this invariant.
+
 ### Without Docker
 
 ```bash
@@ -73,7 +83,7 @@ curl -N -X POST http://localhost:8000/v1/triage \
 
 ## Status
 
-All four MCP tools, the Pydantic AI agent, and the FastAPI SSE surface have landed. Test suite: 80 passed (35 contract + 45 property/adversarial). See:
+All four MCP tools, the Pydantic AI agent, and the FastAPI SSE surface have landed. Container stack (Docker + compose), OpenTelemetry tracing, and a Jaeger sidecar profile are in place. Test suite: 88 passed (35 contract + 45 property/adversarial + 8 observability). See:
 
 - `docs/design.md` — architecture decisions, threat model, and the security review findings applied to the code.
 - `examples/triage_walkthrough.md` — three real sessions against the live agent (specific CVE, product description, Nmap XML), captured 2026-05-18.
