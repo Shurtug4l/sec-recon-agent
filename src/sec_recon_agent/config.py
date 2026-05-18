@@ -45,6 +45,17 @@ class Settings(BaseSettings):
             return [k.strip() for k in raw.split(",") if k.strip()]
         return raw
 
+    @field_validator("rate_limit_per_minute", mode="before")
+    @classmethod
+    def _empty_rate_limit_to_none(cls, raw: object) -> object:
+        # docker-compose passes RATE_LIMIT_PER_MINUTE: "${RATE_LIMIT_PER_MINUTE:-}",
+        # which becomes "" when the host env var is unset. Pydantic 2.x does
+        # not coerce "" to None for int|None fields, so treat empty string as
+        # "limiter disabled" to keep the documented default behavior.
+        if isinstance(raw, str) and raw.strip() == "":
+            return None
+        return raw
+
     llm_provider: str = "anthropic"
     # Default cheapest-tier model. Override via LLM_MODEL env (claude-sonnet-4-6
     # or claude-opus-4-7) for stronger reasoning at higher cost per query.
