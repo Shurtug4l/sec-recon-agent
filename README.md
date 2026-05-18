@@ -372,7 +372,7 @@ The frontend ESLint setup uses the flat config (`frontend/eslint.config.mjs`) br
 
 The backend CI runs on a Python version matrix (3.12 + 3.13) so the declared `requires-python = ">=3.12"` is actually exercised, not just declared. Coverage on the fast suite holds at **~87%** with a soft 70% floor (`tool.coverage.report.fail_under`).
 
-**Suite count: 191 passing** (189 fast + 2 slow). Breakdown:
+**Suite count: 195 passing** (193 fast + 2 slow). Breakdown:
 - **36 contract tests** — every MCP tool has Pydantic I/O contract tests with `respx`-mocked HTTP. Tool fail modes (NVD 404, malformed payload, 5xx retry, 429 retry, XXE refusal, oversized CSV download) all covered. Includes `/v1/meta` endpoint contract.
 - **11 KEV contract tests** — hit, miss, ransomware flag normalization, single-fetch invariant, oversized payload, non-200, malformed JSON, missing top-level list, hostile entry tolerance, free-text truncation, untrusted-content fencing for hostile vendor payloads.
 - **9 EPSS contract tests** — hit, miss, non-200, non-JSON, missing data field, wrong-type entry, mismatched CVE defense, out-of-range scores, non-numeric scores.
@@ -384,7 +384,7 @@ The backend CI runs on a Python version matrix (3.12 + 3.13) so the declared `re
 - **14 audit-trail tests** — 7 hash-chain model tests (canonical serialization, seal determinism, tamper detection at the link level) + 7 store tests (genesis chaining, subsequent-row chaining, verify on clean chain, field-mutation tamper, forged-row insert, SQLite trigger enforcement, tail ordering). Two API integration tests assert that one event lands per call (success or error path).
 - **13 SBOM contract tests** — CycloneDX, SPDX, requirements.txt happy paths; dedup, truncation, missing-name skip; malformed JSON; unsupported shapes; extras + environment markers in requirements lines.
 - **7 patch_lookup contract tests** — versionEndExcluding extraction, dedup across CPE configurations, skip when no fix declared, range-start fallback (Including vs Excluding), CVE-not-found, 50-entry cap.
-- **9 red-team scorer tests** — pattern absence (case-insensitive), value-equality refusals, multi-check pass/fail semantics, `any` field aggregation, summary aggregator.
+- **13 red-team scorer tests** — pattern absence (case-insensitive), value-equality refusals, multi-check pass/fail semantics, `any` field aggregation, summary aggregator, ATLAS-technique propagation + aggregation, drift detector that every production payload carries an ATLAS technique.
 - **6 auth + rate-limit tests** — meta endpoint open by default, requires Bearer / X-API-Key when configured, wrong key rejected, health stays open, triage 401 without key + 200 with key, rate-limit 429 above the cap with generic detail, settings csv parser from env.
 
 See [`docs/design.md`](docs/design.md#defended-invariants-property-and-adversarial-tests) for the full invariant table.

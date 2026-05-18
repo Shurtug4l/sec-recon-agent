@@ -68,16 +68,23 @@ The eval suite (`sec-recon-eval`) and red-team battery (`sec-recon-redteam`) exp
 
 ### ML Attack Staging — AML.T0043 (Craft Adversarial Data)
 
-This is the tactic the red-team battery directly tests against. Payload categories in `src/sec_recon_agent/redteam/payloads.py`:
+This is the tactic the red-team battery directly tests against. Every payload in `src/sec_recon_agent/redteam/payloads.py` carries an `atlas_techniques` field with the IDs above (`AML.T0024`, `AML.T0029`, `AML.T0040`, `AML.T0054`, `AML.T0055`). A drift detector in `tests/redteam/test_scorer.py` fails the suite if a future payload is added without an ATLAS tag, except for the explicit sanity case.
 
-- `direct`: top-level instruction override.
-- `role_play`: persona swap (jailbreak).
-- `fake_authority`: impersonation of Anthropic / ops / legal.
-- `marker_forgery`: fake UNTRUSTED markers / system tags.
-- `system_extract`: prompt-leak attempts.
-- `indirect`: payload arrives via tool output (CycloneDX component name, Nmap banner, requirements.txt comment).
+The CLI prints a per-technique resistance rate alongside the per-category one. The aggregate is **not** a partition — a payload tagged with multiple techniques contributes to each — so the per-technique number measures "how often the agent held the boundary on any payload exercising this technique", not "how often the agent held the boundary on payloads whose primary technique was this".
 
-Resistance score is the headline metric; per-category breakdown highlights which class of attack the current prompt + model handles least well.
+```bash
+make redteam REDTEAM_ARGS='--filter AML.T0055'   # run only the indirect-injection payloads
+make redteam REDTEAM_ARGS='--json-output redteam.json'  # JSON output includes atlas_breakdown[]
+```
+
+Categories in `src/sec_recon_agent/redteam/payloads.py`:
+
+- `direct`: top-level instruction override (AML.T0040).
+- `role_play`: persona swap / jailbreak (AML.T0054).
+- `fake_authority`: impersonation (AML.T0040).
+- `marker_forgery`: fake UNTRUSTED markers / system tags (AML.T0040 + AML.T0055).
+- `system_extract`: prompt-leak attempts (AML.T0024 + AML.T0029).
+- `indirect`: payload arrives via tool output — CycloneDX component name, Nmap banner, requirements.txt comment, fake tool result (AML.T0055).
 
 ### Exfiltration — AML.T0024 (Exfiltration via ML Inference API)
 
