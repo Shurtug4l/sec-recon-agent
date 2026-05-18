@@ -95,7 +95,7 @@ def test_meta_returns_system_prompt_and_tool_inventory() -> None:
     # System prompt must include the untrusted-content boundary mention;
     # if it drifts, the transparency view loses its key value.
     assert "untrusted" in body["system_prompt"].lower()
-    # Tool inventory: eight tools, names match the MCP tool surface.
+    # Tool inventory: nine tools, names match the MCP tool surface.
     names = {t["name"] for t in body["tools"]}
     assert names == {
         "cve_lookup",
@@ -103,6 +103,7 @@ def test_meta_returns_system_prompt_and_tool_inventory() -> None:
         "exploit_check",
         "kev_check",
         "epss_score",
+        "patch_lookup",
         "sbom_ingest",
         "nmap_parse_xml",
         "attack_mapping",
@@ -143,10 +144,9 @@ def test_triage_streams_started_and_final_events(
 
     # Final frame must carry the TriageReport JSON
     final_data_line = next(
-        line for line in body.splitlines()
-        if line.startswith("data: ") and "Fake summary" in line
+        line for line in body.splitlines() if line.startswith("data: ") and "Fake summary" in line
     )
-    payload = json.loads(final_data_line[len("data: "):])
+    payload = json.loads(final_data_line[len("data: ") :])
     assert payload["summary"] == fake_report.summary
     assert payload["severity"] == "high"
 

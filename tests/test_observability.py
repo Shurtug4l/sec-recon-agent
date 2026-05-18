@@ -99,6 +99,7 @@ def test_setup_tracing_appends_traces_path(monkeypatch: pytest.MonkeyPatch) -> N
 # and no leak of secrets / untrusted content.
 # ----------------------------------------------------------------------------
 
+
 @respx.mock
 async def test_cve_lookup_emits_span_with_stable_attributes(
     in_memory_spans: InMemorySpanExporter,
@@ -185,6 +186,7 @@ def test_cve_semantic_search_empty_query_emits_zero_results_span(
 # Privacy: no secret or untrusted-content leak in span attributes.
 # ----------------------------------------------------------------------------
 
+
 async def test_span_attributes_never_contain_user_query_text(
     in_memory_spans: InMemorySpanExporter,
 ) -> None:
@@ -249,9 +251,9 @@ async def test_span_attributes_never_contain_nvd_description(
     for span in spans:
         for attr_value in _attrs(span).values():
             if isinstance(attr_value, str):
-                assert canary not in attr_value, (
-                    f"NVD description leaked into span attribute on span {span.name}"
-                )
+                assert (
+                    canary not in attr_value
+                ), f"NVD description leaked into span attribute on span {span.name}"
 
 
 @respx.mock
@@ -309,9 +311,9 @@ async def test_kev_check_emits_span_and_never_leaks_vendor_text(
         for attr_value in _attrs(span).values():
             if isinstance(attr_value, str):
                 for canary in (canary_vendor, canary_action, canary_notes):
-                    assert canary not in attr_value, (
-                        f"KEV vendor text leaked into span attribute on {span.name}"
-                    )
+                    assert (
+                        canary not in attr_value
+                    ), f"KEV vendor text leaked into span attribute on {span.name}"
 
 
 @respx.mock
@@ -356,6 +358,6 @@ async def test_epss_score_emits_span_with_only_structured_attributes(
     allowed_string_attrs = {"tool.name", "cve.id"}
     for attr_name, attr_value in attrs.items():
         if isinstance(attr_value, str):
-            assert attr_name in allowed_string_attrs, (
-                f"Unexpected string attribute {attr_name!r} on epss span"
-            )
+            assert (
+                attr_name in allowed_string_attrs
+            ), f"Unexpected string attribute {attr_name!r} on epss span"

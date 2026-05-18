@@ -110,6 +110,7 @@ async def verify_api_key(
 # install the limiter but use a string that effectively never trips, so
 # the dependency wiring stays uniform between dev and production.
 
+
 def _rate_limit_string() -> str:
     rate = settings.rate_limit_per_minute or 0
     if rate <= 0:
@@ -211,6 +212,16 @@ async def meta() -> MetaResponse:
                     "Fetch the FIRST.org EPSS probability that a CVE will "
                     "be exploited in the next 30 days, plus percentile "
                     "rank. Complements KEV for forward-looking prioritization."
+                ),
+            ),
+            ToolMeta(
+                name="patch_lookup",
+                description=(
+                    "Return the fixed-version information NVD declares "
+                    "for a CVE: per affected CPE, the smallest version "
+                    "where the fix landed plus any version-range start. "
+                    "Pairs with cve_lookup when recommended_action needs "
+                    "to cite a concrete release."
                 ),
             ),
             ToolMeta(
@@ -350,17 +361,13 @@ def _audit_triage(
         query_plain=query if settings.audit_include_query else None,
         report_sha256=sha256_hex(raw_for_hash),
         severity=summary["severity"] if isinstance(summary["severity"], str) else None,
-        confidence=(
-            summary["confidence"] if isinstance(summary["confidence"], str) else None
-        ),
+        confidence=(summary["confidence"] if isinstance(summary["confidence"], str) else None),
         cves_count=int(summary["cves_count"] or 0),
         attack_techniques_count=int(summary["attack_techniques_count"] or 0),
         kev_hits=int(summary["kev_hits"] or 0),
         ransomware_hits=int(summary["ransomware_hits"] or 0),
         high_epss_hits=int(summary["high_epss_hits"] or 0),
-        report_summary_plain=(
-            report_summary_plain if settings.audit_include_summary else None
-        ),
+        report_summary_plain=(report_summary_plain if settings.audit_include_summary else None),
         model=f"{settings.llm_provider}:{settings.llm_model}",
         duration_ms=duration_ms,
         outcome=outcome,
@@ -401,6 +408,7 @@ def _node_event_payload(node: object) -> str:
     into the SSE stream. Class name is a stable progress signal.
     """
     import json
+
     return json.dumps({"node": node.__class__.__name__})
 
 
@@ -421,6 +429,7 @@ def main() -> None:
     setup_tracing("sec-recon-agent-api")
     # Instrument the FastAPI app after the tracer provider is in place.
     from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
     FastAPIInstrumentor.instrument_app(app)
     export_anthropic_api_key_to_env()
     uvicorn.run(

@@ -7,7 +7,7 @@
 
 Type-safe security triage built on Pydantic AI and a custom Model Context Protocol server, behind a Next.js + React frontend.
 
-Given a CVE ID, a product version, raw Nmap XML, or a CycloneDX / SPDX / requirements.txt SBOM, the agent grounds every answer with eight typed MCP tools (CVE lookup, semantic search, public-exploit availability, CISA KEV membership, FIRST.org EPSS score, SBOM ingestion, Nmap parsing, MITRE ATT&CK mapping) and returns a `TriageReport` Pydantic model: severity, exploit availability, operational signals (KEV / ransomware / EPSS), recommended action, and the full reasoning chain. The LLM never produces free-text guessing; the output schema is enforced at the model boundary.
+Given a CVE ID, a product version, raw Nmap XML, or a CycloneDX / SPDX / requirements.txt SBOM, the agent grounds every answer with nine typed MCP tools (CVE lookup, semantic search, public-exploit availability, CISA KEV membership, FIRST.org EPSS score, patch availability, SBOM ingestion, Nmap parsing, MITRE ATT&CK mapping) and returns a `TriageReport` Pydantic model: severity, exploit availability, operational signals (KEV / ransomware / EPSS), recommended action with a concrete fixed version when one exists, and the full reasoning chain. The LLM never produces free-text guessing; the output schema is enforced at the model boundary.
 
 The whole stack runs with `make up`: backend (MCP server + FastAPI agent) + frontend (Next.js UI on `:3000`) + an optional Jaeger sidecar for distributed tracing.
 
@@ -26,7 +26,7 @@ The whole stack runs with `make up`: backend (MCP server + FastAPI agent) + fron
              ▼
 ┌──────────────────────────┐
 │  MCP Server  ·  FastMCP  │  :8001
-│  8 typed tools           │
+│  9 typed tools           │
 └────────────┬─────────────┘
              │
              ├── NVD CVE 2.0 API           (cve_lookup, async + rate-limited)
@@ -35,6 +35,7 @@ The whole stack runs with `make up`: backend (MCP server + FastAPI agent) + fron
              ├── CISA KEV catalog          (kev_check, "patch now" signal + ransomware flag)
              ├── FIRST EPSS API            (epss_score, 30-day exploitation probability)
              ├── CycloneDX / SPDX / PEP 508 (sbom_ingest, no-network, deterministic)
+             ├── NVD CPE configurations    (patch_lookup, fixed_in / version range extraction)
              ├── defusedxml                (nmap_parse_xml, XXE-safe)
              └── MITRE ATT&CK mapping      (attack_mapping, CWE -> techniques + mitigations)
 ```
@@ -232,7 +233,7 @@ You should see three containers reach `Healthy` and a web UI ready for queries. 
 
 ## What it does
 
-The agent is built around eight MCP tools, each with a typed Pydantic contract.
+The agent is built around nine MCP tools, each with a typed Pydantic contract.
 
 **`cve_lookup(cve_id)`** — fetches the full NVD CVE 2.0 record for a given ID. Returns `CVEDetail` with CVSS v3 score and severity, CWE IDs, affected CPEs, references. Async httpx client with a sliding-window rate limiter (5 req / 30 s without an NVD API key, 50 with) and tenacity exponential backoff on 5xx, 429, and connection errors.
 
@@ -241,6 +242,8 @@ The agent is built around eight MCP tools, each with a typed Pydantic contract.
 **`exploit_check(cve_id)`** — queries Exploit-DB (cached CSV manifest from GitLab, refreshed weekly) and GitHub Code Search (optional, requires `GITHUB_TOKEN`) in parallel via `asyncio.gather`. Returns `ExploitCheck` with `has_public_exploit`, Exploit-DB IDs, and GitHub PoC URLs. Gracefully degrades to `[]` on the GitHub side when no token is set or the search is rate-limited.
 
 **`sbom_ingest(content)`** — autodetects and parses CycloneDX 1.x JSON, SPDX 2.x JSON, or PEP 508-style requirements.txt. Returns `SbomComponentList` with name / version / ecosystem / purl per component, deduplicated, capped at 500 entries (`truncated=True` signals overflow). No network, no XML — anything more exotic raises `UnsupportedSbomFormatError`. The agent calls this first when the user pastes an SBOM, then runs `cve_semantic_search` on the top-N components.
+
+**`patch_lookup(cve_id)`** — extracts fixed-version information directly from the NVD CVE 2.0 record (per affected CPE: `versionEndExcluding` = smallest patched version, plus optional `versionStartIncluding/Excluding` for the range start). Returns `PatchAvailability` with `has_fix`, a list of `(product_cpe, fixed_in_version, version_range_start)` triples (deduplicated, capped at 50), and the NVD advisory references. Pairs with `cve_lookup` when `recommended_action` should cite a concrete release.
 
 **`kev_check(cve_id)`** — looks the CVE up in the CISA Known Exploited Vulnerabilities catalog (daily-refreshed JSON, cached on disk for 24h). Returns `KevCheck` with `in_catalog`, CISA-provided vendor / product / vulnerability name, `due_date` (federal remediation deadline), `required_action`, and the `known_ransomware_use` flag. KEV membership is the single most actionable "patch now" signal in vulnerability management.
 
@@ -313,6 +316,10 @@ curl -N -X POST http://localhost:8000/v1/triage \
 make triage Q="Apache 2.4.49 on port 80. Risk?"
 ```
 
+### Markdown export
+
+Every TriageReport carries an **Export .md** button on the report card. It builds a Markdown document — severity / confidence header, summary, recommended action, per-CVE details (CVSS, KEV, ransomware, EPSS, NVD link, vendor blurb), MITRE ATT&CK techniques with mitigations, and the full reasoning chain — and triggers a browser download (`triage-<timestamp>.md`). Pure client-side, no backend route.
+
 ## The frontend
 
 The browser is the primary interface. Highlights:
@@ -354,15 +361,18 @@ W3C `traceparent` propagation flows from `frontend → /api/triage → agent-api
 ## Testing
 
 ```bash
-make test                       # full suite, ~3 min (network-mocked, no LLM)
-uv run pytest -m "not slow"     # skip ChromaDB round-trip (~5 s instead of 3 min)
-uv run pytest tests/property    # property + adversarial only
-make lint                       # backend (ruff + mypy --strict) + frontend (ESLint flat)
+make test                                # full suite, ~3 min (network-mocked, no LLM)
+uv run pytest -m "not slow"              # skip ChromaDB round-trip (~5 s instead of 3 min)
+uv run pytest -m "not slow" --cov        # add coverage summary (fail under 70%)
+uv run pytest tests/property             # property + adversarial only
+make lint                                # backend (ruff + mypy --strict) + frontend (ESLint flat)
 ```
 
 The frontend ESLint setup uses the flat config (`frontend/eslint.config.mjs`) bridged through `FlatCompat` to `next/core-web-vitals` + `next/typescript`. CI runs `npm run lint` between `type-check` and `build`.
 
-**Suite count: 184 passing** (182 fast + 2 slow). Breakdown:
+The backend CI runs on a Python version matrix (3.12 + 3.13) so the declared `requires-python = ">=3.12"` is actually exercised, not just declared. Coverage on the fast suite holds at **~87%** with a soft 70% floor (`tool.coverage.report.fail_under`).
+
+**Suite count: 191 passing** (189 fast + 2 slow). Breakdown:
 - **36 contract tests** — every MCP tool has Pydantic I/O contract tests with `respx`-mocked HTTP. Tool fail modes (NVD 404, malformed payload, 5xx retry, 429 retry, XXE refusal, oversized CSV download) all covered. Includes `/v1/meta` endpoint contract.
 - **11 KEV contract tests** — hit, miss, ransomware flag normalization, single-fetch invariant, oversized payload, non-200, malformed JSON, missing top-level list, hostile entry tolerance, free-text truncation, untrusted-content fencing for hostile vendor payloads.
 - **9 EPSS contract tests** — hit, miss, non-200, non-JSON, missing data field, wrong-type entry, mismatched CVE defense, out-of-range scores, non-numeric scores.
@@ -373,6 +383,7 @@ The frontend ESLint setup uses the flat config (`frontend/eslint.config.mjs`) br
 - **14 eval-suite unit tests** — 9 scorer tests (severity tolerance, CVE recall threshold, KEV / ransomware flag honoring) + 5 runner tests (SSE CRLF and LF tolerance, error-event surfacing, missing-final-event handling, HTTP 5xx).
 - **14 audit-trail tests** — 7 hash-chain model tests (canonical serialization, seal determinism, tamper detection at the link level) + 7 store tests (genesis chaining, subsequent-row chaining, verify on clean chain, field-mutation tamper, forged-row insert, SQLite trigger enforcement, tail ordering). Two API integration tests assert that one event lands per call (success or error path).
 - **13 SBOM contract tests** — CycloneDX, SPDX, requirements.txt happy paths; dedup, truncation, missing-name skip; malformed JSON; unsupported shapes; extras + environment markers in requirements lines.
+- **7 patch_lookup contract tests** — versionEndExcluding extraction, dedup across CPE configurations, skip when no fix declared, range-start fallback (Including vs Excluding), CVE-not-found, 50-entry cap.
 - **9 red-team scorer tests** — pattern absence (case-insensitive), value-equality refusals, multi-check pass/fail semantics, `any` field aggregation, summary aggregator.
 - **6 auth + rate-limit tests** — meta endpoint open by default, requires Bearer / X-API-Key when configured, wrong key rejected, health stays open, triage 401 without key + 200 with key, rate-limit 429 above the cap with generic detail, settings csv parser from env.
 
@@ -467,6 +478,7 @@ Every "HIGH" finding from an independent security review is mapped to the code c
 - **Singletons concurrency-safe** — double-checked locking on the ChromaDB collection and the Exploit-DB index, both for the threading and the asyncio paths.
 - **Error-payload allowlist** — the SSE `error` event surfaces a generic message for any exception type not on an explicit allowlist. Internal exception messages (with params, paths, library internals) never leak to the client.
 - **Container hardening** — non-root users (`secrecon` uid 1000 backend, `node` uid 1000 frontend), `read_only: true`, `tmpfs:/tmp`, `no-new-privileges`, ports bound to `127.0.0.1`. `apt upgrade` in the runtime stage to pick up Debian security patches; `docker scout cves` reports 0 CRITICAL and only inherited HIGH findings in base-image packages our runtime does not invoke.
+- **Trivy in CI** — `ci-docker-scan.yml` builds both images and scans them with Aqua Trivy. CRITICAL findings exit non-zero (blocking). HIGH findings are uploaded as SARIF to the GitHub Security tab (informational). Triggered on Dockerfile / dependency changes plus a weekly Monday cron so a fresh base-image CVE surfaces without code activity.
 - **Opt-in API auth + per-IP rate limit** — `API_KEYS=<csv>` switches on `Authorization: Bearer` / `X-API-Key` enforcement on `/v1/triage` and `/v1/meta` (`/v1/health` stays public for orchestrators); `RATE_LIMIT_PER_MINUTE=<n>` enables a slowapi limiter. The auth dependency uses `hmac.compare_digest` for constant-time comparison and the 429 body never echoes the configured limit.
 
 ### Authentication and rate limiting
@@ -496,6 +508,24 @@ curl -N -X POST http://localhost:8000/v1/triage \
 `/v1/health` remains open under any configuration — required so container orchestrators (Docker, Kubernetes) can run liveness probes without holding a key.
 
 ## Development workflow
+
+### Local setup
+
+```bash
+uv sync --extra dev                  # backend deps + dev tooling
+uv run pre-commit install            # writes .git/hooks/pre-commit
+cd frontend && npm install --legacy-peer-deps && cd ..
+```
+
+`pre-commit` runs `ruff --fix`, `ruff format`, a tightly-scoped `mypy --strict src/`, plus the standard `pre-commit-hooks` suite (trailing-whitespace, end-of-file-fixer, YAML / TOML / merge-conflict / oversized-file checks) on every `git commit`. To run it manually across the whole tree:
+
+```bash
+uv run pre-commit run --all-files
+```
+
+Frontend lint stays in CI only: the npm install footprint is heavier than what a local hook should impose, and the frontend ESLint + TypeScript pipeline is already enforced by the `type-check + build` required check on every PR.
+
+### Branch protection
 
 `main` is a protected branch on GitHub. The protection rules are:
 
@@ -586,18 +616,20 @@ sec-recon-agent/
 
 ## Governance and compliance mapping
 
-For an AI Security / governance reviewer, two documents map every applied control against the relevant external taxonomy:
+For an AI Security / governance reviewer, three documents map every applied control against the relevant external taxonomy:
 
 - [`docs/owasp_llm_top10.md`](docs/owasp_llm_top10.md) — the codebase mapped against [OWASP Top 10 for LLM Applications (2025)](https://owasp.org/www-project-top-10-for-large-language-model-applications/). One row per risk (LLM01..LLM10) with status (mitigated / partial / N/A), layered controls, file:line citations, and the falsifiable tests that defend each invariant.
 - [`docs/mitre_atlas.md`](docs/mitre_atlas.md) — the codebase mapped against [MITRE ATLAS](https://atlas.mitre.org/) tactics + techniques. Pairs with the adversary-side MITRE ATT&CK framework already integrated via the `attack_mapping` tool.
+- [`docs/iso_42001.md`](docs/iso_42001.md) — the codebase mapped against [ISO/IEC 42001:2023](https://www.iso.org/standard/81230.html) clauses + Annex A controls, with an honest declaration of which clauses are out of scope for a single-author portfolio repo.
 
-Together they answer two questions a reviewer asks: "what risks did you consider?" and "where exactly is each control in the code?".
+Together they answer three questions a reviewer asks: "what risks did you consider?", "what would an attacker do against the agent itself?", and "what would an AIMS-certified organization need to point at?".
 
 ## Documentation index
 
 - [`docs/design.md`](docs/design.md) — the engineering brief. Architecture decisions with rejected alternatives, threat model with finding-to-fix mapping, defended invariants table, residual risks, testing strategy, operational notes.
 - [`docs/owasp_llm_top10.md`](docs/owasp_llm_top10.md) — OWASP LLM Top 10 (2025) mapping matrix with code citations.
 - [`docs/mitre_atlas.md`](docs/mitre_atlas.md) — MITRE ATLAS mapping (AI-specific adversary tactics).
+- [`docs/iso_42001.md`](docs/iso_42001.md) — ISO/IEC 42001:2023 alignment matrix with explicit out-of-scope declarations.
 - [`docs/frontend.md`](docs/frontend.md) — frontend component map, SSE wire protocol, theming, state management.
 - [`examples/triage_walkthrough.md`](examples/triage_walkthrough.md) — three real agent sessions captured against the live stack on 2026-05-18.
 - [`SECURITY.md`](SECURITY.md) — responsible-disclosure policy and safe-harbor terms.

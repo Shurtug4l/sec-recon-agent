@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   ChevronDown,
   Crosshair,
+  Download,
   ExternalLink,
   Flame,
   ShieldCheck,
@@ -14,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   Collapsible,
@@ -21,6 +23,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Separator } from "@/components/ui/separator";
+import { downloadMarkdown, reportToMarkdown } from "@/lib/markdown-export";
 import { cn } from "@/lib/utils";
 import type { Severity, TriageReport } from "@/lib/types";
 
@@ -49,7 +52,19 @@ function unfence(text: string): { body: string; fenced: boolean } {
   return { body: text, fenced: false };
 }
 
-export function TriageReportView({ report }: { report: TriageReport }) {
+export function TriageReportView({
+  report,
+  query,
+}: {
+  report: TriageReport;
+  query?: string;
+}) {
+  function handleExportMarkdown() {
+    const md = reportToMarkdown(report, query);
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-").replace(/Z$/, "");
+    downloadMarkdown(`triage-${stamp}.md`, md);
+  }
+
   return (
     <div className="animate-fade-in space-y-4">
       <Card className="border-2 border-primary/20">
@@ -61,6 +76,17 @@ export function TriageReportView({ report }: { report: TriageReport }) {
             <Badge variant="outline" className="text-xs uppercase tracking-wider">
               {report.confidence} confidence
             </Badge>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="ml-auto h-7 gap-1 text-[11px]"
+              onClick={handleExportMarkdown}
+              title="Export the full report as a Markdown file"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Export .md
+            </Button>
           </div>
           <p className="text-base font-medium leading-relaxed">{report.summary}</p>
         </CardHeader>

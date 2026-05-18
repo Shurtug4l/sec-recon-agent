@@ -120,8 +120,8 @@ def test_skips_entries_with_missing_name() -> None:
     payload = {
         "bomFormat": "CycloneDX",
         "components": [
-            {"version": "1.0"},          # missing name
-            {"name": "", "version": "1"}, # empty name
+            {"version": "1.0"},  # missing name
+            {"name": "", "version": "1"},  # empty name
             {"name": "good", "version": "2.0"},
             "not even an object",
         ],
