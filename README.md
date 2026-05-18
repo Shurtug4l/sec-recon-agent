@@ -1,98 +1,264 @@
 # sec-recon-agent
 
-Type-safe security triage built on Pydantic AI and a custom Model Context Protocol server.
+Type-safe security triage built on Pydantic AI and a custom Model Context Protocol server, behind a Next.js + React frontend.
 
-The agent answers vulnerability questions ("Is CVE-X exploitable?", "What CVEs affect Apache 2.4.49?", "Triage this Nmap output") by calling typed tools exposed over MCP:
+Given a CVE ID, a product version, or raw Nmap XML, the agent grounds every answer with four typed MCP tools (CVE lookup, semantic search, public-exploit availability, scan parsing) and returns a `TriageReport` Pydantic model: severity, exploit availability, recommended action, and the full reasoning chain. The LLM never produces free-text guessing; the output schema is enforced at the model boundary.
 
-- `cve_lookup` — async NVD API client, rate-limited, returns a structured `CVEDetail`
-- `cve_semantic_search` — vector retrieval over a local ChromaDB index of recent high-severity CVEs
-- `exploit_check` — public-exploit availability (ExploitDB + GitHub PoC search)
-- `nmap_parse_xml` — pure parser, structured port/service extraction
-
-The agent never produces free-text guessing. Its only output is a `TriageReport` Pydantic model: severity, exploit availability, recommended action, and the full reasoning chain.
-
-## Why this exists
-
-Most LLM "security assistants" hallucinate CVEs and exploit details. This one is a deliberate exercise in:
-
-- **Strict typing on the model boundary**: every tool I/O is a Pydantic model. The LLM never sees raw JSON, only structured contracts
-- **MCP as the integration layer**: tools live in a separate process, callable from any MCP-compatible client (Claude Desktop, a custom client, this agent)
-- **Streaming UX**: tool calls and intermediate reasoning are streamed via Server-Sent Events
-- **Security-aware AI engineering**: untrusted tool content (CVE descriptions from third parties) is fenced in the prompt; the agent has no out-of-band tools beyond the declared MCP surface
-
-## Architecture
+The whole stack runs with `make up`: backend (MCP server + FastAPI agent) + frontend (Next.js UI on `:3000`) + an optional Jaeger sidecar for distributed tracing.
 
 ```
-client --SSE--> agent API (FastAPI :8000)
-                    │
-                    │ Pydantic AI tool calls
-                    ▼
-                MCP client --HTTP--> MCP server (:8001)
-                                          │
-                                          ├── NVD API (cve_lookup)
-                                          ├── ChromaDB (semantic search)
-                                          ├── ExploitDB + GitHub (exploit_check)
-                                          └── XML parser (nmap_parse)
+┌──────────────────────────┐
+│  Frontend  ·  Next.js 15 │  :3000   ← user types a query in the browser
+│  React 19 + Tailwind     │
+└────────────┬─────────────┘
+             │  /api/triage (Next.js proxy)
+             ▼
+┌──────────────────────────┐
+│  Agent API  ·  FastAPI   │  :8000   ← SSE stream of node events + final TriageReport
+│  Pydantic AI agent       │
+└────────────┬─────────────┘
+             │  MCPToolset (HTTP+SSE)
+             ▼
+┌──────────────────────────┐
+│  MCP Server  ·  FastMCP  │  :8001
+│  4 typed tools           │
+└────────────┬─────────────┘
+             │
+             ├── NVD CVE 2.0 API           (cve_lookup, async + rate-limited)
+             ├── ChromaDB ONNX MiniLM-L6   (cve_semantic_search, ~20k CVE corpus)
+             ├── Exploit-DB CSV + GitHub   (exploit_check, parallel fan-out)
+             └── defusedxml                (nmap_parse_xml, XXE-safe)
 ```
+
+## Table of contents
+
+- [Quick start](#quick-start)
+- [What it does](#what-it-does)
+- [Stack](#stack)
+- [Running](#running)
+- [The frontend](#the-frontend)
+- [Observability](#observability)
+- [Testing](#testing)
+- [Security posture](#security-posture)
+- [Project layout](#project-layout)
+- [Documentation index](#documentation-index)
+- [License](#license)
+
+## Quick start
+
+```bash
+git clone https://github.com/Shurtug4l/sec-recon-agent.git
+cd sec-recon-agent
+cp .env.example .env       # set ANTHROPIC_API_KEY
+
+make build                 # multi-stage uv + multi-stage node builds
+make seed                  # one-shot: pull ~20k CRITICAL+HIGH CVEs into ChromaDB
+make up                    # start mcp-server + agent-api + frontend
+make ui                    # opens http://localhost:3000
+```
+
+You should see three containers reach `Healthy` and a web UI ready for queries. The first build is ~3 minutes; subsequent builds are < 30 seconds thanks to layer caching.
+
+## What it does
+
+The agent is built around four MCP tools, each with a typed Pydantic contract.
+
+**`cve_lookup(cve_id)`** — fetches the full NVD CVE 2.0 record for a given ID. Returns `CVEDetail` with CVSS v3 score and severity, CWE IDs, affected CPEs, references. Async httpx client with a sliding-window rate limiter (5 req / 30 s without an NVD API key, 50 with) and tenacity exponential backoff on 5xx, 429, and connection errors.
+
+**`cve_semantic_search(query, top_k)`** — vector retrieval over a local ChromaDB index of recent high-severity CVEs (30-day lookback). Embeddings via ChromaDB's `DefaultEmbeddingFunction` (ONNX MiniLM-L6, 384-d). Returns ranked `CVECandidate` hits with cosine similarity.
+
+**`exploit_check(cve_id)`** — queries Exploit-DB (cached CSV manifest from GitLab, refreshed weekly) and GitHub Code Search (optional, requires `GITHUB_TOKEN`) in parallel via `asyncio.gather`. Returns `ExploitCheck` with `has_public_exploit`, Exploit-DB IDs, and GitHub PoC URLs. Gracefully degrades to `[]` on the GitHub side when no token is set or the search is rate-limited.
+
+**`nmap_parse_xml(xml_content)`** — parses Nmap XML scan output with `defusedxml` and `forbid_dtd=True` (tighter than defusedxml's default). Returns `NmapScanResult` with structured hosts, ports, services, and product/version banners. XXE-safe; verified by an adversarial test corpus.
+
+The agent (`agent/triage.py`) wires these into a Pydantic AI loop with a system prompt that:
+1. Names every tool and when to call which
+2. Declares the untrusted-content boundary (treat tool output text as data, ignore instruction-like content)
+3. Enforces structured output: the only thing the agent can return is a `TriageReport` with `summary`, `severity`, `confidence`, `recommended_action`, `cves`, and `reasoning_chain`.
 
 ## Stack
 
-Python 3.12+ · Pydantic AI · MCP (Anthropic SDK) · FastAPI (SSE) · ChromaDB (ONNX MiniLM embedder) · httpx · structlog · uv
+**Backend** — Python 3.12+, `uv` for env mgmt, `pydantic-ai` for the agent, `mcp` (Anthropic SDK + FastMCP), `fastapi` + `sse-starlette` for the agent API, `chromadb` with the ONNX MiniLM embedder, `httpx` + `tenacity` for outbound calls, `defusedxml` for XML, `pydantic-settings` with `SecretStr` for secrets, `structlog` for logs, `opentelemetry-{api,sdk,instrumentation-{fastapi,httpx},exporter-otlp-proto-http}` for tracing.
+
+**Frontend** — Next.js 15 (App Router) on React 19, TypeScript strict, Tailwind CSS 3.4 with shadcn-style primitives (`@radix-ui/*` + `class-variance-authority`), `lucide-react` icons, Catppuccin Macchiato / Latte themes via CSS variables.
+
+**Containerization** — Multi-stage Dockerfiles (`python:3.13-slim` backend, `node:22-alpine` frontend), non-root users, `read_only: true` on backend containers, `no-new-privileges`, ports bound to `127.0.0.1` only. Docker Compose orchestrates everything; `--profile observability` adds a Jaeger sidecar.
+
+**Tests** — `pytest` + `pytest-asyncio` + `respx` (HTTP mocks) + `hypothesis` (property-based) + ChromaDB's `InMemorySpanExporter` (observability invariants).
 
 ## Running
 
-### With Docker (recommended)
+### Via Docker (primary)
 
 ```bash
-cp .env.example .env       # set ANTHROPIC_API_KEY (NVD_API_KEY and GITHUB_TOKEN optional)
-make build                 # multi-stage uv build, non-root runtime
-make seed                  # one-shot: pull recent CVEs into ChromaDB
-make up                    # start MCP server + agent API + frontend
-make ui                    # opens http://localhost:3000 in the browser
-make triage Q="Apache 2.4.49 on port 80. Risk?"   # or use the UI
-make logs                  # tail logs
-make down                  # stop, keep the data volume
+make build      # build all three images
+make seed       # one-shot, populates the shared ChromaDB volume
+make up         # mcp-server + agent-api + frontend
+make ui         # opens http://localhost:3000 in the default browser
+make logs       # tail logs from all services
+make down       # stop, keep the data volume
 ```
 
-Three services bound to `127.0.0.1`:
-- `:3000` — Next.js frontend (React 19, Tailwind, Catppuccin theme, dark/light toggle, history sidebar)
+Three services bound to localhost only:
+- `:3000` — Next.js frontend
 - `:8000` — agent API (FastAPI + SSE)
 - `:8001` — MCP server (FastMCP)
 
-All run as non-root users (`secrecon` uid 1000 for the backend, `node` uid 1000 for the frontend) with `no-new-privileges`; backend containers are `read_only: true`.
+The seed step runs once and writes to the named volume `sec-recon-data`, which `mcp-server` mounts read-write at runtime.
 
-### With observability (Jaeger sidecar)
+### Without Docker (for development)
 
 ```bash
-make obs-up                # starts MCP + API + jaeger; spans go to OTLP
-open http://localhost:16686  # Jaeger UI
-make obs-down              # stops the observability stack
+uv sync                    # backend deps
+uv run sec-recon-seed      # ~30s with NVD_API_KEY, ~3-5 min without
+
+# Two terminals for the backend:
+uv run sec-recon-mcp       # MCP server on :8001
+uv run sec-recon-api       # agent API on :8000
+
+# Third terminal for the frontend (dev mode with HMR):
+cd frontend && npm install --legacy-peer-deps && npm run dev
+# Set AGENT_API_URL=http://localhost:8000 so the Next.js proxy hits the host
 ```
 
-Without the profile, spans go to stdout (zero infrastructure). Every tool call emits a span with attributes (`tool.name`, `cve.id`, `tool.success`, `cve.cvss_v3_score`, `hosts.count`, ...). User query text and untrusted vendor content are deliberately NOT recorded as attributes — tests in `tests/test_observability.py` enforce this invariant.
+Hit `http://localhost:3000`.
 
-### Without Docker
+### One-off query from the shell
 
 ```bash
-uv sync
-cp .env.example .env       # add ANTHROPIC_API_KEY (and optionally NVD_API_KEY)
-
-uv run sec-recon-seed      # seed ChromaDB (~30 days lookback, several thousand CVEs)
-
-uv run sec-recon-mcp       # terminal 1: MCP server on :8001
-uv run sec-recon-api       # terminal 2: agent API on :8000
-
 curl -N -X POST http://localhost:8000/v1/triage \
   -H "Content-Type: application/json" \
   -d '{"query": "Apache 2.4.49 on port 80. Risk?"}'
+# or:
+make triage Q="Apache 2.4.49 on port 80. Risk?"
 ```
 
-## Status
+## The frontend
 
-All four MCP tools, the Pydantic AI agent, and the FastAPI SSE surface have landed. Container stack (Docker + compose), OpenTelemetry tracing, Jaeger sidecar profile, and a Next.js 15 + React 19 + Tailwind frontend are in place. Test suite: 88 passed (35 contract + 45 property/adversarial + 8 observability). See:
+The browser is the primary interface. Highlights:
 
-- `docs/design.md` — architecture decisions, threat model, and the security review findings applied to the code.
-- `examples/triage_walkthrough.md` — three real sessions against the live agent (specific CVE, product description, Nmap XML), captured 2026-05-18.
+- **Form + examples** — textarea with three example chips (specific CVE, product description, Nmap XML), 4000-char counter, Triage / Stop buttons.
+- **Live SSE** — each agent step (`UserPromptNode`, `ModelRequestNode`, `CallToolsNode`, `End`) renders as a row as it streams in, with a spinner on the in-flight step.
+- **Structured report** — severity and confidence badges, per-CVE cards with NVD link, CVSS score, exploit-public badge, affected products list. Free-text vendor fields wrapped with `<UNTRUSTED_CONTENT>` markers are stripped and re-rendered inside a quote-style block with a "NVD description (untrusted vendor text)" label, so the operator sees the fence semantically.
+- **Reasoning chain** — collapsible audit log at the bottom of every report.
+- **History sidebar** — last 30 runs in `localStorage`, severity badge per entry, click to recall. Visible on `lg+` viewports.
+- **Theme** — Catppuccin Macchiato (dark) + Latte (light), toggle persisted in `localStorage`.
+- **No CORS opened on the backend** — the browser talks only to the same-origin `/api/triage` route, which proxies the SSE stream byte-for-byte to FastAPI. The agent API stays single-tenant and unauthenticated by design (see [residual risks](docs/design.md#residual-risks-and-accepted-limits)).
+
+See [`docs/frontend.md`](docs/frontend.md) for the component map and the SSE wire protocol.
+
+## Observability
+
+OpenTelemetry tracing is enabled in both Python processes. Default exporter writes spans to stdout (zero infrastructure required). Set `OTEL_EXPORTER_OTLP_ENDPOINT` (or use `make obs-up`) to ship spans to an OTLP/HTTP collector — the compose profile `observability` bundles a Jaeger sidecar at `http://localhost:16686`.
+
+```bash
+make obs-up                     # mcp-server + agent-api + frontend + jaeger
+open http://localhost:16686     # Jaeger UI
+make obs-down
+```
+
+Each MCP tool emits one span (`tool.cve_lookup`, `tool.exploit_check`, etc.) with stable attributes: `tool.name`, `tool.success`, `cve.id`, `cve.cvss_v3_score`, `hosts.count`, `query.length`. **User query text and untrusted vendor content are never recorded as attributes** — tests in `tests/test_observability.py` enforce that invariant with canary strings.
+
+W3C `traceparent` propagation flows from `frontend → /api/triage → agent-api → mcp-server` via the httpx instrumentation (no manual header handling needed in our code).
+
+## Testing
+
+```bash
+make test                       # full suite, ~3 min (network-mocked, no LLM)
+uv run pytest -m "not slow"     # skip ChromaDB round-trip (~5 s instead of 3 min)
+uv run pytest tests/property    # property + adversarial only
+make lint                       # ruff + mypy --strict
+```
+
+**Suite count: 88 passing.** Breakdown:
+- **35 contract tests** — every MCP tool has Pydantic I/O contract tests with `respx`-mocked HTTP. Tool fail modes (NVD 404, malformed payload, 5xx retry, 429 retry, XXE refusal, oversized CSV download) all covered.
+- **11 property tests** — Hypothesis invariants on `fence_untrusted`, `CveIdStr` regex, Pydantic field constraints.
+- **32 adversarial parametrizations** — prompt injection (8 payloads + marker forgery), XXE variants (4), malformed CVE IDs (14), Unicode homoglyphs (5), resource exhaustion (oversize CSV, huge hostname/port lists).
+- **8 observability tests** — span emission per tool, attribute schema, privacy invariants (no secret / no user query text / no NVD description in span attributes).
+
+See [`docs/design.md`](docs/design.md#defended-invariants-property-and-adversarial-tests) for the full invariant table.
+
+## Security posture
+
+Every "HIGH" finding from an independent security review is mapped to the code change that addressed it, documented in [`docs/design.md`](docs/design.md#threat-model). Highlights:
+
+- **Strict typing at the model boundary** — every tool I/O is a Pydantic model. `mypy --strict` enforced.
+- **Untrusted-content fencing** — every free-text vendor field returned by a tool is wrapped with `<UNTRUSTED_CONTENT>...</UNTRUSTED_CONTENT>` markers at the code boundary (see `mcp_server/security.py`). The agent system prompt names these markers and instructs the LLM to treat their content as data.
+- **XXE-safe XML parsing** — `defusedxml` with explicit `forbid_dtd=True` (tighter than defusedxml's default). Tested against the classic, external-DTD, parameter-entity, and billion-laughs payloads.
+- **Sliding-window rate limiter, race-free** — the NVD client limiter sleeps outside its lock (a CRITICAL bug caught in the security review and fixed).
+- **Bounded resource consumption** — ExploitDB CSV streamed with a 20 MB cap and post-redirect host validation against `gitlab.com`; semantic search query truncated at the tool boundary; Nmap hostnames / ports per host capped at 50 / 200; seed pagination capped at 25 pages per severity.
+- **Singletons concurrency-safe** — double-checked locking on the ChromaDB collection and the Exploit-DB index, both for the threading and the asyncio paths.
+- **Error-payload allowlist** — the SSE `error` event surfaces a generic message for any exception type not on an explicit allowlist. Internal exception messages (with params, paths, library internals) never leak to the client.
+- **Container hardening** — non-root users (`secrecon` uid 1000 backend, `node` uid 1000 frontend), `read_only: true`, `tmpfs:/tmp`, `no-new-privileges`, ports bound to `127.0.0.1`. `apt upgrade` in the runtime stage to pick up Debian security patches; `docker scout cves` reports 0 CRITICAL and only inherited HIGH findings in base-image packages our runtime does not invoke.
+
+## Project layout
+
+```
+sec-recon-agent/
+├── src/sec_recon_agent/
+│   ├── agent/              # Pydantic AI triage agent
+│   │   ├── prompts.py      # system prompt (versioned independently)
+│   │   ├── schema.py       # TriageReport, CVEReference, enums
+│   │   └── triage.py       # build_agent(), export_anthropic_api_key_to_env
+│   ├── api/
+│   │   └── stream.py       # FastAPI app, POST /v1/triage (SSE), GET /v1/health
+│   ├── mcp_server/
+│   │   ├── errors.py       # typed exception hierarchy
+│   │   ├── models.py       # CVEDetail, CVECandidate, ExploitCheck, NmapScanResult
+│   │   ├── nvd_client.py   # shared rate limiter + retry-wrapped HTTP getter
+│   │   ├── security.py     # fence_untrusted, UNTRUSTED markers
+│   │   ├── server.py       # FastMCP instance, tool registration
+│   │   └── tools/
+│   │       ├── cve.py            # cve_lookup
+│   │       ├── cve_search.py     # cve_semantic_search + seed_index
+│   │       ├── exploits.py       # exploit_check (Exploit-DB + GitHub)
+│   │       └── nmap.py           # nmap_parse_xml
+│   ├── config.py           # pydantic-settings Settings instance
+│   └── observability.py    # setup_tracing + httpx auto-instrumentation
+│
+├── frontend/
+│   ├── src/
+│   │   ├── app/            # Next.js App Router: layout, page, /api/triage proxy, globals.css
+│   │   ├── components/     # header, triage-form, progress-stream, report view, sidebar, theme-toggle
+│   │   ├── components/ui/  # shadcn primitives (button, badge, card, ...)
+│   │   ├── hooks/          # use-triage (agent run state), use-history (localStorage)
+│   │   └── lib/            # types (mirror Pydantic), sse client, utils
+│   ├── Dockerfile          # multi-stage node:22-alpine, Next.js standalone output
+│   ├── package.json
+│   └── tailwind.config.ts  # Catppuccin tokens, animations
+│
+├── tests/
+│   ├── agent/              # agent factory smoke + system-prompt drift detector
+│   ├── api/                # FastAPI TestClient + fake agent
+│   ├── mcp_server/         # tool contracts (cve, cve_search, exploits, nmap) + security primitive
+│   ├── property/           # Hypothesis invariants + adversarial corpus
+│   └── test_observability.py  # span emission + privacy invariants
+│
+├── docs/
+│   ├── design.md           # architecture + decisions + threat model + invariants
+│   └── frontend.md         # frontend component map + SSE wire protocol
+│
+├── examples/
+│   └── triage_walkthrough.md   # 3 real agent sessions captured live
+│
+├── data/                   # gitignored: ChromaDB index, Exploit-DB CSV cache
+│
+├── Dockerfile              # backend image (mcp-server and agent-api)
+├── docker-compose.yml      # 3 services + observability profile + seed-job profile
+├── Makefile                # build, seed, up, down, logs, triage, obs-up, ui, ...
+├── pyproject.toml          # uv, mypy --strict, ruff, pytest config
+├── uv.lock                 # frozen dependency tree
+├── CLAUDE.md               # project-local Claude Code instructions
+├── README.md               # this file
+└── .env.example            # documented env vars
+```
+
+## Documentation index
+
+- [`docs/design.md`](docs/design.md) — the engineering brief. Architecture decisions with rejected alternatives, threat model with finding-to-fix mapping, defended invariants table, residual risks, testing strategy, operational notes.
+- [`docs/frontend.md`](docs/frontend.md) — frontend component map, SSE wire protocol, theming, state management.
+- [`examples/triage_walkthrough.md`](examples/triage_walkthrough.md) — three real agent sessions captured against the live stack on 2026-05-18.
+- [`CLAUDE.md`](CLAUDE.md) — project-local Claude Code conventions and hard requirements.
 
 ## License
 

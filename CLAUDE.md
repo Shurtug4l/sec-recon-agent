@@ -41,16 +41,31 @@ curl http://localhost:8000/v1/health   # quick liveness check
 ## Repository layout
 
 ```
-src/sec_recon_agent/
-  agent/         # Pydantic AI agent: schema (TriageReport), prompts, triage logic
-  mcp_server/    # MCP server: FastMCP instance, I/O models
-    tools/      # one module per tool (cve.py, cve_search.py, exploits.py, nmap.py)
-  api/          # FastAPI SSE endpoint, agent-side
-  config.py     # pydantic-settings, single Settings instance
-tests/          # pytest, asyncio_mode=auto, respx for HTTP mocks
-data/           # gitignored: ChromaDB index, raw CVE dumps
-docs/           # design.md (threat model, architecture rationale)
-examples/       # walkthrough markdown files with real outputs
+src/sec_recon_agent/        # backend (Python)
+  agent/                    # Pydantic AI agent: schema (TriageReport), prompts, triage
+  mcp_server/               # MCP server: FastMCP instance, I/O models, security primitive
+    tools/                  # one module per tool (cve, cve_search, exploits, nmap)
+  api/                      # FastAPI SSE endpoint
+  observability.py          # OpenTelemetry setup (lazy OTLP, httpx auto-instrument)
+  config.py                 # pydantic-settings, single Settings instance
+
+frontend/                   # Next.js 15 + React 19 + TS + Tailwind
+  src/app/                  # App Router: layout, page, /api/triage proxy, globals.css
+  src/components/           # header, triage-form, progress-stream, report, sidebar
+  src/components/ui/        # shadcn-style primitives (Button, Badge, Card, ...)
+  src/hooks/                # use-triage (agent run state), use-history (localStorage)
+  src/lib/                  # types (mirror Pydantic), sse client, utils
+  Dockerfile                # multi-stage node:22-alpine, Next standalone output
+
+tests/                      # pytest, asyncio_mode=auto, respx, hypothesis
+  property/                 # Hypothesis invariants + adversarial corpus
+data/                       # gitignored: ChromaDB index, Exploit-DB CSV cache
+docs/                       # design.md (architecture + threat model), frontend.md
+examples/                   # walkthrough markdown files with real outputs
+
+Dockerfile                  # backend image (mcp-server + agent-api)
+docker-compose.yml          # 3 services + observability profile + seed-job profile
+Makefile                    # build, seed, up, down, logs, triage, obs-up, ui, ...
 ```
 
 ## Conventions
@@ -64,16 +79,29 @@ examples/       # walkthrough markdown files with real outputs
 - **Commits**: Conventional Commits with scope. Examples: `feat(mcp): add cve_lookup tool`, `fix(agent): handle empty CVE list in TriageReport`, `docs(design): add threat model section`, `chore(deps): bump pydantic-ai to 0.0.20`.
 - **Branches**: `feature/<slug>`, `fix/<slug>`, `docs/<slug>`, `chore/<slug>`. Never commit to `main` directly. User merges branches manually via `!`-prefixed shell.
 
-## Threat model (lives in `docs/design.md`, to be written)
+## Frontend conventions (frontend/)
+
+- **File names**: `kebab-case.tsx` for components, `kebab-case.ts` for non-React modules. Override of the global snake_case rule because this is the standard React/Next convention.
+- **TypeScript**: strict mode required. No `any`, no `@ts-ignore` without a comment naming the underlying upstream type issue.
+- **Components**: function components only. Co-locate prop interfaces with the component. Use shadcn-style primitives from `src/components/ui/`; new design-system pieces go there.
+- **State**: page-local state via custom hooks (`use-triage`, `use-history`). No global state library; this app is too small for Redux/Zustand.
+- **Styling**: Tailwind utilities; CSS-variable design tokens from `globals.css`. Severity-specific utilities (`.severity-critical`, ...) are domain semantic, not generic UI tokens.
+- **SSE protocol changes**: every change to the backend SSE event shape (`api/stream.py`) requires a matching update in `src/lib/types.ts` and `src/lib/sse.ts`. The types are hand-mirrored; no codegen.
+- **No client-side LLM calls.** `ANTHROPIC_API_KEY` lives only in the backend process; the browser must never see it.
+- **No CORS opened on the backend.** Browser talks only to `/api/triage` on the same Next.js origin; the route proxies to FastAPI. Adding CORS would break that boundary.
+
+## Threat model (lives in `docs/design.md`)
 
 When implementing or reviewing any code in this repo, explicitly consider:
-1. **Prompt injection** via NVD/vendor description fields (untrusted) — fence with markers
+1. **Prompt injection** via NVD/vendor description fields (untrusted) — fence with `mcp_server/security.py::fence_untrusted` markers
 2. **Tool output validation** — Pydantic at the boundary, never raw dict
 3. **Rate limit / DoS** on external APIs (NVD especially: 5 req / 30s without API key, 50 with)
-4. **Secret handling** — `SecretStr` in Settings, never logged, never echoed
-5. **XML parsing safety** — `defusedxml` blocks XXE / billion-laughs
+4. **Secret handling** — `SecretStr` in Settings, exported to `os.environ` exactly once at startup, never logged, never echoed
+5. **XML parsing safety** — `defusedxml` with `forbid_dtd=True` blocks XXE / billion-laughs / external DTD
 6. **SSE backpressure** — slow clients must not block the agent loop
 7. **MCP tool surface minimality** — every additional tool is additional attack surface; keep to 4 unless justified
+8. **Observability privacy** — never put user query text, secrets, or untrusted vendor content in span attributes (enforced by `tests/test_observability.py` canary tests)
+9. **Frontend boundary** — no CORS on the backend; browser talks only to Next.js proxy
 
 ## Recommended skills and references
 

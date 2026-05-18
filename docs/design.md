@@ -11,30 +11,53 @@ Built as a portfolio piece, not a production deployment. The design choices are 
 ## System architecture
 
 ```
-client -- HTTP+SSE --> agent API (FastAPI, :8000)
-                            |
-                            | Pydantic AI tool calls
-                            v
-                       MCP client -- HTTP+SSE --> MCP server (FastMCP, :8001)
-                                                       |
-                                                       +-- NVD CVE 2.0  (cve_lookup)
-                                                       +-- ChromaDB      (cve_semantic_search)
-                                                       +-- ExploitDB CSV (exploit_check)
-                                                       +-- GitHub Search (exploit_check)
-                                                       +-- defusedxml    (nmap_parse_xml)
+Browser
+   |
+   | HTTP                          (only same-origin; no CORS opened on backend)
+   v
++------------------------------+
+|  Frontend (Next.js 15)       |  :3000
+|  React 19 + Tailwind         |
+|  /api/triage  ──── proxy ────┐
++------------------------------+│
+                                │  HTTP+SSE
+                                v
+                       +------------------------------+
+                       |  Agent API (FastAPI)         |  :8000
+                       |  Pydantic AI agent           |
+                       |  POST /v1/triage  (SSE)      |
+                       |  GET  /v1/health             |
+                       +-------------+----------------+
+                                     |  MCPToolset (HTTP+SSE)
+                                     v
+                       +------------------------------+
+                       |  MCP Server (FastMCP)        |  :8001
+                       |  4 typed tools               |
+                       +---+---+---+---+--------------+
+                           |   |   |   |
+                NVD CVE 2.0|   |   |   |defusedxml (nmap_parse_xml)
+                           |   |   |
+                  ChromaDB |   |   |Exploit-DB CSV + GitHub Search
+              (cve_search) |   |   |(exploit_check, parallel fan-out)
+                           |   |
+                           +-- cve_lookup (httpx, rate-limited, retry)
 ```
 
-Two processes, deliberately. The agent and the MCP server live in separate uvicorn instances bound to different ports. Either can restart without taking the other down. The MCP transport between them is HTTP+SSE, the same protocol the agent exposes to its own clients, so the dataflow is symmetric.
+Four processes, deliberately. The frontend, the agent API, and the MCP server are independent containers; each restarts without taking the others down. The browser only ever sees `:3000` — the agent API has no CORS opened and stays single-tenant; the Next.js `/api/triage` route forwards the SSE stream byte-for-byte upstream. The MCP transport between agent and MCP server is HTTP+SSE, the same protocol the agent exposes to its own clients, so the dataflow is symmetric.
 
 ## Component breakdown
 
-**`mcp_server/`** — owns the FastMCP instance, the typed I/O models for tools, the shared NVD client (rate limiter, retry, header builder), the cross-cutting `security.py` primitive, and the four tool modules.
+**`src/sec_recon_agent/mcp_server/`** — owns the FastMCP instance, the typed I/O models for tools, the shared NVD client (rate limiter, retry, header builder), the cross-cutting `security.py` primitive, and the four tool modules. `errors.py` defines the exception hierarchy; `nvd_client.py` centralizes the sliding-window rate limiter so `cve_lookup` and the `cve_search` seed pipeline share one rate budget.
 
-**`agent/`** — the Pydantic AI agent definition (`triage.py`), its output schema (`schema.py`: `TriageReport`, `CVEReference`, `Severity`, `Confidence`), and the system prompt (`prompts.py`, in its own module so it can be versioned and reviewed independently from the agent wiring).
+**`src/sec_recon_agent/agent/`** — the Pydantic AI agent definition (`triage.py`), its output schema (`schema.py`: `TriageReport`, `CVEReference`, `Severity`, `Confidence`), and the system prompt (`prompts.py`, in its own module so it can be versioned and reviewed independently from the agent wiring). The agent uses `MCPToolset` (Pydantic AI's current MCP API; replaces the deprecated `MCPServerSSE`) to discover and call tools.
 
-**`api/`** — the FastAPI surface (`stream.py`): `POST /v1/triage` streaming SSE events, `GET /v1/health`.
+**`src/sec_recon_agent/api/`** — the FastAPI surface (`stream.py`): `POST /v1/triage` streaming SSE events, `GET /v1/health`. The `main()` entry point also runs `setup_tracing()` and `export_anthropic_api_key_to_env()` exactly once at process startup.
 
-**`config.py`** — a single `Settings` instance loaded from `.env` via pydantic-settings. API keys are `SecretStr | None` so logs and tracebacks do not leak them.
+**`src/sec_recon_agent/config.py`** — a single `Settings` instance loaded from `.env` via pydantic-settings. API keys are `SecretStr | None` so logs and tracebacks do not leak them. The Anthropic key is pushed to `os.environ` exactly once at startup (Pydantic AI's Anthropic provider reads from the env), not per request.
+
+**`src/sec_recon_agent/observability.py`** — `setup_tracing(service_name)` is idempotent and configures the OTel tracer provider. Default exporter is `ConsoleSpanExporter`; `OTLPSpanExporter` is lazy-imported only if `OTEL_EXPORTER_OTLP_ENDPOINT` is set. `HTTPXClientInstrumentor` is enabled here so every outbound NVD / GitHub / ExploitDB call gets a span (and propagates W3C `traceparent` for cross-process tracing).
+
+**`frontend/`** — a Next.js 15 App Router application on React 19. The browser is the primary interface; `/api/triage` proxies the SSE stream from the FastAPI backend without ever exposing CORS. See [`docs/frontend.md`](frontend.md) for the component map.
 
 ## Decisions log
 
@@ -49,6 +72,12 @@ Two processes, deliberately. The agent and the MCP server live in separate uvico
 **Why structured output (`TriageReport` Pydantic model) over free-text.** The system prompt could ask for a markdown summary and a downstream parser could pull fields out of it. That is the fragile pattern. Pydantic-typed output enforces the contract at the model boundary: the LLM cannot return a "report" without a CVSS severity field. Combined with `mypy --strict` upstream, the call site can rely on the schema instead of doing defensive `getattr` everywhere.
 
 **Why two separate uvicorn processes over a monolith.** Single-process is faster to start and slightly cheaper. The two-process layout exists because (a) the MCP server is a reusable service that any MCP client can talk to (Claude Desktop, a different agent, a CLI), not just our agent, and (b) a fault in one process does not crash the other. The cost is one extra TCP binding and one extra `uv run` command at startup. For a portfolio demo, the architectural clarity wins.
+
+**Why Next.js 15 + React 19 for the frontend over a single-page Vite app.** The Etiqa job ad explicitly lists "React / TypeScript" as nice-to-have; using Next.js makes the same React/TS stack while adding a server-side `/api/triage` route that can proxy the SSE stream without opening CORS on the backend. Next.js standalone build mode produces a Docker image ~150 MB without a separate nginx tier. Vercel AI SDK was evaluated and dropped: it targets provider-specific completion APIs and would not add value over a thin SSE client wrapped around `fetch`.
+
+**Why Tailwind + shadcn-style primitives over a component library (Mantine, MUI, Chakra).** shadcn's "copy not import" model keeps the dependency surface small (only Radix primitives and `class-variance-authority`) and lets the Catppuccin palette drop in via CSS variables without overriding library defaults. A heavy library would lock the design language and add ~1 MB of JS bundle for components we use sparingly. Framer-motion was tried and dropped because its 11.x TypeScript types fight TS 5.7 strict mode on `motion.button + onClick` and the polish gain did not justify the type-system contortions; entry animations now use Tailwind keyframes.
+
+**Why the browser talks only to `/api/triage` and not to FastAPI directly.** Two reasons. (1) No CORS opened on the agent API; the backend stays single-tenant by design (no auth, no per-client rate limit). (2) The proxy is the right place to add future cross-cutting concerns (rate limit per IP, request logging for audit, auth handshake) without changing FastAPI itself. Today the proxy is a 20-line passthrough.
 
 ## Threat model
 
@@ -145,18 +174,38 @@ End-to-end runs against a real LLM are deliberately not in the test suite. They 
 
 ## Operational notes
 
+The primary run path is Docker Compose:
+
+```bash
+cp .env.example .env       # set ANTHROPIC_API_KEY
+make build                 # backend + frontend, multi-stage
+make seed                  # one-shot: populate ChromaDB on the shared volume
+make up                    # mcp-server + agent-api + frontend
+make ui                    # open http://localhost:3000
+make obs-up                # variant: add Jaeger sidecar; OTEL endpoint auto-wired
+```
+
+For local development without containers:
+
 ```bash
 uv sync
-cp .env.example .env  # set ANTHROPIC_API_KEY at minimum
-
-uv run sec-recon-seed     # one-shot: populate ChromaDB
-uv run sec-recon-mcp      # terminal 1: MCP server on :8001
-uv run sec-recon-api      # terminal 2: agent API on :8000
-
-curl -N -X POST http://localhost:8000/v1/triage \
-  -H "Content-Type: application/json" \
-  -d '{"query": "Apache 2.4.49 on port 80. Risk?"}'
+uv run sec-recon-seed
+uv run sec-recon-mcp     # terminal 1
+uv run sec-recon-api     # terminal 2
+cd frontend && npm install --legacy-peer-deps && npm run dev   # terminal 3
 ```
+
+Environment variables of note (full list in `.env.example`):
+
+| Variable | Required | Effect |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | yes | Pydantic AI's Anthropic provider reads this from env |
+| `NVD_API_KEY` | no | Raises NVD rate limit from 5 to 50 req / 30 s |
+| `GITHUB_TOKEN` | no | Enables GitHub Code Search in `exploit_check`; without it the GitHub side returns `[]` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | no | Switch from console exporter to OTLP/HTTP (e.g. `http://jaeger:4318`) |
+| `LLM_MODEL` | no | Default `claude-sonnet-4-6`; overridable per `.env` |
+| `CHROMA_PERSIST_DIR` | no | Default `./data/cve_index`; on disk |
+| `NVD_RATE_LIMIT_PER_30S` | no | Override the local sliding-window cap (default 5) |
 
 Environment variables of note:
 - `ANTHROPIC_API_KEY` — required for the agent to call the model.
