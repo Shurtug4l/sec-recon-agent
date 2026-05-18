@@ -32,7 +32,8 @@ The whole stack runs with `make up`: backend (MCP server + FastAPI agent) + fron
              ├── NVD CVE 2.0 API           (cve_lookup, async + rate-limited)
              ├── ChromaDB ONNX MiniLM-L6   (cve_semantic_search, ~20k CVE corpus)
              ├── Exploit-DB CSV + GitHub   (exploit_check, parallel fan-out)
-             └── defusedxml                (nmap_parse_xml, XXE-safe)
+             ├── defusedxml                (nmap_parse_xml, XXE-safe)
+             └── MITRE ATT&CK mapping      (attack_mapping, CWE -> techniques + mitigations)
 ```
 
 ## Table of contents
@@ -67,7 +68,7 @@ You should see three containers reach `Healthy` and a web UI ready for queries. 
 
 ## What it does
 
-The agent is built around four MCP tools, each with a typed Pydantic contract.
+The agent is built around five MCP tools, each with a typed Pydantic contract.
 
 **`cve_lookup(cve_id)`** — fetches the full NVD CVE 2.0 record for a given ID. Returns `CVEDetail` with CVSS v3 score and severity, CWE IDs, affected CPEs, references. Async httpx client with a sliding-window rate limiter (5 req / 30 s without an NVD API key, 50 with) and tenacity exponential backoff on 5xx, 429, and connection errors.
 
@@ -76,6 +77,8 @@ The agent is built around four MCP tools, each with a typed Pydantic contract.
 **`exploit_check(cve_id)`** — queries Exploit-DB (cached CSV manifest from GitLab, refreshed weekly) and GitHub Code Search (optional, requires `GITHUB_TOKEN`) in parallel via `asyncio.gather`. Returns `ExploitCheck` with `has_public_exploit`, Exploit-DB IDs, and GitHub PoC URLs. Gracefully degrades to `[]` on the GitHub side when no token is set or the search is rate-limited.
 
 **`nmap_parse_xml(xml_content)`** — parses Nmap XML scan output with `defusedxml` and `forbid_dtd=True` (tighter than defusedxml's default). Returns `NmapScanResult` with structured hosts, ports, services, and product/version banners. XXE-safe; verified by an adversarial test corpus.
+
+**`attack_mapping(cwe_ids)`** — maps a list of CWE IDs to MITRE ATT&CK techniques and their mitigations. Bundled curated mapping (35 CWEs, 13 techniques, 15 mitigations) covering the patterns most commonly seen in CRITICAL+HIGH CVEs. Enriches the report with adversary-side context (how an attacker would actually use the flaw) and defense-side guidance.
 
 The agent (`agent/triage.py`) wires these into a Pydantic AI loop with a system prompt that:
 1. Names every tool and when to call which
@@ -186,8 +189,9 @@ uv run pytest tests/property    # property + adversarial only
 make lint                       # ruff + mypy --strict
 ```
 
-**Suite count: 89 passing.** Breakdown:
+**Suite count: 98 passing** (96 fast + 2 slow). Breakdown:
 - **36 contract tests** — every MCP tool has Pydantic I/O contract tests with `respx`-mocked HTTP. Tool fail modes (NVD 404, malformed payload, 5xx retry, 429 retry, XXE refusal, oversized CSV download) all covered. Includes `/v1/meta` endpoint contract.
+- **9 ATT&CK mapping contract tests** — CWE→technique table, deduplication, mitigation presence, unknown-CWE silence, malformed input.
 - **11 property tests** — Hypothesis invariants on `fence_untrusted`, `CveIdStr` regex, Pydantic field constraints.
 - **32 adversarial parametrizations** — prompt injection (8 payloads + marker forgery), XXE variants (4), malformed CVE IDs (14), Unicode homoglyphs (5), resource exhaustion (oversize CSV, huge hostname/port lists).
 - **8 observability tests** — span emission per tool, attribute schema, privacy invariants (no secret / no user query text / no NVD description in span attributes).
@@ -225,10 +229,12 @@ sec-recon-agent/
 │   │   ├── security.py     # fence_untrusted, UNTRUSTED markers
 │   │   ├── server.py       # FastMCP instance, tool registration
 │   │   └── tools/
+│   │       ├── attack.py         # attack_mapping (MITRE ATT&CK)
 │   │       ├── cve.py            # cve_lookup
 │   │       ├── cve_search.py     # cve_semantic_search + seed_index
 │   │       ├── exploits.py       # exploit_check (Exploit-DB + GitHub)
 │   │       └── nmap.py           # nmap_parse_xml
+│   │   data/                     # bundled MITRE ATT&CK CWE -> technique mapping
 │   ├── config.py           # pydantic-settings Settings instance
 │   └── observability.py    # setup_tracing + httpx auto-instrumentation
 │
