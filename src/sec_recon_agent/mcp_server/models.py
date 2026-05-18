@@ -48,18 +48,23 @@ class KevCheck(BaseModel):
     the CVE is on CISA's Known Exploited Vulnerabilities list and federal
     agencies are required to patch it by `due_date`. The remaining fields
     are CISA-provided metadata for human review.
+
+    Free-text fields (`vulnerability_name`, `required_action`, `notes`)
+    arrive wrapped in UNTRUSTED_CONTENT markers from the tool boundary —
+    `max_length` includes ~41 chars of marker overhead on top of the
+    intended payload length.
     """
 
     cve_id: CveIdStr
     in_catalog: bool
     vendor_project: str | None = None
     product: str | None = None
-    vulnerability_name: str | None = Field(default=None, max_length=500)
+    vulnerability_name: str | None = Field(default=None, max_length=550)
     date_added: str | None = None
     due_date: str | None = None
-    required_action: str | None = Field(default=None, max_length=1000)
+    required_action: str | None = Field(default=None, max_length=1050)
     known_ransomware_use: bool | None = None
-    notes: str | None = Field(default=None, max_length=2000)
+    notes: str | None = Field(default=None, max_length=2050)
 
 
 class EpssScore(BaseModel):

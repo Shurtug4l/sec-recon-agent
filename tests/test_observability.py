@@ -42,9 +42,16 @@ def in_memory_spans(monkeypatch: pytest.MonkeyPatch) -> InMemorySpanExporter:
 
     test_tracer = provider.get_tracer("sec_recon_agent")
     # Patch every tool module's _tracer to route into the in-memory exporter.
-    from sec_recon_agent.mcp_server.tools import cve, cve_search, exploits, nmap
+    from sec_recon_agent.mcp_server.tools import (
+        cve,
+        cve_search,
+        epss,
+        exploits,
+        kev,
+        nmap,
+    )
 
-    for module in (cve, cve_search, exploits, nmap):
+    for module in (cve, cve_search, epss, exploits, kev, nmap):
         monkeypatch.setattr(module, "_tracer", test_tracer)
 
     yield exporter
@@ -245,3 +252,110 @@ async def test_span_attributes_never_contain_nvd_description(
                 assert canary not in attr_value, (
                     f"NVD description leaked into span attribute on span {span.name}"
                 )
+
+
+@respx.mock
+async def test_kev_check_emits_span_and_never_leaks_vendor_text(
+    in_memory_spans: InMemorySpanExporter,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    """CISA KEV vendor text (vendor_project, vulnerability_name,
+    required_action, notes) is treated as untrusted in the tool's output
+    but MUST NOT land in span attributes — a telemetry backend is a
+    separate trust domain from the LLM context."""
+    import json as _json
+
+    from sec_recon_agent.config import settings
+    from sec_recon_agent.mcp_server.tools import kev as kev_mod
+    from sec_recon_agent.mcp_server.tools.kev import KEV_CATALOG_URL, kev_check
+
+    monkeypatch.setattr(settings, "chroma_persist_dir", tmp_path / "chroma")
+    kev_mod._reset_kev_index()
+
+    canary_vendor = "VENDOR_CANARY_a1b2c3d4"
+    canary_action = "ACTION_CANARY_QWERTYUIOP"
+    canary_notes = "NOTES_CANARY_zZyYxXwW"
+    payload = {
+        "vulnerabilities": [
+            {
+                "cveID": "CVE-2030-7777",
+                "vendorProject": canary_vendor,
+                "product": "p",
+                "vulnerabilityName": "Some Flaw",
+                "requiredAction": canary_action,
+                "knownRansomwareCampaignUse": "Known",
+                "notes": canary_notes,
+            },
+        ],
+    }
+    respx.get(KEV_CATALOG_URL).mock(
+        return_value=Response(200, content=_json.dumps(payload).encode()),
+    )
+
+    await kev_check("CVE-2030-7777")
+
+    spans = in_memory_spans.get_finished_spans()
+    kev_spans = [s for s in spans if s.name == "tool.kev_check"]
+    assert len(kev_spans) == 1
+    attrs = _attrs(kev_spans[0])
+    assert attrs["tool.name"] == "kev_check"
+    assert attrs["cve.id"] == "CVE-2030-7777"
+    assert attrs["tool.success"] is True
+    assert attrs["kev.in_catalog"] is True
+    assert attrs["kev.known_ransomware"] is True
+
+    for span in spans:
+        for attr_value in _attrs(span).values():
+            if isinstance(attr_value, str):
+                for canary in (canary_vendor, canary_action, canary_notes):
+                    assert canary not in attr_value, (
+                        f"KEV vendor text leaked into span attribute on {span.name}"
+                    )
+
+
+@respx.mock
+async def test_epss_score_emits_span_with_only_structured_attributes(
+    in_memory_spans: InMemorySpanExporter,
+) -> None:
+    """EPSS spans surface only the input CVE ID, the in_dataset flag, and
+    the numeric probability. No free text is on the payload, so this
+    test pins the attribute set rather than searching for canaries."""
+    from sec_recon_agent.mcp_server.tools.epss import EPSS_API_URL, epss_score
+
+    respx.get(EPSS_API_URL).mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "cve": "CVE-2030-8888",
+                        "epss": "0.42",
+                        "percentile": "0.91",
+                        "date": "2026-05-18",
+                    },
+                ],
+            },
+        ),
+    )
+
+    await epss_score("CVE-2030-8888")
+
+    spans = in_memory_spans.get_finished_spans()
+    epss_spans = [s for s in spans if s.name == "tool.epss_score"]
+    assert len(epss_spans) == 1
+    attrs = _attrs(epss_spans[0])
+    assert attrs["tool.name"] == "epss_score"
+    assert attrs["cve.id"] == "CVE-2030-8888"
+    assert attrs["tool.success"] is True
+    assert attrs["epss.in_dataset"] is True
+    assert attrs["epss.probability"] == pytest.approx(0.42)
+
+    # Defensive: no string attribute should carry the raw score date string,
+    # the API response payload, or any free-text canary.
+    allowed_string_attrs = {"tool.name", "cve.id"}
+    for attr_name, attr_value in attrs.items():
+        if isinstance(attr_value, str):
+            assert attr_name in allowed_string_attrs, (
+                f"Unexpected string attribute {attr_name!r} on epss span"
+            )
