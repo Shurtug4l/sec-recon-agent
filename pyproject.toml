@@ -40,9 +40,11 @@ dev = [
     "ruff>=0.7.0",
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
     "respx>=0.21.0",
     "hypothesis>=6.100.0",
     "types-defusedxml>=0.7.0",
+    "pre-commit>=4.0.0",
 ]
 
 [project.scripts]
@@ -91,3 +93,30 @@ testpaths = ["tests"]
 markers = [
     "slow: tests that load the sentence-transformer model or hit ChromaDB; can be skipped via `pytest -m 'not slow'`",
 ]
+
+[tool.coverage.run]
+source = ["sec_recon_agent"]
+branch = true
+# Skip code paths that only run under a live LLM or live MCP transport;
+# they are exercised by the manual eval/redteam suites, not the fast lane.
+omit = [
+    "src/sec_recon_agent/agent/triage.py",       # needs Anthropic key + MCP server
+    "src/sec_recon_agent/api/stream.py",         # entry-point wiring; the handlers are tested via TestClient
+    "src/sec_recon_agent/mcp_server/server.py",  # FastMCP boot
+    "src/sec_recon_agent/eval/cli.py",           # CLI shell
+    "src/sec_recon_agent/eval/runner.py",        # HTTP client against a live stack
+    "src/sec_recon_agent/redteam/cli.py",
+    "src/sec_recon_agent/audit/cli.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]
+show_missing = true
+skip_covered = true
+# Soft floor: keeps a regression from silently dropping coverage.
+fail_under = 70

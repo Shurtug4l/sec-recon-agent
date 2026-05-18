@@ -143,10 +143,9 @@ def test_triage_streams_started_and_final_events(
 
     # Final frame must carry the TriageReport JSON
     final_data_line = next(
-        line for line in body.splitlines()
-        if line.startswith("data: ") and "Fake summary" in line
+        line for line in body.splitlines() if line.startswith("data: ") and "Fake summary" in line
     )
-    payload = json.loads(final_data_line[len("data: "):])
+    payload = json.loads(final_data_line[len("data: ") :])
     assert payload["summary"] == fake_report.summary
     assert payload["severity"] == "high"
 

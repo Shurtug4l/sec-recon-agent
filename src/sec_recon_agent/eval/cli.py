@@ -24,9 +24,7 @@ def _filter_cases(filter_expr: str | None) -> tuple[GoldenCase, ...]:
     if not filter_expr:
         return GOLDEN_SET
     tokens = {t.strip() for t in filter_expr.split(",") if t.strip()}
-    return tuple(
-        c for c in GOLDEN_SET if c.id in tokens or set(c.tags) & tokens
-    )
+    return tuple(c for c in GOLDEN_SET if c.id in tokens or set(c.tags) & tokens)
 
 
 def _format_row(case: GoldenCase, verdict: CaseVerdict, elapsed: float) -> str:
@@ -105,8 +103,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if not health_check(args.api_url):
         print(
-            f"agent API at {args.api_url} is not responding on /v1/health. "
-            f"Did you `make up`?",
+            f"agent API at {args.api_url} is not responding on /v1/health. " f"Did you `make up`?",
             file=sys.stderr,
         )
         return 2
@@ -220,8 +217,7 @@ def _run_comparison(
         per_model[model] = rows
         per_model_pass[model] = passed
         print(
-            f"  -> {passed}/{len(cases)} passed "
-            f"({passed / max(len(cases), 1):.0%})",
+            f"  -> {passed}/{len(cases)} passed " f"({passed / max(len(cases), 1):.0%})",
         )
 
     # Side-by-side summary

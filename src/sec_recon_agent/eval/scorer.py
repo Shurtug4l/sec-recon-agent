@@ -81,9 +81,7 @@ def score(case: GoldenCase, report: TriageReport) -> CaseVerdict:
         kev_ok = True
 
     # --- ransomware flag ---
-    ransomware_observed = any(
-        c.known_ransomware_use is True for c in report.cves
-    )
+    ransomware_observed = any(c.known_ransomware_use is True for c in report.cves)
     if case.expected_ransomware:
         ransomware_ok = ransomware_observed
         if not ransomware_ok:

@@ -227,7 +227,8 @@ async def cve_semantic_search(query: str, top_k: int = 5) -> list[CVECandidate]:
         def _query_sync() -> dict[str, Any]:
             collection = _get_collection()
             result_dict: dict[str, Any] = collection.query(
-                query_texts=[query], n_results=top_k,
+                query_texts=[query],
+                n_results=top_k,
             )
             return result_dict
 

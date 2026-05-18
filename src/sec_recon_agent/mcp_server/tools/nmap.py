@@ -71,9 +71,7 @@ def _parse_host(host_el: XmlElement) -> NmapHost | None:
     # Cap hostnames and ports per host: a crafted Nmap XML with thousands
     # of <hostname> or <port> children should not be able to inflate the
     # returned payload arbitrarily.
-    hostnames = [
-        name for hn in host_el.findall(".//hostname") if (name := hn.get("name"))
-    ][:50]
+    hostnames = [name for hn in host_el.findall(".//hostname") if (name := hn.get("name"))][:50]
     ports: list[NmapPort] = []
     for port_el in host_el.findall(".//port")[:200]:
         parsed = _parse_port(port_el)

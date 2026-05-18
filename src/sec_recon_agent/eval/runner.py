@@ -54,9 +54,9 @@ def _iter_sse_events(text_iter: httpx.Response) -> list[dict[str, str]]:
             record: dict[str, str] = {}
             for line in frame.splitlines():
                 if line.startswith("event: "):
-                    record["event"] = line[len("event: "):].strip()
+                    record["event"] = line[len("event: ") :].strip()
                 elif line.startswith("data: "):
-                    record["data"] = line[len("data: "):]
+                    record["data"] = line[len("data: ") :]
             if record:
                 events.append(record)
     return events
