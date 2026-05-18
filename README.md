@@ -210,6 +210,7 @@ Settings live in `.env` (see `.env.example`): `AUDIT_LOG_ENABLED`, `AUDIT_DB_PAT
 - [Testing](#testing)
 - [Eval suite (end-to-end)](#eval-suite-end-to-end)
 - [Security posture](#security-posture)
+- [Development workflow](#development-workflow)
 - [Project layout](#project-layout)
 - [Documentation index](#documentation-index)
 - [License](#license)
@@ -406,6 +407,29 @@ Every "HIGH" finding from an independent security review is mapped to the code c
 - **Singletons concurrency-safe** — double-checked locking on the ChromaDB collection and the Exploit-DB index, both for the threading and the asyncio paths.
 - **Error-payload allowlist** — the SSE `error` event surfaces a generic message for any exception type not on an explicit allowlist. Internal exception messages (with params, paths, library internals) never leak to the client.
 - **Container hardening** — non-root users (`secrecon` uid 1000 backend, `node` uid 1000 frontend), `read_only: true`, `tmpfs:/tmp`, `no-new-privileges`, ports bound to `127.0.0.1`. `apt upgrade` in the runtime stage to pick up Debian security patches; `docker scout cves` reports 0 CRITICAL and only inherited HIGH findings in base-image packages our runtime does not invoke.
+
+## Development workflow
+
+`main` is a protected branch on GitHub. The protection rules are:
+
+- **Pull-request only**: no direct push to `main`. Every change lands through a PR.
+- **Required status checks**: `lint + type-check + tests` (backend) and `type-check + build` (frontend) must be green before a PR can be merged. The audit trail tests, the SBOM contract tests, and the red-team scorer all run inside the backend job.
+- **Branches up to date before merging**: enforces rebase against `main` before the merge button is clickable. Combined with...
+- **Linear history**: prevents merge commits. The history reads as a clean sequence of intentional commits, never a tree of fix-ups.
+- **No force pushes, no deletions, no bypasses**: applies to admins (myself) as well — the rules describe how the project actually works, not how it would work if someone remembers to follow them.
+
+The flow for any change:
+
+```bash
+git checkout -b <type>/<slug>       # feat/, fix/, chore/, docs/
+# ...edits, lint, mypy, pytest locally...
+git push -u origin <type>/<slug>
+gh pr create --title "<type>(<scope>): <subject>"
+gh pr checks <n> --watch            # wait for CI
+gh pr merge <n> --rebase --delete-branch
+```
+
+Commit subjects follow Conventional Commits; the body explains *why*, not *what* (the diff already says *what*). Public commit history under `git log` on `main` is the canonical record.
 
 ## Project layout
 
