@@ -34,5 +34,5 @@ data/
 
 .aider*
 
-# Track project-local CLAUDE.md (overrides global gitignore)
-!CLAUDE.md
+# CLAUDE.md is personal AI-tooling config; the global gitignore already
+# excludes it. Do NOT add a `!CLAUDE.md` override here. Keep it local-only.
