@@ -362,7 +362,7 @@ make lint                       # backend (ruff + mypy --strict) + frontend (ESL
 
 The frontend ESLint setup uses the flat config (`frontend/eslint.config.mjs`) bridged through `FlatCompat` to `next/core-web-vitals` + `next/typescript`. CI runs `npm run lint` between `type-check` and `build`.
 
-**Suite count: 178 passing** (176 fast + 2 slow). Breakdown:
+**Suite count: 184 passing** (182 fast + 2 slow). Breakdown:
 - **36 contract tests** — every MCP tool has Pydantic I/O contract tests with `respx`-mocked HTTP. Tool fail modes (NVD 404, malformed payload, 5xx retry, 429 retry, XXE refusal, oversized CSV download) all covered. Includes `/v1/meta` endpoint contract.
 - **11 KEV contract tests** — hit, miss, ransomware flag normalization, single-fetch invariant, oversized payload, non-200, malformed JSON, missing top-level list, hostile entry tolerance, free-text truncation, untrusted-content fencing for hostile vendor payloads.
 - **9 EPSS contract tests** — hit, miss, non-200, non-JSON, missing data field, wrong-type entry, mismatched CVE defense, out-of-range scores, non-numeric scores.
@@ -374,6 +374,7 @@ The frontend ESLint setup uses the flat config (`frontend/eslint.config.mjs`) br
 - **14 audit-trail tests** — 7 hash-chain model tests (canonical serialization, seal determinism, tamper detection at the link level) + 7 store tests (genesis chaining, subsequent-row chaining, verify on clean chain, field-mutation tamper, forged-row insert, SQLite trigger enforcement, tail ordering). Two API integration tests assert that one event lands per call (success or error path).
 - **13 SBOM contract tests** — CycloneDX, SPDX, requirements.txt happy paths; dedup, truncation, missing-name skip; malformed JSON; unsupported shapes; extras + environment markers in requirements lines.
 - **9 red-team scorer tests** — pattern absence (case-insensitive), value-equality refusals, multi-check pass/fail semantics, `any` field aggregation, summary aggregator.
+- **6 auth + rate-limit tests** — meta endpoint open by default, requires Bearer / X-API-Key when configured, wrong key rejected, health stays open, triage 401 without key + 200 with key, rate-limit 429 above the cap with generic detail, settings csv parser from env.
 
 See [`docs/design.md`](docs/design.md#defended-invariants-property-and-adversarial-tests) for the full invariant table.
 
@@ -466,6 +467,33 @@ Every "HIGH" finding from an independent security review is mapped to the code c
 - **Singletons concurrency-safe** — double-checked locking on the ChromaDB collection and the Exploit-DB index, both for the threading and the asyncio paths.
 - **Error-payload allowlist** — the SSE `error` event surfaces a generic message for any exception type not on an explicit allowlist. Internal exception messages (with params, paths, library internals) never leak to the client.
 - **Container hardening** — non-root users (`secrecon` uid 1000 backend, `node` uid 1000 frontend), `read_only: true`, `tmpfs:/tmp`, `no-new-privileges`, ports bound to `127.0.0.1`. `apt upgrade` in the runtime stage to pick up Debian security patches; `docker scout cves` reports 0 CRITICAL and only inherited HIGH findings in base-image packages our runtime does not invoke.
+- **Opt-in API auth + per-IP rate limit** — `API_KEYS=<csv>` switches on `Authorization: Bearer` / `X-API-Key` enforcement on `/v1/triage` and `/v1/meta` (`/v1/health` stays public for orchestrators); `RATE_LIMIT_PER_MINUTE=<n>` enables a slowapi limiter. The auth dependency uses `hmac.compare_digest` for constant-time comparison and the 429 body never echoes the configured limit.
+
+### Authentication and rate limiting
+
+Two env switches, both default off so `make up` on a dev laptop works without ceremony.
+
+```bash
+# In .env or the host environment
+API_KEYS="key-one,key-two,key-three"   # any one of these is accepted
+RATE_LIMIT_PER_MINUTE=30               # per-IP cap on /v1/triage
+AGENT_API_KEY="key-one"                # propagated by the Next.js proxy
+```
+
+`make up` picks them up via docker-compose. With both set:
+
+```bash
+# Direct call to the FastAPI surface (auth required)
+curl -N -X POST http://localhost:8000/v1/triage \
+  -H "Authorization: Bearer key-one" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "CVE-2021-41773"}'
+
+# Browser flow stays unchanged: the user hits /api/triage on Next.js,
+# which attaches AGENT_API_KEY upstream server-side.
+```
+
+`/v1/health` remains open under any configuration — required so container orchestrators (Docker, Kubernetes) can run liveness probes without holding a key.
 
 ## Development workflow
 
@@ -551,17 +579,28 @@ sec-recon-agent/
 ├── Makefile                # build, seed, up, down, logs, triage, obs-up, ui, ...
 ├── pyproject.toml          # uv, mypy --strict, ruff, pytest config
 ├── uv.lock                 # frozen dependency tree
-├── CLAUDE.md               # project-local Claude Code instructions
+├── SECURITY.md             # responsible disclosure policy
 ├── README.md               # this file
 └── .env.example            # documented env vars
 ```
 
+## Governance and compliance mapping
+
+For an AI Security / governance reviewer, two documents map every applied control against the relevant external taxonomy:
+
+- [`docs/owasp_llm_top10.md`](docs/owasp_llm_top10.md) — the codebase mapped against [OWASP Top 10 for LLM Applications (2025)](https://owasp.org/www-project-top-10-for-large-language-model-applications/). One row per risk (LLM01..LLM10) with status (mitigated / partial / N/A), layered controls, file:line citations, and the falsifiable tests that defend each invariant.
+- [`docs/mitre_atlas.md`](docs/mitre_atlas.md) — the codebase mapped against [MITRE ATLAS](https://atlas.mitre.org/) tactics + techniques. Pairs with the adversary-side MITRE ATT&CK framework already integrated via the `attack_mapping` tool.
+
+Together they answer two questions a reviewer asks: "what risks did you consider?" and "where exactly is each control in the code?".
+
 ## Documentation index
 
 - [`docs/design.md`](docs/design.md) — the engineering brief. Architecture decisions with rejected alternatives, threat model with finding-to-fix mapping, defended invariants table, residual risks, testing strategy, operational notes.
+- [`docs/owasp_llm_top10.md`](docs/owasp_llm_top10.md) — OWASP LLM Top 10 (2025) mapping matrix with code citations.
+- [`docs/mitre_atlas.md`](docs/mitre_atlas.md) — MITRE ATLAS mapping (AI-specific adversary tactics).
 - [`docs/frontend.md`](docs/frontend.md) — frontend component map, SSE wire protocol, theming, state management.
 - [`examples/triage_walkthrough.md`](examples/triage_walkthrough.md) — three real agent sessions captured against the live stack on 2026-05-18.
-- [`CLAUDE.md`](CLAUDE.md) — project-local Claude Code conventions and hard requirements.
+- [`SECURITY.md`](SECURITY.md) — responsible-disclosure policy and safe-harbor terms.
 
 ## License
 

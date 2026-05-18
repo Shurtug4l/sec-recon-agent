@@ -261,6 +261,132 @@ def test_triage_appends_audit_event_on_error(monkeypatch: MonkeyPatch, tmp_path:
         stream_module._reset_audit_store()
 
 
+def test_meta_open_when_no_api_keys_configured() -> None:
+    client = TestClient(app)
+    resp = client.get("/v1/meta")
+    assert resp.status_code == 200
+
+
+def test_meta_requires_api_key_when_configured(monkeypatch: MonkeyPatch) -> None:
+    from pydantic import SecretStr
+
+    from sec_recon_agent.config import settings
+
+    monkeypatch.setattr(settings, "api_keys", [SecretStr("super-secret-123")])
+    client = TestClient(app)
+
+    # No header -> 401
+    resp = client.get("/v1/meta")
+    assert resp.status_code == 401
+    assert "missing or invalid" in resp.json()["detail"]
+
+    # Wrong key -> 401
+    resp = client.get("/v1/meta", headers={"Authorization": "Bearer nope"})
+    assert resp.status_code == 401
+
+    # Right key via Bearer -> 200
+    resp = client.get(
+        "/v1/meta",
+        headers={"Authorization": "Bearer super-secret-123"},
+    )
+    assert resp.status_code == 200
+
+    # Right key via X-API-Key -> 200
+    resp = client.get("/v1/meta", headers={"X-API-Key": "super-secret-123"})
+    assert resp.status_code == 200
+
+
+def test_triage_requires_api_key_when_configured(
+    monkeypatch: MonkeyPatch,
+    fake_agent_factory: Any,
+) -> None:
+    from pydantic import SecretStr
+
+    from sec_recon_agent.config import settings
+
+    monkeypatch.setattr(settings, "api_keys", [SecretStr("good-key")])
+    monkeypatch.setattr(stream_module, "build_agent", fake_agent_factory)
+    client = TestClient(app)
+
+    # No header -> 401 from the dependency, no agent invocation happens
+    resp = client.post("/v1/triage", json={"query": "test"})
+    assert resp.status_code == 401
+
+    # Good key -> 200 SSE stream
+    with client.stream(
+        "POST",
+        "/v1/triage",
+        json={"query": "test"},
+        headers={"Authorization": "Bearer good-key"},
+    ) as response:
+        assert response.status_code == 200
+        body = "".join(response.iter_text())
+        assert "event: final" in body
+
+
+def test_health_remains_open_even_with_api_keys_configured(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """/v1/health is a liveness probe — must stay open for container
+    orchestrators (Docker, Kubernetes) regardless of auth posture."""
+    from pydantic import SecretStr
+
+    from sec_recon_agent.config import settings
+
+    monkeypatch.setattr(settings, "api_keys", [SecretStr("good-key")])
+    client = TestClient(app)
+
+    resp = client.get("/v1/health")
+    assert resp.status_code == 200
+
+
+def test_triage_rate_limit_returns_429_when_exceeded(
+    monkeypatch: MonkeyPatch,
+    fake_agent_factory: Any,
+) -> None:
+    """With rate_limit_per_minute=2 the third request inside the window
+    must come back as 429 with a generic detail (the configured limit
+    must not be echoed)."""
+    from sec_recon_agent.api.stream import limiter
+    from sec_recon_agent.config import settings
+
+    monkeypatch.setattr(settings, "rate_limit_per_minute", 2)
+    monkeypatch.setattr(stream_module, "build_agent", fake_agent_factory)
+    # slowapi caches the resolved limit per route; reset so the patched
+    # value takes effect.
+    limiter.reset()
+
+    client = TestClient(app)
+    # First two pass...
+    for _ in range(2):
+        with client.stream("POST", "/v1/triage", json={"query": "test"}) as r:
+            assert r.status_code == 200
+            for _ in r.iter_text():
+                pass
+    # ...third is throttled.
+    resp = client.post("/v1/triage", json={"query": "test"})
+    assert resp.status_code == 429
+    body = resp.json()
+    assert body == {"detail": "rate limit exceeded"}
+    # The configured limit value must NOT appear in the response.
+    assert "2" not in body["detail"]
+
+
+def test_api_keys_parses_csv_from_env(monkeypatch: MonkeyPatch) -> None:
+    """Settings field validator must split a comma-separated env value
+    into a list of SecretStr — that is the carrier format users actually
+    set in .env / docker-compose."""
+    from sec_recon_agent.config import Settings
+
+    monkeypatch.setenv("API_KEYS", "key-one, key-two,key-three")
+    fresh = Settings()
+    assert [k.get_secret_value() for k in fresh.api_keys] == [
+        "key-one",
+        "key-two",
+        "key-three",
+    ]
+
+
 def test_triage_emits_error_event_when_agent_raises(monkeypatch: MonkeyPatch) -> None:
     class _BrokenAgent:
         @asynccontextmanager
