@@ -104,3 +104,22 @@ updates:
       - "ci"
     commit-message:
       prefix: "chore(deps-ci)"
+
+  # Pre-commit hooks: the ruff-pre-commit pin must track the ruff
+  # version we declare in pyproject so the hook understands every
+  # rule selector we use. A stale pin produces a TOML parse error
+  # that pre-commit reports as "Failed" between two "Passed" lines
+  # and is easy to miss — that bit us once already.
+  - package-ecosystem: "pre-commit"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Rome"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "chore(deps-precommit)"

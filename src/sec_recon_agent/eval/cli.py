@@ -103,7 +103,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if not health_check(args.api_url):
         print(
-            f"agent API at {args.api_url} is not responding on /v1/health. " f"Did you `make up`?",
+            f"agent API at {args.api_url} is not responding on /v1/health. Did you `make up`?",
             file=sys.stderr,
         )
         return 2
@@ -217,7 +217,7 @@ def _run_comparison(
         per_model[model] = rows
         per_model_pass[model] = passed
         print(
-            f"  -> {passed}/{len(cases)} passed " f"({passed / max(len(cases), 1):.0%})",
+            f"  -> {passed}/{len(cases)} passed ({passed / max(len(cases), 1):.0%})",
         )
 
     # Side-by-side summary
