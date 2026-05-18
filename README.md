@@ -579,17 +579,28 @@ sec-recon-agent/
 ├── Makefile                # build, seed, up, down, logs, triage, obs-up, ui, ...
 ├── pyproject.toml          # uv, mypy --strict, ruff, pytest config
 ├── uv.lock                 # frozen dependency tree
-├── CLAUDE.md               # project-local Claude Code instructions
+├── SECURITY.md             # responsible disclosure policy
 ├── README.md               # this file
 └── .env.example            # documented env vars
 ```
 
+## Governance and compliance mapping
+
+For an AI Security / governance reviewer, two documents map every applied control against the relevant external taxonomy:
+
+- [`docs/owasp_llm_top10.md`](docs/owasp_llm_top10.md) — the codebase mapped against [OWASP Top 10 for LLM Applications (2025)](https://owasp.org/www-project-top-10-for-large-language-model-applications/). One row per risk (LLM01..LLM10) with status (mitigated / partial / N/A), layered controls, file:line citations, and the falsifiable tests that defend each invariant.
+- [`docs/mitre_atlas.md`](docs/mitre_atlas.md) — the codebase mapped against [MITRE ATLAS](https://atlas.mitre.org/) tactics + techniques. Pairs with the adversary-side MITRE ATT&CK framework already integrated via the `attack_mapping` tool.
+
+Together they answer two questions a reviewer asks: "what risks did you consider?" and "where exactly is each control in the code?".
+
 ## Documentation index
 
 - [`docs/design.md`](docs/design.md) — the engineering brief. Architecture decisions with rejected alternatives, threat model with finding-to-fix mapping, defended invariants table, residual risks, testing strategy, operational notes.
+- [`docs/owasp_llm_top10.md`](docs/owasp_llm_top10.md) — OWASP LLM Top 10 (2025) mapping matrix with code citations.
+- [`docs/mitre_atlas.md`](docs/mitre_atlas.md) — MITRE ATLAS mapping (AI-specific adversary tactics).
 - [`docs/frontend.md`](docs/frontend.md) — frontend component map, SSE wire protocol, theming, state management.
 - [`examples/triage_walkthrough.md`](examples/triage_walkthrough.md) — three real agent sessions captured against the live stack on 2026-05-18.
-- [`CLAUDE.md`](CLAUDE.md) — project-local Claude Code conventions and hard requirements.
+- [`SECURITY.md`](SECURITY.md) — responsible-disclosure policy and safe-harbor terms.
 
 ## License
 

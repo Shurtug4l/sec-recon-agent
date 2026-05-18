@@ -2,6 +2,11 @@
 
 A short engineering brief for the next reviewer. Covers: what the system is, how it is wired, the non-trivial design choices and why other options were rejected, the threat model with the controls actually applied in code, and what is deliberately out of scope.
 
+Companion documents:
+
+- [`owasp_llm_top10.md`](owasp_llm_top10.md) maps every applied control against the OWASP LLM Top 10 (2025) taxonomy, with file:line citations.
+- [`mitre_atlas.md`](mitre_atlas.md) maps the same surface against MITRE ATLAS tactics — the AI-specific adversary layer above ATT&CK.
+
 ## What this is
 
 A security triage agent. Given a CVE ID, a product description, or Nmap XML output, it returns a typed `TriageReport` (severity, exploit availability, recommended action, full reasoning chain) by calling four MCP tools and synthesizing the result with an LLM.
