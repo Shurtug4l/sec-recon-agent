@@ -49,6 +49,7 @@ sec-recon-mcp = "sec_recon_agent.mcp_server.server:main"
 sec-recon-api = "sec_recon_agent.api.stream:main"
 sec-recon-seed = "sec_recon_agent.mcp_server.tools.cve_search:seed_index"
 sec-recon-eval = "sec_recon_agent.eval.cli:main"
+sec-recon-audit = "sec_recon_agent.audit.cli:main"
 
 [build-system]
 requires = ["hatchling"]

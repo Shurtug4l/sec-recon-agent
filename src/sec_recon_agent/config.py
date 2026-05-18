@@ -29,6 +29,15 @@ class Settings(BaseSettings):
     agent_api_port: int = Field(default=8000, ge=1024, le=65535)
 
     chroma_persist_dir: Path = Path("./data/cve_index")
+    audit_db_path: Path = Path("./data/audit.db")
+    # Master switch. When False the API does not even open the audit
+    # database; useful for ephemeral demos and for tests that don't want
+    # a stray SQLite file in tmp.
+    audit_log_enabled: bool = True
+    # Privacy switches: default off. Operators with a compliance posture
+    # that requires plain-text retention flip these on per-deployment.
+    audit_include_query: bool = False
+    audit_include_summary: bool = False
 
     nvd_rate_limit_per_30s: int = Field(default=5, ge=1, le=50)
     log_level: str = "INFO"

@@ -147,6 +147,81 @@ def test_triage_streams_started_and_final_events(
     assert payload["severity"] == "high"
 
 
+def test_triage_appends_one_audit_event_on_success(
+    monkeypatch: MonkeyPatch,
+    fake_agent_factory: Any,
+    tmp_path: Any,
+) -> None:
+    """The triage handler must append exactly one audit event per call,
+    even though the audit pipeline is best-effort."""
+    from sec_recon_agent.audit.store import AuditStore
+    from sec_recon_agent.config import settings
+
+    audit_path = tmp_path / "audit.db"
+    monkeypatch.setattr(settings, "audit_db_path", audit_path)
+    monkeypatch.setattr(settings, "audit_log_enabled", True)
+    monkeypatch.setattr(settings, "audit_include_query", False)
+    monkeypatch.setattr(stream_module, "build_agent", fake_agent_factory)
+    stream_module._reset_audit_store()
+
+    client = TestClient(app)
+    with client.stream("POST", "/v1/triage", json={"query": "CVE-2021-41773"}) as response:
+        assert response.status_code == 200
+        for _ in response.iter_text():
+            pass
+
+    store = AuditStore(audit_path)
+    try:
+        assert store.count() == 1
+        assert store.verify() == 1
+        events = store.tail(limit=1)
+        ev = events[0]
+        assert ev.outcome == "success"
+        assert ev.severity == "high"
+        # Privacy: query_plain stays None when AUDIT_INCLUDE_QUERY is off.
+        assert ev.query_plain is None
+        # But the digest is always there.
+        assert len(ev.query_sha256) == 64
+        assert ev.query_length == len("CVE-2021-41773")
+    finally:
+        store.close()
+        stream_module._reset_audit_store()
+
+
+def test_triage_appends_audit_event_on_error(monkeypatch: MonkeyPatch, tmp_path: Any) -> None:
+    """An agent failure still produces one audit event with outcome=error."""
+    from sec_recon_agent.audit.store import AuditStore
+    from sec_recon_agent.config import settings
+
+    audit_path = tmp_path / "audit.db"
+    monkeypatch.setattr(settings, "audit_db_path", audit_path)
+    monkeypatch.setattr(settings, "audit_log_enabled", True)
+    stream_module._reset_audit_store()
+
+    class _BrokenAgent:
+        @asynccontextmanager
+        async def iter(self, query: str) -> Any:
+            raise RuntimeError("boom")
+            yield  # pragma: no cover
+
+    monkeypatch.setattr(stream_module, "build_agent", lambda: _BrokenAgent())
+
+    client = TestClient(app)
+    with client.stream("POST", "/v1/triage", json={"query": "test"}) as response:
+        for _ in response.iter_text():
+            pass
+
+    store = AuditStore(audit_path)
+    try:
+        assert store.count() == 1
+        ev = store.tail(1)[0]
+        assert ev.outcome == "error"
+        assert ev.error_class == "RuntimeError"
+    finally:
+        store.close()
+        stream_module._reset_audit_store()
+
+
 def test_triage_emits_error_event_when_agent_raises(monkeypatch: MonkeyPatch) -> None:
     class _BrokenAgent:
         @asynccontextmanager
