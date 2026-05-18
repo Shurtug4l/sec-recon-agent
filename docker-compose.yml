@@ -1,0 +1,110 @@
+# Two-process layout: the MCP server and the agent API are independent
+# containers that talk to each other over an internal compose network.
+# A shared named volume keeps the ChromaDB index and the Exploit-DB cache.
+#
+# Usage:
+#   cp .env.example .env           # set ANTHROPIC_API_KEY at minimum
+#   docker compose --profile seed run --rm seed-job   # one-shot: populate index
+#   docker compose up -d           # start MCP server + agent API
+#   docker compose logs -f         # tail logs
+#   docker compose down            # stop, keep the volume
+
+services:
+
+  mcp-server:
+    build:
+      context: .
+      target: runtime
+    image: sec-recon-agent:0.1.0
+    container_name: sec-recon-mcp
+    command: sec-recon-mcp
+    environment:
+      MCP_SERVER_HOST: "0.0.0.0"
+      MCP_SERVER_PORT: "8001"
+      CHROMA_PERSIST_DIR: "/app/data/cve_index"
+      NVD_API_KEY: "${NVD_API_KEY:-}"
+      GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      # ANTHROPIC_API_KEY is not needed by the MCP process; only the agent uses it.
+    volumes:
+      - sec-recon-data:/app/data
+    ports:
+      - "127.0.0.1:8001:8001"
+    healthcheck:
+      # /sse hangs on a successful connect (it is a streaming endpoint), so
+      # use a lightweight TCP-level probe instead.
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import socket,sys; s=socket.socket(); s.settimeout(2); s.connect(('127.0.0.1',8001)); sys.exit(0)"
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+  agent-api:
+    build:
+      context: .
+      target: runtime
+    image: sec-recon-agent:0.1.0
+    container_name: sec-recon-api
+    command: sec-recon-api
+    environment:
+      AGENT_API_HOST: "0.0.0.0"
+      AGENT_API_PORT: "8000"
+      # Compose internal DNS resolves "mcp-server" to the MCP container.
+      MCP_SERVER_HOST: "mcp-server"
+      MCP_SERVER_PORT: "8001"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY must be set in .env or the host environment}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      LLM_PROVIDER: "${LLM_PROVIDER:-anthropic}"
+      LLM_MODEL: "${LLM_MODEL:-claude-sonnet-4-6}"
+    ports:
+      # Only bind to localhost; the demo is single-tenant and has no auth.
+      # Edit to 0.0.0.0 only if you intentionally want network exposure.
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      mcp-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/v1/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+  # One-shot: pulls recent CRITICAL+HIGH CVEs from NVD and indexes them into
+  # ChromaDB on the shared volume. Run before `docker compose up`.
+  # Excluded from the default `docker compose up` via the "seed" profile.
+  seed-job:
+    build:
+      context: .
+      target: runtime
+    image: sec-recon-agent:0.1.0
+    command: sec-recon-seed
+    environment:
+      CHROMA_PERSIST_DIR: "/app/data/cve_index"
+      NVD_API_KEY: "${NVD_API_KEY:-}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+    volumes:
+      - sec-recon-data:/app/data
+    profiles: ["seed"]
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  sec-recon-data:
+    name: sec-recon-data

@@ -41,11 +41,27 @@ Python 3.12+ · Pydantic AI · MCP (Anthropic SDK) · FastAPI (SSE) · ChromaDB 
 
 ## Running
 
+### With Docker (recommended)
+
+```bash
+cp .env.example .env       # set ANTHROPIC_API_KEY (NVD_API_KEY and GITHUB_TOKEN optional)
+make build                 # multi-stage uv build, non-root runtime
+make seed                  # one-shot: pull recent CVEs into ChromaDB
+make up                    # start MCP server + agent API
+make triage Q="Apache 2.4.49 on port 80. Risk?"
+make logs                  # tail logs
+make down                  # stop, keep the data volume
+```
+
+Both services are bound to `127.0.0.1` only by default and run as a non-root user (`secrecon`, uid 1000) with `read_only: true` and `no-new-privileges`.
+
+### Without Docker
+
 ```bash
 uv sync
-cp .env.example .env  # add ANTHROPIC_API_KEY (and optionally NVD_API_KEY)
+cp .env.example .env       # add ANTHROPIC_API_KEY (and optionally NVD_API_KEY)
 
-uv run sec-recon-seed      # seed ChromaDB with recent high-severity CVEs (~1k)
+uv run sec-recon-seed      # seed ChromaDB (~30 days lookback, several thousand CVEs)
 
 uv run sec-recon-mcp       # terminal 1: MCP server on :8001
 uv run sec-recon-api       # terminal 2: agent API on :8000

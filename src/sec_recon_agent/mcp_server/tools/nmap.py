@@ -8,6 +8,11 @@ the parser is deliberately conservative.
 import structlog
 from defusedxml import ElementTree as ET
 from defusedxml.common import DefusedXmlException
+# defusedxml does not re-export the Element class on every Python version
+# (3.13 lost the re-export; 3.14 may still have it). Use the stdlib type
+# for type hints — it is the actual runtime class returned by
+# defusedxml's fromstring(), defusedxml only swaps the parser.
+from xml.etree.ElementTree import Element as XmlElement  # noqa: I001
 
 from sec_recon_agent.mcp_server.errors import MalformedNmapXmlError
 from sec_recon_agent.mcp_server.models import (
@@ -21,7 +26,7 @@ from sec_recon_agent.mcp_server.server import mcp
 log = structlog.get_logger()
 
 
-def _parse_port(port_el: ET.Element) -> NmapPort | None:
+def _parse_port(port_el: XmlElement) -> NmapPort | None:
     portid_raw = port_el.get("portid")
     protocol = port_el.get("protocol")
     if portid_raw is None or protocol is None:
@@ -49,7 +54,7 @@ def _parse_port(port_el: ET.Element) -> NmapPort | None:
     )
 
 
-def _parse_host(host_el: ET.Element) -> NmapHost | None:
+def _parse_host(host_el: XmlElement) -> NmapHost | None:
     ip: str | None = None
     for addr_el in host_el.findall("address"):
         if addr_el.get("addrtype") in ("ipv4", "ipv6"):
