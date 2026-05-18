@@ -25,6 +25,7 @@ from sec_recon_agent.mcp_server.errors import (
     MalformedKevPayloadError,
 )
 from sec_recon_agent.mcp_server.models import CveIdStr, KevCheck
+from sec_recon_agent.mcp_server.security import fence_untrusted
 from sec_recon_agent.mcp_server.server import mcp
 from sec_recon_agent.observability import get_tracer
 
@@ -189,17 +190,27 @@ async def kev_check(cve_id: CveIdStr) -> KevCheck:
             log.info("kev_check_done", cve_id=cve_id, in_catalog=False)
             return result
 
+        # vendor_project / product / *_date are short structured identifiers;
+        # vulnerability_name / required_action / notes are free-text fields
+        # authored upstream by vendors and researchers. Fence the free-text
+        # set so any instruction-like content reaches the LLM inside the
+        # untrusted-content boundary (same pattern as cve_lookup with NVD
+        # descriptions).
         result = KevCheck(
             cve_id=cve_id,
             in_catalog=True,
             vendor_project=_coerce_str(entry.get("vendorProject"), 200),
             product=_coerce_str(entry.get("product"), 200),
-            vulnerability_name=_coerce_str(entry.get("vulnerabilityName"), 500),
+            vulnerability_name=fence_untrusted(
+                _coerce_str(entry.get("vulnerabilityName"), 500),
+            ),
             date_added=_coerce_str(entry.get("dateAdded"), 32),
             due_date=_coerce_str(entry.get("dueDate"), 32),
-            required_action=_coerce_str(entry.get("requiredAction"), 1000),
+            required_action=fence_untrusted(
+                _coerce_str(entry.get("requiredAction"), 1000),
+            ),
             known_ransomware_use=_coerce_ransomware_flag(entry.get("knownRansomwareCampaignUse")),
-            notes=_coerce_str(entry.get("notes"), 2000),
+            notes=fence_untrusted(_coerce_str(entry.get("notes"), 2000)),
         )
         span.set_attribute("tool.success", True)
         span.set_attribute("kev.in_catalog", True)

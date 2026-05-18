@@ -11,6 +11,8 @@ Where this is applied:
 - CVECandidate.summary (same content, sourced from the indexed corpus)
 - NmapPort.product, NmapPort.version (service banners; attacker-crafted in
   hostile scan inputs)
+- KevCheck.vulnerability_name, KevCheck.required_action, KevCheck.notes
+  (CISA-published but vendor- and researcher-authored upstream)
 
 Where this is NOT applied:
 - CVE IDs (regex-constrained, no free text)
@@ -21,6 +23,9 @@ Where this is NOT applied:
 - URLs / references (Pydantic HttpUrl validated)
 - Hostnames (DNS charset, length-capped)
 - Port numbers (int-constrained)
+- KEV vendor_project / product (short identifiers like "Apache", "HTTP Server")
+- KEV date_added / due_date (ISO date strings, _coerce_str-truncated to 32 chars)
+- EPSS probability / percentile / score_date (numeric or ISO date)
 
 Pydantic validators reject malformed structured fields at the boundary,
 so they cannot carry instruction-like payloads.
