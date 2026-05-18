@@ -45,7 +45,12 @@ app = FastAPI(
 
 
 class TriageRequest(BaseModel):
-    query: str = Field(min_length=1, max_length=4000)
+    # Cap is generous to absorb pasted SBOMs (CycloneDX/SPDX can easily
+    # hit tens of KB) while still bounding the worst case for both DoS
+    # and LLM token cost. Tool-level caps (e.g. sbom_ingest's 5 MB,
+    # cve_semantic_search's truncation at 1000 chars) provide the
+    # downstream safety net.
+    query: str = Field(min_length=1, max_length=100_000)
 
 
 @app.get("/v1/health")
@@ -113,6 +118,15 @@ async def meta() -> MetaResponse:
                     "Fetch the FIRST.org EPSS probability that a CVE will "
                     "be exploited in the next 30 days, plus percentile "
                     "rank. Complements KEV for forward-looking prioritization."
+                ),
+            ),
+            ToolMeta(
+                name="sbom_ingest",
+                description=(
+                    "Parse a CycloneDX / SPDX / requirements.txt SBOM "
+                    "into a normalized list of components with name, "
+                    "version, ecosystem, purl. Pairs with cve_semantic_"
+                    "search for per-component triage."
                 ),
             ),
             ToolMeta(

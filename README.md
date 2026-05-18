@@ -7,7 +7,7 @@
 
 Type-safe security triage built on Pydantic AI and a custom Model Context Protocol server, behind a Next.js + React frontend.
 
-Given a CVE ID, a product version, or raw Nmap XML, the agent grounds every answer with seven typed MCP tools (CVE lookup, semantic search, public-exploit availability, CISA KEV membership, FIRST.org EPSS score, Nmap parsing, MITRE ATT&CK mapping) and returns a `TriageReport` Pydantic model: severity, exploit availability, operational signals (KEV / ransomware / EPSS), recommended action, and the full reasoning chain. The LLM never produces free-text guessing; the output schema is enforced at the model boundary.
+Given a CVE ID, a product version, raw Nmap XML, or a CycloneDX / SPDX / requirements.txt SBOM, the agent grounds every answer with eight typed MCP tools (CVE lookup, semantic search, public-exploit availability, CISA KEV membership, FIRST.org EPSS score, SBOM ingestion, Nmap parsing, MITRE ATT&CK mapping) and returns a `TriageReport` Pydantic model: severity, exploit availability, operational signals (KEV / ransomware / EPSS), recommended action, and the full reasoning chain. The LLM never produces free-text guessing; the output schema is enforced at the model boundary.
 
 The whole stack runs with `make up`: backend (MCP server + FastAPI agent) + frontend (Next.js UI on `:3000`) + an optional Jaeger sidecar for distributed tracing.
 
@@ -26,7 +26,7 @@ The whole stack runs with `make up`: backend (MCP server + FastAPI agent) + fron
              ▼
 ┌──────────────────────────┐
 │  MCP Server  ·  FastMCP  │  :8001
-│  7 typed tools           │
+│  8 typed tools           │
 └────────────┬─────────────┘
              │
              ├── NVD CVE 2.0 API           (cve_lookup, async + rate-limited)
@@ -34,6 +34,7 @@ The whole stack runs with `make up`: backend (MCP server + FastAPI agent) + fron
              ├── Exploit-DB CSV + GitHub   (exploit_check, parallel fan-out)
              ├── CISA KEV catalog          (kev_check, "patch now" signal + ransomware flag)
              ├── FIRST EPSS API            (epss_score, 30-day exploitation probability)
+             ├── CycloneDX / SPDX / PEP 508 (sbom_ingest, no-network, deterministic)
              ├── defusedxml                (nmap_parse_xml, XXE-safe)
              └── MITRE ATT&CK mapping      (attack_mapping, CWE -> techniques + mitigations)
 ```
@@ -205,13 +206,15 @@ You should see three containers reach `Healthy` and a web UI ready for queries. 
 
 ## What it does
 
-The agent is built around seven MCP tools, each with a typed Pydantic contract.
+The agent is built around eight MCP tools, each with a typed Pydantic contract.
 
 **`cve_lookup(cve_id)`** — fetches the full NVD CVE 2.0 record for a given ID. Returns `CVEDetail` with CVSS v3 score and severity, CWE IDs, affected CPEs, references. Async httpx client with a sliding-window rate limiter (5 req / 30 s without an NVD API key, 50 with) and tenacity exponential backoff on 5xx, 429, and connection errors.
 
 **`cve_semantic_search(query, top_k)`** — vector retrieval over a local ChromaDB index of recent high-severity CVEs (30-day lookback). Embeddings via ChromaDB's `DefaultEmbeddingFunction` (ONNX MiniLM-L6, 384-d). Returns ranked `CVECandidate` hits with cosine similarity.
 
 **`exploit_check(cve_id)`** — queries Exploit-DB (cached CSV manifest from GitLab, refreshed weekly) and GitHub Code Search (optional, requires `GITHUB_TOKEN`) in parallel via `asyncio.gather`. Returns `ExploitCheck` with `has_public_exploit`, Exploit-DB IDs, and GitHub PoC URLs. Gracefully degrades to `[]` on the GitHub side when no token is set or the search is rate-limited.
+
+**`sbom_ingest(content)`** — autodetects and parses CycloneDX 1.x JSON, SPDX 2.x JSON, or PEP 508-style requirements.txt. Returns `SbomComponentList` with name / version / ecosystem / purl per component, deduplicated, capped at 500 entries (`truncated=True` signals overflow). No network, no XML — anything more exotic raises `UnsupportedSbomFormatError`. The agent calls this first when the user pastes an SBOM, then runs `cve_semantic_search` on the top-N components.
 
 **`kev_check(cve_id)`** — looks the CVE up in the CISA Known Exploited Vulnerabilities catalog (daily-refreshed JSON, cached on disk for 24h). Returns `KevCheck` with `in_catalog`, CISA-provided vendor / product / vulnerability name, `due_date` (federal remediation deadline), `required_action`, and the `known_ransomware_use` flag. KEV membership is the single most actionable "patch now" signal in vulnerability management.
 
@@ -333,7 +336,7 @@ make lint                       # backend (ruff + mypy --strict) + frontend (ESL
 
 The frontend ESLint setup uses the flat config (`frontend/eslint.config.mjs`) bridged through `FlatCompat` to `next/core-web-vitals` + `next/typescript`. CI runs `npm run lint` between `type-check` and `build`.
 
-**Suite count: 150 passing** (148 fast + 2 slow). Breakdown:
+**Suite count: 163 passing** (161 fast + 2 slow). Breakdown:
 - **36 contract tests** — every MCP tool has Pydantic I/O contract tests with `respx`-mocked HTTP. Tool fail modes (NVD 404, malformed payload, 5xx retry, 429 retry, XXE refusal, oversized CSV download) all covered. Includes `/v1/meta` endpoint contract.
 - **11 KEV contract tests** — hit, miss, ransomware flag normalization, single-fetch invariant, oversized payload, non-200, malformed JSON, missing top-level list, hostile entry tolerance, free-text truncation, untrusted-content fencing for hostile vendor payloads.
 - **9 EPSS contract tests** — hit, miss, non-200, non-JSON, missing data field, wrong-type entry, mismatched CVE defense, out-of-range scores, non-numeric scores.
@@ -343,6 +346,7 @@ The frontend ESLint setup uses the flat config (`frontend/eslint.config.mjs`) br
 - **10 observability tests** — span emission per tool, attribute schema, privacy invariants (no secret / no user query text / no NVD description / no KEV vendor text in span attributes; EPSS span attribute allowlist).
 - **14 eval-suite unit tests** — 9 scorer tests (severity tolerance, CVE recall threshold, KEV / ransomware flag honoring) + 5 runner tests (SSE CRLF and LF tolerance, error-event surfacing, missing-final-event handling, HTTP 5xx).
 - **14 audit-trail tests** — 7 hash-chain model tests (canonical serialization, seal determinism, tamper detection at the link level) + 7 store tests (genesis chaining, subsequent-row chaining, verify on clean chain, field-mutation tamper, forged-row insert, SQLite trigger enforcement, tail ordering). Two API integration tests assert that one event lands per call (success or error path).
+- **13 SBOM contract tests** — CycloneDX, SPDX, requirements.txt happy paths; dedup, truncation, missing-name skip; malformed JSON; unsupported shapes; extras + environment markers in requirements lines.
 
 See [`docs/design.md`](docs/design.md#defended-invariants-property-and-adversarial-tests) for the full invariant table.
 

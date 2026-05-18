@@ -59,6 +59,18 @@ class MalformedKevPayloadError(KevError):
     """CISA KEV JSON did not match the expected schema."""
 
 
+class SbomError(SecReconError):
+    """Base for SBOM ingestion failures."""
+
+
+class UnsupportedSbomFormatError(SbomError):
+    """The provided content did not match any of the supported SBOM formats."""
+
+
+class MalformedSbomPayloadError(SbomError):
+    """The provided SBOM matched a format but failed schema validation."""
+
+
 class EpssError(SecReconError):
     """Base for FIRST EPSS API failures."""
 
