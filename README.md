@@ -198,7 +198,7 @@ make lint                       # backend (ruff + mypy --strict) + frontend (ESL
 
 The frontend ESLint setup uses the flat config (`frontend/eslint.config.mjs`) bridged through `FlatCompat` to `next/core-web-vitals` + `next/typescript`. CI runs `npm run lint` between `type-check` and `build`.
 
-**Suite count: 120 passing** (118 fast + 2 slow). Breakdown:
+**Suite count: 134 passing** (132 fast + 2 slow). Breakdown:
 - **36 contract tests** — every MCP tool has Pydantic I/O contract tests with `respx`-mocked HTTP. Tool fail modes (NVD 404, malformed payload, 5xx retry, 429 retry, XXE refusal, oversized CSV download) all covered. Includes `/v1/meta` endpoint contract.
 - **11 KEV contract tests** — hit, miss, ransomware flag normalization, single-fetch invariant, oversized payload, non-200, malformed JSON, missing top-level list, hostile entry tolerance, free-text truncation, untrusted-content fencing for hostile vendor payloads.
 - **9 EPSS contract tests** — hit, miss, non-200, non-JSON, missing data field, wrong-type entry, mismatched CVE defense, out-of-range scores, non-numeric scores.
@@ -206,8 +206,22 @@ The frontend ESLint setup uses the flat config (`frontend/eslint.config.mjs`) br
 - **11 property tests** — Hypothesis invariants on `fence_untrusted`, `CveIdStr` regex, Pydantic field constraints.
 - **32 adversarial parametrizations** — prompt injection (8 payloads + marker forgery), XXE variants (4), malformed CVE IDs (14), Unicode homoglyphs (5), resource exhaustion (oversize CSV, huge hostname/port lists).
 - **10 observability tests** — span emission per tool, attribute schema, privacy invariants (no secret / no user query text / no NVD description / no KEV vendor text in span attributes; EPSS span attribute allowlist).
+- **14 eval-suite unit tests** — 9 scorer tests (severity tolerance, CVE recall threshold, KEV / ransomware flag honoring) + 5 runner tests (SSE CRLF and LF tolerance, error-event surfacing, missing-final-event handling, HTTP 5xx).
 
 See [`docs/design.md`](docs/design.md#defended-invariants-property-and-adversarial-tests) for the full invariant table.
+
+## Eval suite (end-to-end)
+
+Beyond the unit and property suites, a golden-set evaluation lives in `src/sec_recon_agent/eval/`. It exercises the live HTTP API with 10 curated queries (named CVEs, fuzzy descriptions, degraded inputs) and applies **soft** assertions on the agent's `TriageReport`: severity within +-1 step of the expected baseline, expected CVE IDs recovered at >= 50% recall, CISA KEV / ransomware flags honored when the case asks for them.
+
+```bash
+make up                                          # start MCP server + agent API + frontend
+make eval                                        # run the full golden set against http://127.0.0.1:8000
+make eval EVAL_ARGS='--filter kev,by-id'         # run subset by tag or case id
+make eval EVAL_ARGS='--json-output /tmp/eval.json'
+```
+
+The suite is deliberately not in CI: it requires a live stack and bills the LLM provider. Run on demand before merging changes to the system prompt or the model.
 
 ## Security posture
 

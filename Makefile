@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help build seed up down logs ps restart triage test lint clean
+.PHONY: help build seed up down logs ps restart triage test lint eval clean
 
 help:  ## Show this help.
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -49,6 +49,9 @@ obs-up:  ## Start the stack WITH the Jaeger sidecar and OTLP enabled. UI on :166
 
 obs-down:  ## Stop the observability stack (keeps the data volume).
 	docker compose --profile observability down
+
+eval:  ## Run the end-to-end golden-set eval against a live stack (needs `make up`). Bills the LLM.
+	@uv run sec-recon-eval $(EVAL_ARGS)
 
 clean:  ## Stop services and DELETE the ChromaDB volume. Destructive.
 	docker compose down --volumes
