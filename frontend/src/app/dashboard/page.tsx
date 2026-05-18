@@ -7,7 +7,7 @@ import { Header } from "@/components/header";
 import { ObservabilityTab } from "@/components/dashboard/observability-tab";
 import { StatisticsTab } from "@/components/dashboard/statistics-tab";
 import { TransparencyTab } from "@/components/dashboard/transparency-tab";
-import { useHistory } from "@/hooks/use-history";
+import { useTriage } from "@/hooks/use-triage";
 import { cn } from "@/lib/utils";
 
 type Tab = "statistics" | "observability" | "transparency";
@@ -19,19 +19,30 @@ const TABS: Array<{ key: Tab; label: string; icon: React.ElementType }> = [
 ];
 
 export default function DashboardPage() {
-  const { entries } = useHistory();
+  const { entries, state } = useTriage();
   const [tab, setTab] = useState<Tab>("statistics");
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <Header />
       <main className="container max-w-6xl flex-1 py-8">
-        <div className="mb-6 flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">
-            Aggregated stats from your local history, per-run observability, and full transparency
-            into the agent's prompt and tool surface.
-          </p>
+        <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+            <p className="text-sm text-muted-foreground">
+              Aggregated stats from your local history, per-run observability, and full transparency
+              into the agent's prompt and tool surface.
+            </p>
+          </div>
+          {state.isRunning && (
+            <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+              </span>
+              Triage in progress — running in the background
+            </div>
+          )}
         </div>
 
         <nav className="mb-6 flex items-center gap-1 border-b border-border">
