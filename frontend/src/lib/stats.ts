@@ -10,6 +10,9 @@ export interface AggregateStats {
   avgDurationMs: number;
   criticalCount: number;
   highCount: number;
+  kevCount: number;
+  ransomwareCount: number;
+  highEpssCount: number;
   bySeverity: Array<{ severity: Severity; count: number }>;
   byConfidence: Array<{ confidence: string; count: number }>;
   toolCalls: Array<{ tool: string; count: number }>;
@@ -28,9 +31,12 @@ const KNOWN_TOOLS = [
   "cve_lookup",
   "cve_semantic_search",
   "exploit_check",
+  "kev_check",
+  "epss_score",
   "nmap_parse_xml",
   "attack_mapping",
 ];
+const HIGH_EPSS_THRESHOLD = 0.5;
 
 export function aggregate(entries: HistoryEntry[]): AggregateStats {
   const completed = entries.filter((e) => e.report !== null);
@@ -54,6 +60,9 @@ export function aggregate(entries: HistoryEntry[]): AggregateStats {
 
   let durationSum = 0;
   let durationN = 0;
+  let kevCount = 0;
+  let ransomwareCount = 0;
+  let highEpssCount = 0;
 
   for (const entry of completed) {
     if (!entry.report) continue;
@@ -81,6 +90,11 @@ export function aggregate(entries: HistoryEntry[]): AggregateStats {
         existing.count++;
       } else {
         cveCounter.set(cve.cve_id, { count: 1, cvss: cve.cvss_v3_score });
+      }
+      if (cve.in_kev_catalog) kevCount++;
+      if (cve.known_ransomware_use === true) ransomwareCount++;
+      if (cve.epss_probability !== null && cve.epss_probability >= HIGH_EPSS_THRESHOLD) {
+        highEpssCount++;
       }
     }
 
@@ -122,6 +136,9 @@ export function aggregate(entries: HistoryEntry[]): AggregateStats {
     avgDurationMs: durationN > 0 ? durationSum / durationN : 0,
     criticalCount: severityCounts.critical,
     highCount: severityCounts.high,
+    kevCount,
+    ransomwareCount,
+    highEpssCount,
     bySeverity,
     byConfidence,
     toolCalls,

@@ -1,7 +1,8 @@
 """Pydantic AI triage agent.
 
-Wires the four MCP tools (cve_lookup, cve_semantic_search, exploit_check,
-nmap_parse_xml) into a single agent that emits a typed TriageReport.
+Wires the seven MCP tools (cve_lookup, cve_semantic_search, exploit_check,
+kev_check, epss_score, nmap_parse_xml, attack_mapping) into a single
+agent that emits a typed TriageReport.
 
 The MCP transport is HTTP+SSE; SSE is inferred from the `/sse` URL suffix.
 The agent connects to the sec-recon MCP server (default :8001). Caller is

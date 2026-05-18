@@ -23,11 +23,13 @@ def test_agent_constructs_without_running() -> None:
 
 def test_system_prompt_declares_all_tools() -> None:
     """If a tool name in the prompt drifts from the tool implementation,
-    grounding will silently degrade. Pin the four tool names in tests."""
+    grounding will silently degrade. Pin every registered tool name."""
     for tool_name in (
         "cve_lookup",
         "cve_semantic_search",
         "exploit_check",
+        "kev_check",
+        "epss_score",
         "nmap_parse_xml",
         "attack_mapping",
     ):

@@ -69,7 +69,7 @@ async def meta() -> MetaResponse:
     """Expose the agent's "what is it told" and "what can it reach" so a
     transparency UI can render them. The system prompt is the literal
     string the LLM receives. The tool list is curated here, not introspected
-    from the MCP server: the four tools are part of the project contract,
+    from the MCP server: the tools are part of the project contract,
     not a runtime discovery (which would couple this endpoint to live MCP
     connectivity)."""
     return MetaResponse(
@@ -97,6 +97,22 @@ async def meta() -> MetaResponse:
                 description=(
                     "Look up public exploits and PoCs for a CVE. Queries "
                     "Exploit-DB and GitHub Code Search in parallel."
+                ),
+            ),
+            ToolMeta(
+                name="kev_check",
+                description=(
+                    "Check whether a CVE is on the CISA Known Exploited "
+                    "Vulnerabilities catalog. Strongest 'patch now' signal "
+                    "with federal due date and known-ransomware flag."
+                ),
+            ),
+            ToolMeta(
+                name="epss_score",
+                description=(
+                    "Fetch the FIRST.org EPSS probability that a CVE will "
+                    "be exploited in the next 30 days, plus percentile "
+                    "rank. Complements KEV for forward-looking prioritization."
                 ),
             ),
             ToolMeta(

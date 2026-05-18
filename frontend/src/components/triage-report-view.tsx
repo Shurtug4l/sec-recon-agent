@@ -1,7 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, Crosshair, ExternalLink, ShieldCheck, ShieldX, Wrench } from "lucide-react";
+import {
+  ChevronDown,
+  Crosshair,
+  ExternalLink,
+  Flame,
+  ShieldCheck,
+  ShieldX,
+  Skull,
+  TrendingUp,
+  Wrench,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -100,6 +110,30 @@ export function TriageReportView({ report }: { report: TriageReport }) {
                     ) : (
                       <Badge variant="outline" className="gap-1 text-[10px]">
                         <ShieldCheck className="h-3 w-3" /> no public exploit
+                      </Badge>
+                    )}
+                    {cve.in_kev_catalog && (
+                      <Badge variant="destructive" className="gap-1 text-[10px]">
+                        <Flame className="h-3 w-3" />
+                        CISA KEV
+                        {cve.kev_due_date ? ` · due ${cve.kev_due_date}` : ""}
+                      </Badge>
+                    )}
+                    {cve.known_ransomware_use && (
+                      <Badge variant="destructive" className="gap-1 text-[10px]">
+                        <Skull className="h-3 w-3" /> ransomware
+                      </Badge>
+                    )}
+                    {cve.epss_probability !== null && (
+                      <Badge
+                        variant={cve.epss_probability >= 0.5 ? "destructive" : "outline"}
+                        className="gap-1 text-[10px]"
+                      >
+                        <TrendingUp className="h-3 w-3" />
+                        EPSS {(cve.epss_probability * 100).toFixed(1)}%
+                        {cve.epss_percentile !== null
+                          ? ` (p${(cve.epss_percentile * 100).toFixed(0)})`
+                          : ""}
                       </Badge>
                     )}
                   </div>
