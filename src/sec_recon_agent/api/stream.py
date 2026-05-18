@@ -215,6 +215,16 @@ async def meta() -> MetaResponse:
                 ),
             ),
             ToolMeta(
+                name="patch_lookup",
+                description=(
+                    "Return the fixed-version information NVD declares "
+                    "for a CVE: per affected CPE, the smallest version "
+                    "where the fix landed plus any version-range start. "
+                    "Pairs with cve_lookup when recommended_action needs "
+                    "to cite a concrete release."
+                ),
+            ),
+            ToolMeta(
                 name="sbom_ingest",
                 description=(
                     "Parse a CycloneDX / SPDX / requirements.txt SBOM "

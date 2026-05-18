@@ -7,7 +7,7 @@
 
 Type-safe security triage built on Pydantic AI and a custom Model Context Protocol server, behind a Next.js + React frontend.
 
-Given a CVE ID, a product version, raw Nmap XML, or a CycloneDX / SPDX / requirements.txt SBOM, the agent grounds every answer with eight typed MCP tools (CVE lookup, semantic search, public-exploit availability, CISA KEV membership, FIRST.org EPSS score, SBOM ingestion, Nmap parsing, MITRE ATT&CK mapping) and returns a `TriageReport` Pydantic model: severity, exploit availability, operational signals (KEV / ransomware / EPSS), recommended action, and the full reasoning chain. The LLM never produces free-text guessing; the output schema is enforced at the model boundary.
+Given a CVE ID, a product version, raw Nmap XML, or a CycloneDX / SPDX / requirements.txt SBOM, the agent grounds every answer with nine typed MCP tools (CVE lookup, semantic search, public-exploit availability, CISA KEV membership, FIRST.org EPSS score, patch availability, SBOM ingestion, Nmap parsing, MITRE ATT&CK mapping) and returns a `TriageReport` Pydantic model: severity, exploit availability, operational signals (KEV / ransomware / EPSS), recommended action with a concrete fixed version when one exists, and the full reasoning chain. The LLM never produces free-text guessing; the output schema is enforced at the model boundary.
 
 The whole stack runs with `make up`: backend (MCP server + FastAPI agent) + frontend (Next.js UI on `:3000`) + an optional Jaeger sidecar for distributed tracing.
 
@@ -26,7 +26,7 @@ The whole stack runs with `make up`: backend (MCP server + FastAPI agent) + fron
              ▼
 ┌──────────────────────────┐
 │  MCP Server  ·  FastMCP  │  :8001
-│  8 typed tools           │
+│  9 typed tools           │
 └────────────┬─────────────┘
              │
              ├── NVD CVE 2.0 API           (cve_lookup, async + rate-limited)
@@ -35,6 +35,7 @@ The whole stack runs with `make up`: backend (MCP server + FastAPI agent) + fron
              ├── CISA KEV catalog          (kev_check, "patch now" signal + ransomware flag)
              ├── FIRST EPSS API            (epss_score, 30-day exploitation probability)
              ├── CycloneDX / SPDX / PEP 508 (sbom_ingest, no-network, deterministic)
+             ├── NVD CPE configurations    (patch_lookup, fixed_in / version range extraction)
              ├── defusedxml                (nmap_parse_xml, XXE-safe)
              └── MITRE ATT&CK mapping      (attack_mapping, CWE -> techniques + mitigations)
 ```
@@ -232,7 +233,7 @@ You should see three containers reach `Healthy` and a web UI ready for queries. 
 
 ## What it does
 
-The agent is built around eight MCP tools, each with a typed Pydantic contract.
+The agent is built around nine MCP tools, each with a typed Pydantic contract.
 
 **`cve_lookup(cve_id)`** — fetches the full NVD CVE 2.0 record for a given ID. Returns `CVEDetail` with CVSS v3 score and severity, CWE IDs, affected CPEs, references. Async httpx client with a sliding-window rate limiter (5 req / 30 s without an NVD API key, 50 with) and tenacity exponential backoff on 5xx, 429, and connection errors.
 
@@ -241,6 +242,8 @@ The agent is built around eight MCP tools, each with a typed Pydantic contract.
 **`exploit_check(cve_id)`** — queries Exploit-DB (cached CSV manifest from GitLab, refreshed weekly) and GitHub Code Search (optional, requires `GITHUB_TOKEN`) in parallel via `asyncio.gather`. Returns `ExploitCheck` with `has_public_exploit`, Exploit-DB IDs, and GitHub PoC URLs. Gracefully degrades to `[]` on the GitHub side when no token is set or the search is rate-limited.
 
 **`sbom_ingest(content)`** — autodetects and parses CycloneDX 1.x JSON, SPDX 2.x JSON, or PEP 508-style requirements.txt. Returns `SbomComponentList` with name / version / ecosystem / purl per component, deduplicated, capped at 500 entries (`truncated=True` signals overflow). No network, no XML — anything more exotic raises `UnsupportedSbomFormatError`. The agent calls this first when the user pastes an SBOM, then runs `cve_semantic_search` on the top-N components.
+
+**`patch_lookup(cve_id)`** — extracts fixed-version information directly from the NVD CVE 2.0 record (per affected CPE: `versionEndExcluding` = smallest patched version, plus optional `versionStartIncluding/Excluding` for the range start). Returns `PatchAvailability` with `has_fix`, a list of `(product_cpe, fixed_in_version, version_range_start)` triples (deduplicated, capped at 50), and the NVD advisory references. Pairs with `cve_lookup` when `recommended_action` should cite a concrete release.
 
 **`kev_check(cve_id)`** — looks the CVE up in the CISA Known Exploited Vulnerabilities catalog (daily-refreshed JSON, cached on disk for 24h). Returns `KevCheck` with `in_catalog`, CISA-provided vendor / product / vulnerability name, `due_date` (federal remediation deadline), `required_action`, and the `known_ransomware_use` flag. KEV membership is the single most actionable "patch now" signal in vulnerability management.
 
@@ -365,7 +368,7 @@ The frontend ESLint setup uses the flat config (`frontend/eslint.config.mjs`) br
 
 The backend CI runs on a Python version matrix (3.12 + 3.13) so the declared `requires-python = ">=3.12"` is actually exercised, not just declared. Coverage on the fast suite holds at **~87%** with a soft 70% floor (`tool.coverage.report.fail_under`).
 
-**Suite count: 184 passing** (182 fast + 2 slow). Breakdown:
+**Suite count: 191 passing** (189 fast + 2 slow). Breakdown:
 - **36 contract tests** — every MCP tool has Pydantic I/O contract tests with `respx`-mocked HTTP. Tool fail modes (NVD 404, malformed payload, 5xx retry, 429 retry, XXE refusal, oversized CSV download) all covered. Includes `/v1/meta` endpoint contract.
 - **11 KEV contract tests** — hit, miss, ransomware flag normalization, single-fetch invariant, oversized payload, non-200, malformed JSON, missing top-level list, hostile entry tolerance, free-text truncation, untrusted-content fencing for hostile vendor payloads.
 - **9 EPSS contract tests** — hit, miss, non-200, non-JSON, missing data field, wrong-type entry, mismatched CVE defense, out-of-range scores, non-numeric scores.
@@ -376,6 +379,7 @@ The backend CI runs on a Python version matrix (3.12 + 3.13) so the declared `re
 - **14 eval-suite unit tests** — 9 scorer tests (severity tolerance, CVE recall threshold, KEV / ransomware flag honoring) + 5 runner tests (SSE CRLF and LF tolerance, error-event surfacing, missing-final-event handling, HTTP 5xx).
 - **14 audit-trail tests** — 7 hash-chain model tests (canonical serialization, seal determinism, tamper detection at the link level) + 7 store tests (genesis chaining, subsequent-row chaining, verify on clean chain, field-mutation tamper, forged-row insert, SQLite trigger enforcement, tail ordering). Two API integration tests assert that one event lands per call (success or error path).
 - **13 SBOM contract tests** — CycloneDX, SPDX, requirements.txt happy paths; dedup, truncation, missing-name skip; malformed JSON; unsupported shapes; extras + environment markers in requirements lines.
+- **7 patch_lookup contract tests** — versionEndExcluding extraction, dedup across CPE configurations, skip when no fix declared, range-start fallback (Including vs Excluding), CVE-not-found, 50-entry cap.
 - **9 red-team scorer tests** — pattern absence (case-insensitive), value-equality refusals, multi-check pass/fail semantics, `any` field aggregation, summary aggregator.
 - **6 auth + rate-limit tests** — meta endpoint open by default, requires Bearer / X-API-Key when configured, wrong key rejected, health stays open, triage 401 without key + 200 with key, rate-limit 429 above the cap with generic detail, settings csv parser from env.
 

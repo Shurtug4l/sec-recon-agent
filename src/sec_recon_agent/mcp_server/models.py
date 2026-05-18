@@ -67,6 +67,33 @@ class KevCheck(BaseModel):
     notes: str | None = Field(default=None, max_length=2050)
 
 
+class PatchEntry(BaseModel):
+    """One product / version pair where the CVE is reported as patched."""
+
+    product_cpe: str = Field(max_length=400)
+    fixed_in_version: str = Field(max_length=100)
+    # `versionStartIncluding` / `versionStartExcluding` from the same NVD
+    # CPE match. Kept for downstream consumers that need the full
+    # affected-range descriptor (e.g. "fixed in X but only for builds
+    # from version Y onwards").
+    version_range_start: str | None = Field(default=None, max_length=100)
+
+
+class PatchAvailability(BaseModel):
+    """Result of a patch-availability lookup.
+
+    `has_fix` is the headline signal. `fixed_entries` enumerates every
+    distinct product / fixed-version pair the NVD CPE configuration
+    declares; `references` echoes the NVD advisory URLs from the same
+    record so the consumer can audit the source.
+    """
+
+    cve_id: CveIdStr
+    has_fix: bool
+    fixed_entries: list[PatchEntry] = Field(default_factory=list, max_length=50)
+    references: list[HttpUrl] = Field(default_factory=list, max_length=20)
+
+
 class SbomComponent(BaseModel):
     """A single software component normalized out of an SBOM.
 
