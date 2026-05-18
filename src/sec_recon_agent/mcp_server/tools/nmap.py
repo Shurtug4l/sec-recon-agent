@@ -88,7 +88,11 @@ def nmap_parse_xml(xml_content: str) -> NmapScanResult:
     expansion are refused, so untrusted scan output cannot trigger XXE.
     """
     try:
-        root = ET.fromstring(xml_content)
+        # forbid_dtd=True is tighter than defusedxml's default (which only
+        # blocks entity *expansion* and external fetches but allows DTD
+        # *declarations*). Real Nmap XML output has no DTD; rejecting any
+        # DTD declaration removes the entire entity attack surface.
+        root = ET.fromstring(xml_content, forbid_dtd=True)
     except (ET.ParseError, DefusedXmlException) as exc:
         raise MalformedNmapXmlError(f"Nmap XML parse failed: {exc}") from exc
 

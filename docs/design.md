@@ -95,6 +95,30 @@ Structured fields (CVE IDs, CVSS scores, severities, CWE IDs, CPE strings, URLs,
 
 **Untrusted-content fencing test invariant.** Unit tests assert that fenced fields start and end with the marker tokens. Renaming or removing the markers will fail tests, surfacing the change before it ships.
 
+### Defended invariants (property and adversarial tests)
+
+`tests/property/` carries two complementary suites that pin the contract of the security-critical primitives. Property tests state invariants over arbitrary inputs (via Hypothesis); adversarial tests fire hand-curated hostile payloads at the tool layer.
+
+| Invariant | Where | What it pins |
+|---|---|---|
+| `fence_untrusted(t)` wraps any non-empty `t` with both markers | `test_invariants.py` | the boundary contract cannot drift silently |
+| The original text is preserved verbatim inside the fence | `test_invariants.py` | we sanitize the BOUNDARY, not the CONTENT (the LLM still needs the data) |
+| `fence_untrusted(None) == None` and `fence_untrusted("") == ""` | `test_invariants.py` | empty fencing inflates token cost without changing semantics |
+| Any CVE ID matching `^CVE-\d{4}-\d{4,}$` passes Pydantic | `test_invariants.py` | the regex is canonical at every boundary |
+| Any string not matching the regex is rejected | `test_invariants.py` | injection in URL params blocked at the model layer |
+| `NmapPort.portid` in `[1, 65535]`, `cvss_v3_score` in `[0, 10]`, `similarity` in `[0, 1]` | `test_invariants.py` | the structured-output contract holds for any Hypothesis-generated value |
+
+| Attack class | Tests in `test_adversarial.py` |
+|---|---|
+| Prompt injection in NVD descriptions | 8 payloads (system-prompt extraction, role override, jinja-like, log4shell `${jndi:...}`, fake-fence markers in the payload) — all reach the agent only inside the real outer fence, payload preserved verbatim |
+| Marker forgery (payload contains the markers themselves) | 1 test — the wrapper applies once around the whole text; inner occurrences are just characters |
+| XXE / XML attack variants | 4 payloads (classic file read, external DTD reference, parameter entity, billion laughs) — all raise `MalformedNmapXmlError`. Parser now uses `forbid_dtd=True` (tighter than defusedxml's default) so DTD declarations are refused, removing the entity attack surface entirely |
+| Malformed CVE IDs | 14 payloads (lowercase, padding, newlines, null bytes, path traversal, SQL/URL injection attempts) — all rejected by the Pydantic Annotated regex before any HTTP call |
+| Homoglyphs / Unicode tricks | 5 payloads (Cyrillic С, zero-width space, RTL override, NBSP, full-width hyphens) — rejected by the ASCII-only regex |
+| Resource exhaustion | ExploitDB CSV above 20 MB cap aborts download; Nmap XML with 500 hostnames / 1000 ports per host capped at 50 / 200 in the returned model |
+
+Counts: 11 property tests, 32 adversarial parametrizations. Together they replace what a hand-written example suite would only sample.
+
 ### Residual risks and accepted limits
 
 These are real concerns that this codebase does not address. A reviewer should know what is deliberately out of scope.
