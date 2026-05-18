@@ -35,6 +35,18 @@ updates:
     groups:
       npm-minor-patch:
         update-types: ["minor", "patch"]
+    # eslint-config-next and typescript are tightly coupled to Next.js's
+    # major: bumping them independently lands in CI red until Next itself
+    # moves. Skip the major bump for both; minor/patch still come through.
+    # Same logic for next itself — its major bump is a deliberate
+    # decision that needs the surrounding ecosystem moved together.
+    ignore:
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint-config-next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
     labels:
       - "dependencies"
       - "frontend"
@@ -64,6 +76,13 @@ updates:
       time: "06:00"
       timezone: "Europe/Rome"
     open-pull-requests-limit: 3
+    # Node.js uses even majors as LTS and odd majors as current. Skip
+    # the auto-major bump so Dependabot does not propose node 23/25/27
+    # (non-LTS) — we move to the next LTS manually when it has been GA
+    # for at least six months. Minor + patch always flow.
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
     labels:
       - "dependencies"
       - "docker"
