@@ -86,6 +86,13 @@ extend-immutable-calls = ["fastapi.Depends", "fastapi.Security", "fastapi.Header
 # Adversarial corpus contains intentional Unicode homoglyphs (Cyrillic С,
 # full-width hyphens, etc.) used to verify the boundary regex rejects them.
 "tests/property/test_adversarial.py" = ["S", "ASYNC", "RUF001", "RUF003"]
+# Both modules do a single synchronous Path.write_bytes after a streaming
+# download has already paid the network cost. The event-loop block is
+# bounded by the size cap (20 MB / 50 MB) and exists by design. The
+# trailing `# noqa: ASYNC240` keeps getting stripped by ruff-format
+# trailing-comment optimization, so we move the ignore here.
+"src/sec_recon_agent/mcp_server/tools/exploits.py" = ["ASYNC240"]
+"src/sec_recon_agent/mcp_server/tools/kev.py" = ["ASYNC240"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
