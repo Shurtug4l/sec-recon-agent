@@ -70,8 +70,7 @@ def resolve_model(override: str | None) -> str:
     candidate = MODEL_ALIASES.get(override, override)
     if candidate not in ALLOWED_MODELS:
         raise ValueError(
-            f"model {override!r} is not on the allowlist; "
-            f"choose one of {sorted(ALLOWED_MODELS)}",
+            f"model {override!r} is not on the allowlist; choose one of {sorted(ALLOWED_MODELS)}",
         )
     return candidate
 

@@ -96,14 +96,14 @@ def main(argv: list[str] | None = None) -> int:
 
     if not health_check(args.api_url):
         print(
-            f"agent API at {args.api_url} is not responding on /v1/health. " f"Did you `make up`?",
+            f"agent API at {args.api_url} is not responding on /v1/health. Did you `make up`?",
             file=sys.stderr,
         )
         return 2
 
     label = args.model or "default"
     print(
-        f"running {len(payloads)} payload(s) against {args.api_url} " f"(model={label}) ...",
+        f"running {len(payloads)} payload(s) against {args.api_url} (model={label}) ...",
     )
     verdicts: list[PayloadVerdict] = []
     json_records: list[dict[str, Any]] = []
@@ -120,7 +120,7 @@ def main(argv: list[str] | None = None) -> int:
             # rather than counting it as a clean pass: an outage masquerading
             # as resistance would be a false positive.
             print(
-                f"  [ERR ] {payload.id:<32} {result.error}  " f"{result.elapsed_seconds:5.1f}s",
+                f"  [ERR ] {payload.id:<32} {result.error}  {result.elapsed_seconds:5.1f}s",
             )
             json_records.append(
                 {
@@ -172,8 +172,7 @@ def main(argv: list[str] | None = None) -> int:
         print("\nper MITRE ATLAS technique:")
         for agg in atlas_aggregates:
             print(
-                f"  {agg.technique:<14} "
-                f"{agg.resisted}/{agg.total} ({agg.rate:.0%})",
+                f"  {agg.technique:<14} {agg.resisted}/{agg.total} ({agg.rate:.0%})",
             )
 
     if args.json_output:

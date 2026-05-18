@@ -231,9 +231,9 @@ async def test_free_text_fields_fence_hostile_payload() -> None:
 
     for field in (result.vulnerability_name, result.required_action, result.notes):
         assert field is not None
-        assert field.startswith(
-            UNTRUSTED_START
-        ), "Hostile vendor text must be fenced before reaching the LLM"
+        assert field.startswith(UNTRUSTED_START), (
+            "Hostile vendor text must be fenced before reaching the LLM"
+        )
         assert field.rstrip().endswith(UNTRUSTED_END)
         assert "ignore previous instructions" in field  # body preserved verbatim
 

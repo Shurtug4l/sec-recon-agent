@@ -11,17 +11,20 @@
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    # Pinned major; Dependabot will bump via the github-actions ecosystem.
-    rev: v0.7.4
+    # Keep aligned with the ruff version in the dev extra; the pinned
+    # rev here ships its own ruff binary, which must understand every
+    # rule selector in pyproject.toml (e.g. ASYNC240 from 0.8.x).
+    # Bumped by the pre-commit ecosystem in .github/dependabot.yml.
+    rev: v0.15.13
     hooks:
-      - id: ruff
+      - id: ruff-check
         args: ["--fix"]
         types_or: [python, pyi]
       - id: ruff-format
         types_or: [python, pyi]
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
         exclude: \.snap$
