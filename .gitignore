@@ -36,5 +36,12 @@ htmlcov/
 
 .aider*
 
+# Frontend Node artifacts. node_modules is host-specific and large;
+# .next is the local build cache. package-lock.json IS tracked so CI
+# and the Dockerfile can use `npm ci` for deterministic installs.
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
 # CLAUDE.md is personal AI-tooling config; the global gitignore already
 # excludes it. Do NOT add a `!CLAUDE.md` override here. Keep it local-only.

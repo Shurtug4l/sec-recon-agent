@@ -5,9 +5,12 @@
 # ============================================================================
 FROM node:22-alpine AS deps
 WORKDIR /app
-COPY package.json package-lock.json* ./
-# Use ci when a lockfile is committed; fall back to install for first build.
-RUN npm install --no-audit --no-fund --legacy-peer-deps
+COPY package.json package-lock.json ./
+# Deterministic install: `npm ci` refuses to mutate package.json or the
+# lockfile, so any drift fails the build instead of being silently papered
+# over. --legacy-peer-deps absorbs the Next 15 / React 19 peer-tag mismatch
+# (RC tag on the dep range, GA in the wild).
+RUN npm ci --no-audit --no-fund --legacy-peer-deps
 
 FROM node:22-alpine AS builder
 WORKDIR /app
