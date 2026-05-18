@@ -110,6 +110,23 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  frontend:
+    build:
+      context: ./frontend
+    image: sec-recon-frontend:0.1.0
+    container_name: sec-recon-frontend
+    environment:
+      AGENT_API_URL: "http://agent-api:8000"
+      NODE_ENV: "production"
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      agent-api:
+        condition: service_healthy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
   # OpenTelemetry collector + UI for spans emitted by mcp-server and agent-api.
   # Enabled with `--profile observability`. The OTLP HTTP endpoint at :4318
   # is what the app processes target; the UI lives on :16686.

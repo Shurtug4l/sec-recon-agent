@@ -39,6 +39,9 @@ lint:  ## Run ruff + mypy locally.
 	uv run ruff check src tests
 	uv run mypy src
 
+ui:  ## Open the frontend UI in the default browser (assumes `make up` is running).
+	@open http://localhost:3000 2>/dev/null || xdg-open http://localhost:3000 2>/dev/null || echo "Frontend at http://localhost:3000"
+
 obs-up:  ## Start the stack WITH the Jaeger sidecar and OTLP enabled. UI on :16686.
 	@OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318 docker compose --profile observability up -d
 	@echo "Jaeger UI: http://localhost:16686"

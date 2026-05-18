@@ -47,13 +47,19 @@ Python 3.12+ · Pydantic AI · MCP (Anthropic SDK) · FastAPI (SSE) · ChromaDB 
 cp .env.example .env       # set ANTHROPIC_API_KEY (NVD_API_KEY and GITHUB_TOKEN optional)
 make build                 # multi-stage uv build, non-root runtime
 make seed                  # one-shot: pull recent CVEs into ChromaDB
-make up                    # start MCP server + agent API
-make triage Q="Apache 2.4.49 on port 80. Risk?"
+make up                    # start MCP server + agent API + frontend
+make ui                    # opens http://localhost:3000 in the browser
+make triage Q="Apache 2.4.49 on port 80. Risk?"   # or use the UI
 make logs                  # tail logs
 make down                  # stop, keep the data volume
 ```
 
-Both services are bound to `127.0.0.1` only by default and run as a non-root user (`secrecon`, uid 1000) with `read_only: true` and `no-new-privileges`.
+Three services bound to `127.0.0.1`:
+- `:3000` — Next.js frontend (React 19, Tailwind, Catppuccin theme, dark/light toggle, history sidebar)
+- `:8000` — agent API (FastAPI + SSE)
+- `:8001` — MCP server (FastMCP)
+
+All run as non-root users (`secrecon` uid 1000 for the backend, `node` uid 1000 for the frontend) with `no-new-privileges`; backend containers are `read_only: true`.
 
 ### With observability (Jaeger sidecar)
 
@@ -83,7 +89,7 @@ curl -N -X POST http://localhost:8000/v1/triage \
 
 ## Status
 
-All four MCP tools, the Pydantic AI agent, and the FastAPI SSE surface have landed. Container stack (Docker + compose), OpenTelemetry tracing, and a Jaeger sidecar profile are in place. Test suite: 88 passed (35 contract + 45 property/adversarial + 8 observability). See:
+All four MCP tools, the Pydantic AI agent, and the FastAPI SSE surface have landed. Container stack (Docker + compose), OpenTelemetry tracing, Jaeger sidecar profile, and a Next.js 15 + React 19 + Tailwind frontend are in place. Test suite: 88 passed (35 contract + 45 property/adversarial + 8 observability). See:
 
 - `docs/design.md` — architecture decisions, threat model, and the security review findings applied to the code.
 - `examples/triage_walkthrough.md` — three real sessions against the live agent (specific CVE, product description, Nmap XML), captured 2026-05-18.

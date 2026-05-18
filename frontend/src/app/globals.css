@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Theme tokens. Catppuccin Macchiato (dark) + Latte (light).
+ * Severity colors are mapped consistently across both themes.
+ */
+@layer base {
+  :root {
+    /* Catppuccin Latte */
+    --background: 220 23% 95%;       /* Base */
+    --foreground: 234 16% 35%;        /* Text */
+    --card: 220 22% 92%;              /* Surface0 */
+    --card-foreground: 234 16% 35%;
+    --popover: 220 22% 92%;
+    --popover-foreground: 234 16% 35%;
+    --primary: 266 85% 58%;           /* Mauve */
+    --primary-foreground: 220 23% 95%;
+    --secondary: 220 17% 85%;          /* Surface2 */
+    --secondary-foreground: 234 16% 35%;
+    --muted: 220 17% 85%;
+    --muted-foreground: 233 10% 47%;   /* Subtext0 */
+    --accent: 220 17% 85%;
+    --accent-foreground: 266 85% 58%;
+    --destructive: 347 87% 44%;        /* Red */
+    --destructive-foreground: 220 23% 95%;
+    --warning: 22 99% 52%;             /* Peach */
+    --warning-foreground: 220 23% 95%;
+    --success: 109 58% 40%;            /* Green */
+    --success-foreground: 220 23% 95%;
+    --border: 220 13% 72%;             /* Overlay0 */
+    --input: 220 13% 72%;
+    --ring: 266 85% 58%;
+    --radius: 0.6rem;
+  }
+
+  .dark {
+    /* Catppuccin Macchiato */
+    --background: 232 23% 18%;         /* Base #24273A */
+    --foreground: 227 68% 88%;         /* Text  #CAD3F5 */
+    --card: 230 16% 23%;               /* Surface0 #363A4F */
+    --card-foreground: 227 68% 88%;
+    --popover: 230 19% 19%;            /* Mantle */
+    --popover-foreground: 227 68% 88%;
+    --primary: 267 83% 80%;            /* Mauve #C6A0F6 */
+    --primary-foreground: 232 23% 18%;
+    --secondary: 229 12% 32%;          /* Surface1 */
+    --secondary-foreground: 227 68% 88%;
+    --muted: 229 12% 32%;
+    --muted-foreground: 228 24% 72%;   /* Subtext0 */
+    --accent: 229 12% 32%;
+    --accent-foreground: 267 83% 80%;
+    --destructive: 351 74% 73%;        /* Red #ED8796 */
+    --destructive-foreground: 232 23% 18%;
+    --warning: 40 70% 78%;             /* Yellow #EED49F */
+    --warning-foreground: 232 23% 18%;
+    --success: 105 48% 72%;            /* Green #A6DA95 */
+    --success-foreground: 232 23% 18%;
+    --border: 230 19% 26%;             /* Surface0 darker */
+    --input: 230 19% 26%;
+    --ring: 267 83% 80%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Severity badge accents (resolved separately to keep the design system
+ * tokens clean — these are semantic to the triage domain, not generic UI). */
+@layer utilities {
+  .severity-critical {
+    @apply bg-destructive text-destructive-foreground;
+  }
+  .severity-high {
+    @apply bg-warning text-warning-foreground;
+  }
+  .severity-medium {
+    @apply bg-amber-500/20 text-amber-700 dark:text-amber-300;
+  }
+  .severity-low {
+    @apply bg-sky-500/20 text-sky-700 dark:text-sky-300;
+  }
+  .severity-info {
+    @apply bg-muted text-muted-foreground;
+  }
+}
