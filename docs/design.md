@@ -65,6 +65,69 @@ Four processes, deliberately. The frontend, the agent API, and the MCP server ar
 
 **`frontend/`** — a Next.js 15 App Router application on React 19. The browser is the primary interface; `/api/triage` proxies the SSE stream from the FastAPI backend without ever exposing CORS. See [`docs/frontend.md`](frontend.md) for the component map.
 
+**`src/sec_recon_agent/eval/`** — the end-to-end golden-set runner exposed as the `sec-recon-eval` CLI. `golden_set.py` declares 10 cases, `runner.py` speaks HTTP+SSE against the live API, `scorer.py` applies soft assertions (severity tolerance, CVE recall threshold, KEV / ransomware flag honoring), `cli.py` is the argparse entry point. Not part of the unit-test fast lane — requires `make up` and bills the LLM.
+
+## Triage end-to-end
+
+One named-CVE query, every code boundary it touches, and where untrusted content gets fenced before reaching the LLM.
+
+```
+[browser]                                       [Next.js]                                    [agent-api]                                      [mcp-server]                                  [external]
+   |                                                |                                             |                                                |                                              |
+   | POST /api/triage  body={"query":"CVE-2021-41773"}
+   |----------------------------------------------->|
+   |                                                |  app/api/triage/route.ts                    |
+   |                                                |  fetch(AGENT_API_URL+"/v1/triage")          |
+   |                                                |  (server-side; no CORS exposed)             |
+   |                                                |-------------------------------------------->|
+   |                                                |                                             | api/stream.py::triage()
+   |                                                |                                             | yield 'started' SSE event
+   |                                                |                                             | agent = build_agent()
+   |                                                |                                             | agent.iter(query)
+   |                                                |                                             |   v
+   |                                                |                                             | Pydantic AI loop:
+   |                                                |                                             |   - LLM call (Anthropic Haiku)
+   |                                                |                                             |   - chooses tools per system prompt
+   |                                                |                                             |   - MCPToolset over HTTP+SSE
+   |                                                |                                             |---------------------------------------------->|
+   |                                                |                                             |                                                | tool dispatch (FastMCP)
+   |                                                |                                             |                                                |   v
+   |                                                |                                             |                                                | cve_lookup(CVE-2021-41773):
+   |                                                |                                             |                                                |   httpx -> NVD CVE 2.0 API ------------------>|
+   |                                                |                                             |                                                |   <---- vendor description, CVSS, CWEs <------|
+   |                                                |                                             |                                                |   fence_untrusted(description)
+   |                                                |                                             |                                                |   CVEDetail(...) -> agent context
+   |                                                |                                             |                                                |
+   |                                                |                                             |                                                | exploit_check(CVE-2021-41773):  [parallel]
+   |                                                |                                             |                                                |   ExploitDB CSV (cached 7d)   --------------->|
+   |                                                |                                             |                                                |   GitHub Code Search (if token) -------------->|
+   |                                                |                                             |                                                |
+   |                                                |                                             |                                                | kev_check(CVE-2021-41773):      [parallel]
+   |                                                |                                             |                                                |   cisa.gov KEV catalog (cached 24h) --------->|
+   |                                                |                                             |                                                |   fence_untrusted(vulnerability_name,
+   |                                                |                                             |                                                |                   required_action, notes)
+   |                                                |                                             |                                                |
+   |                                                |                                             |                                                | epss_score(CVE-2021-41773):     [parallel]
+   |                                                |                                             |                                                |   api.first.org EPSS API -------------------->|
+   |                                                |                                             |                                                |
+   |                                                |                                             |                                                | attack_mapping(CWEs):           [post-join]
+   |                                                |                                             |                                                |   bundled MITRE ATT&CK JSON (in-process)
+   |                                                |                                             |                                                |
+   |                                                |                                             | <-------- aggregated tool results ------------|
+   |                                                |                                             | LLM synthesizes:
+   |                                                |                                             |   - severity (KEV > ransomware > EPSS > CVSS)
+   |                                                |                                             |   - recommended_action (cites KEV due date)
+   |                                                |                                             |   - reasoning_chain (audit log of calls)
+   |                                                |                                             | Pydantic validates -> TriageReport
+   |                                                |                                             | yield 'final' SSE event with model_dump_json()
+   |                                                | <-- 'final' SSE ----------------------------|
+   | <-- 'final' SSE (byte-for-byte proxy) ---------|                                             |
+   |                                                |                                             |                                                |
+   render: CVE card with KEV+ransomware+EPSS badges, ATT&CK techniques, reasoning_chain
+```
+
+Every span emitted on the path carries a stable attribute set (no free text, no secrets). W3C `traceparent` flows through httpx auto-instrumentation, so a single trace ID covers the full path.
+
 ## Decisions log
 
 **Why the Anthropic official `mcp` SDK over FastMCP-community.** Both work. The official SDK is canonical; using it signals respect for the spec to a reviewer who cares. Switching cost later is trivial because the tool surface is decorator-driven and the implementation is portable.
