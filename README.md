@@ -485,7 +485,7 @@ Every "HIGH" finding from an independent security review is mapped to the code c
 - **Singletons concurrency-safe** — double-checked locking on the ChromaDB collection and the Exploit-DB index, both for the threading and the asyncio paths.
 - **Error-payload allowlist** — the SSE `error` event surfaces a generic message for any exception type not on an explicit allowlist. Internal exception messages (with params, paths, library internals) never leak to the client.
 - **Container hardening** — non-root users (`secrecon` uid 1000 backend, `node` uid 1000 frontend), `read_only: true`, `tmpfs:/tmp`, `no-new-privileges`, ports bound to `127.0.0.1`. `apt upgrade` in the runtime stage to pick up Debian security patches; `docker scout cves` reports 0 CRITICAL and only inherited HIGH findings in base-image packages our runtime does not invoke.
-- **Trivy in CI** — `ci-docker-scan.yml` builds both images and scans them with Aqua Trivy. CRITICAL findings exit non-zero (blocking). HIGH findings are uploaded as SARIF to the GitHub Security tab (informational). Triggered on Dockerfile / dependency changes plus a weekly Monday cron so a fresh base-image CVE surfaces without code activity.
+- **Trivy in CI** — `ci-docker-scan.yml` builds both images and scans them with Aqua Trivy. CRITICAL findings exit non-zero (blocking). HIGH findings are uploaded as SARIF to the GitHub Security tab (informational). Triggered on Dockerfile / dependency changes plus a weekly Monday cron so a fresh base-image CVE surfaces without code activity. Currently-open findings (all build-time transitive or inside an opaque native wheel) are triaged in [`docs/security_findings.md`](docs/security_findings.md) with explicit accept reasoning.
 - **Opt-in API auth + per-IP rate limit** — `API_KEYS=<csv>` switches on `Authorization: Bearer` / `X-API-Key` enforcement on `/v1/triage` and `/v1/meta` (`/v1/health` stays public for orchestrators); `RATE_LIMIT_PER_MINUTE=<n>` enables a slowapi limiter. The auth dependency uses `hmac.compare_digest` for constant-time comparison and the 429 body never echoes the configured limit.
 
 ### Authentication and rate limiting
@@ -637,6 +637,7 @@ Together they answer three questions a reviewer asks: "what risks did you consid
 - [`docs/owasp_llm_top10.md`](docs/owasp_llm_top10.md) — OWASP LLM Top 10 (2025) mapping matrix with code citations.
 - [`docs/mitre_atlas.md`](docs/mitre_atlas.md) — MITRE ATLAS mapping (AI-specific adversary tactics).
 - [`docs/iso_42001.md`](docs/iso_42001.md) — ISO/IEC 42001:2023 alignment matrix with explicit out-of-scope declarations.
+- [`docs/security_findings.md`](docs/security_findings.md) — currently-open Trivy / SARIF findings with triage notes and accept rationale.
 - [`docs/frontend.md`](docs/frontend.md) — frontend component map, SSE wire protocol, theming, state management.
 - [`examples/triage_walkthrough.md`](examples/triage_walkthrough.md) — three real agent sessions captured against the live stack on 2026-05-18.
 - [`SECURITY.md`](SECURITY.md) — responsible-disclosure policy and safe-harbor terms.
