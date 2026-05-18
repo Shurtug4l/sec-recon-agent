@@ -28,9 +28,15 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # ============================================================================
 FROM python:3.13-slim AS runtime
 
-# curl is needed for the healthcheck; everything else is in the venv.
+# Pull latest Debian security patches in the runtime stage. Without this,
+# the image inherits every CVE in whatever snapshot `python:3.13-slim` was
+# built from, even when fixes are already in the Debian archive. Picks up
+# glibc / systemd / libcap2 / sed patches that `docker scout` flags.
+# curl is needed for the healthcheck; everything else lives in the venv.
 RUN apt-get update \
+    && apt-get -y upgrade \
     && apt-get install -y --no-install-recommends curl \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Run as a non-root user. UID 1000 is the convention; matches typical host
