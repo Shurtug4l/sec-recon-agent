@@ -7,6 +7,7 @@ import {
   Download,
   ExternalLink,
   Flame,
+  Printer,
   ShieldCheck,
   ShieldX,
   Skull,
@@ -65,8 +66,16 @@ export function TriageReportView({
     downloadMarkdown(`triage-${stamp}.md`, md);
   }
 
+  function handleExportPdf() {
+    // Browser print-to-PDF. The @media print stylesheet hides chrome and
+    // shows only the .printable-report block (this component). The user
+    // picks "Save as PDF" in the system print dialog. Native multi-page,
+    // pixel-perfect, zero JS dependency.
+    window.print();
+  }
+
   return (
-    <div className="animate-fade-in space-y-4">
+    <div id="printable-report" className="printable-report animate-fade-in space-y-4">
       <Card className="border-2 border-primary/20">
         <CardHeader className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -76,17 +85,30 @@ export function TriageReportView({
             <Badge variant="outline" className="text-xs uppercase tracking-wider">
               {report.confidence} confidence
             </Badge>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              className="ml-auto h-7 gap-1 text-[11px]"
-              onClick={handleExportMarkdown}
-              title="Export the full report as a Markdown file"
-            >
-              <Download className="h-3.5 w-3.5" />
-              Export .md
-            </Button>
+            <div className="ml-auto flex items-center gap-1 print:hidden">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 gap-1 text-[11px]"
+                onClick={handleExportMarkdown}
+                title="Export the full report as a Markdown file"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Export .md
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 gap-1 text-[11px]"
+                onClick={handleExportPdf}
+                title="Open the print dialog; pick 'Save as PDF'"
+              >
+                <Printer className="h-3.5 w-3.5" />
+                Export PDF
+              </Button>
+            </div>
           </div>
           <p className="text-base font-medium leading-relaxed">{report.summary}</p>
         </CardHeader>
