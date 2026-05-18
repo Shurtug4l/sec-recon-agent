@@ -4,7 +4,7 @@
 # Builder stage: install dependencies into a virtualenv using uv.
 # Kept separate from runtime so the final image does not carry uv or its cache.
 # ============================================================================
-FROM python:3.13-slim AS builder
+FROM python:3.14-slim AS builder
 
 # Pull the uv binary from the official distroless image (small, signed).
 COPY --from=ghcr.io/astral-sh/uv:0.5 /uv /usr/local/bin/uv
@@ -26,7 +26,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # ============================================================================
 # Runtime stage: minimal Python image, non-root user, only the venv and src.
 # ============================================================================
-FROM python:3.13-slim AS runtime
+FROM python:3.14-slim AS runtime
 
 # Pull latest Debian security patches in the runtime stage. Without this,
 # the image inherits every CVE in whatever snapshot `python:3.13-slim` was
