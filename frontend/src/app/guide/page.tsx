@@ -105,9 +105,9 @@ const SECTIONS: Section[] = [
     badge: "Adversary TTPs for AI",
     icon: Library,
     what:
-      "MITRE ATLAS (Adversarial Threat Landscape for Artificial-Intelligence Systems) is the ATT&CK-equivalent matrix for AI/ML systems. Tactics include AI Model Access, ML Attack Staging, Exfiltration via ML Inference API, Persistence, and Impact. Techniques include Prompt Injection (AML.T0051), Jailbreak (AML.T0054), LLM Plugin Compromise (AML.T0053), External Harms (AML.T0048). ATLAS is the canonical taxonomy for talking about LLM-specific attacks in the same shape SOC teams already understand.",
+      "MITRE ATLAS (Adversarial Threat Landscape for Artificial-Intelligence Systems) is the ATT&CK-equivalent matrix for AI/ML systems. Tactics include AI Model Access, ML Attack Staging, Exfiltration via AI Inference API, Persistence, and Impact. Techniques cover LLM Prompt Injection (direct and indirect), LLM Jailbreak, LLM Plugin Compromise, Unsafe Plugin Output Handling, Exfiltration via Inference API, Denial of AI Service, Cost Harvesting, External Harms. ATLAS is the canonical taxonomy for talking about LLM-specific attacks in the same shape SOC teams already understand.",
     whyHere:
-      "The red-team battery (sec-recon-redteam) tags every prompt-injection payload with one or more ATLAS technique IDs. The drift detector reports per-technique resistance rates so a regression on AML.T0024 (Exfiltration via ML Inference API) surfaces by ID rather than by free-text. Every release is gated on this matrix.",
+      "The red-team battery (sec-recon-redteam) tags every prompt-injection payload with one or more ATLAS technique IDs. The drift detector reports per-technique resistance rates so a regression on Exfiltration via Inference API surfaces by stable identifier rather than by free-text. The repository's authoritative mapping (with the specific T-IDs that this codebase tracks) lives in docs/mitre_atlas.md; MITRE periodically renumbers techniques, so consult that file for the version actually exercised by tests.",
     used: ["sec-recon-redteam (CLI)"],
     refs: [
       { label: "ATLAS matrix", href: "https://atlas.mitre.org/matrices/ATLAS" },
@@ -121,7 +121,7 @@ const SECTIONS: Section[] = [
     badge: "Software inventory",
     icon: Package,
     what:
-      "A Software Bill of Materials enumerates every component (library, container, OS package) in a piece of software, with version and an optional package URL (purl) for canonical identification. CycloneDX is the OWASP standard (JSON or XML, used here in JSON 1.x). SPDX is the Linux Foundation / ISO/IEC 5962 standard. PEP 508 is Python's requirements.txt grammar. US Executive Order 14028 and several EU directives push SBOM as a mandatory artifact for software supply-chain transparency.",
+      "A Software Bill of Materials enumerates every component (library, container, OS package) in a piece of software, with version and an optional package URL (purl) for canonical identification. CycloneDX is the OWASP standard (JSON or XML; this codebase consumes the 1.x JSON shape only). SPDX 2.x JSON is the Linux Foundation / ISO/IEC 5962:2021 standard. The Python requirements.txt heuristic here accepts a strict subset of PEP 508 (lines of the form name==version or name>=version). US Executive Order 14028 and several EU directives push SBOM as a mandatory artifact for software supply-chain transparency.",
     whyHere:
       "sbom_ingest parses any of the three formats in-process (no network), returning a normalized component list (name, version, purl, type). The agent then runs cve_semantic_search and cve_lookup against the most-likely-vulnerable components, batching tool calls. This is the bulk-triage entry point: paste an SBOM, get a prioritized risk list.",
     used: ["sbom_ingest", "cve_semantic_search", "cve_lookup"],
