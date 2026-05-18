@@ -43,14 +43,9 @@ jobs:
         # peers a React 19 RC tag that GA satisfies in practice.
         run: npm ci --no-audit --no-fund --legacy-peer-deps
 
-      # Lint deliberately skipped:
-      # - `next lint` is interactive on first run (prompts Strict / Base /
-      #   Cancel for ESLint setup) and exits 1 in CI without stdin.
-      # - Next 15+ has deprecated `next lint` in favor of running ESLint
-      #   directly; that migration is out of scope for this PR.
-      # - TypeScript strict + a successful Next.js build cover the most
-      #   important correctness signals; style/unused-var enforcement
-      #   can be re-added later via a flat ESLint config.
+      - name: Lint (ESLint flat config)
+        run: npm run lint
+
       - name: Type check
         run: npm run type-check
 

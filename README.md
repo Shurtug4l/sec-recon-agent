@@ -193,17 +193,19 @@ W3C `traceparent` propagation flows from `frontend → /api/triage → agent-api
 make test                       # full suite, ~3 min (network-mocked, no LLM)
 uv run pytest -m "not slow"     # skip ChromaDB round-trip (~5 s instead of 3 min)
 uv run pytest tests/property    # property + adversarial only
-make lint                       # ruff + mypy --strict
+make lint                       # backend (ruff + mypy --strict) + frontend (ESLint flat)
 ```
 
-**Suite count: 117 passing** (115 fast + 2 slow). Breakdown:
+The frontend ESLint setup uses the flat config (`frontend/eslint.config.mjs`) bridged through `FlatCompat` to `next/core-web-vitals` + `next/typescript`. CI runs `npm run lint` between `type-check` and `build`.
+
+**Suite count: 120 passing** (118 fast + 2 slow). Breakdown:
 - **36 contract tests** — every MCP tool has Pydantic I/O contract tests with `respx`-mocked HTTP. Tool fail modes (NVD 404, malformed payload, 5xx retry, 429 retry, XXE refusal, oversized CSV download) all covered. Includes `/v1/meta` endpoint contract.
-- **10 KEV contract tests** — hit, miss, ransomware flag normalization, single-fetch invariant, oversized payload, non-200, malformed JSON, missing top-level list, hostile entry tolerance, free-text truncation.
+- **11 KEV contract tests** — hit, miss, ransomware flag normalization, single-fetch invariant, oversized payload, non-200, malformed JSON, missing top-level list, hostile entry tolerance, free-text truncation, untrusted-content fencing for hostile vendor payloads.
 - **9 EPSS contract tests** — hit, miss, non-200, non-JSON, missing data field, wrong-type entry, mismatched CVE defense, out-of-range scores, non-numeric scores.
 - **9 ATT&CK mapping contract tests** — CWE→technique table, deduplication, mitigation presence, unknown-CWE silence, malformed input.
 - **11 property tests** — Hypothesis invariants on `fence_untrusted`, `CveIdStr` regex, Pydantic field constraints.
 - **32 adversarial parametrizations** — prompt injection (8 payloads + marker forgery), XXE variants (4), malformed CVE IDs (14), Unicode homoglyphs (5), resource exhaustion (oversize CSV, huge hostname/port lists).
-- **8 observability tests** — span emission per tool, attribute schema, privacy invariants (no secret / no user query text / no NVD description in span attributes).
+- **10 observability tests** — span emission per tool, attribute schema, privacy invariants (no secret / no user query text / no NVD description / no KEV vendor text in span attributes; EPSS span attribute allowlist).
 
 See [`docs/design.md`](docs/design.md#defended-invariants-property-and-adversarial-tests) for the full invariant table.
 

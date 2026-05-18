@@ -35,9 +35,10 @@ triage:  ## Send a query to the running agent. Usage: make triage Q="your questi
 test:  ## Run the pytest suite locally (outside Docker).
 	uv run pytest -q
 
-lint:  ## Run ruff + mypy locally (backend only; frontend linting deferred).
+lint:  ## Run backend (ruff + mypy --strict) and frontend (ESLint) lints.
 	uv run ruff check src tests
 	uv run mypy src
+	cd frontend && npm run lint
 
 ui:  ## Open the frontend UI in the default browser (assumes `make up` is running).
 	@open http://localhost:3000 2>/dev/null || xdg-open http://localhost:3000 2>/dev/null || echo "Frontend at http://localhost:3000"

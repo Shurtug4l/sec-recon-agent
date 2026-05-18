@@ -31,7 +31,7 @@ export default function DashboardPage() {
             <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
             <p className="text-sm text-muted-foreground">
               Aggregated stats from your local history, per-run observability, and full transparency
-              into the agent's prompt and tool surface.
+              into the agent&apos;s prompt and tool surface.
             </p>
           </div>
           {state.isRunning && (
