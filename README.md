@@ -615,18 +615,20 @@ sec-recon-agent/
 
 ## Governance and compliance mapping
 
-For an AI Security / governance reviewer, two documents map every applied control against the relevant external taxonomy:
+For an AI Security / governance reviewer, three documents map every applied control against the relevant external taxonomy:
 
 - [`docs/owasp_llm_top10.md`](docs/owasp_llm_top10.md) — the codebase mapped against [OWASP Top 10 for LLM Applications (2025)](https://owasp.org/www-project-top-10-for-large-language-model-applications/). One row per risk (LLM01..LLM10) with status (mitigated / partial / N/A), layered controls, file:line citations, and the falsifiable tests that defend each invariant.
 - [`docs/mitre_atlas.md`](docs/mitre_atlas.md) — the codebase mapped against [MITRE ATLAS](https://atlas.mitre.org/) tactics + techniques. Pairs with the adversary-side MITRE ATT&CK framework already integrated via the `attack_mapping` tool.
+- [`docs/iso_42001.md`](docs/iso_42001.md) — the codebase mapped against [ISO/IEC 42001:2023](https://www.iso.org/standard/81230.html) clauses + Annex A controls, with an honest declaration of which clauses are out of scope for a single-author portfolio repo.
 
-Together they answer two questions a reviewer asks: "what risks did you consider?" and "where exactly is each control in the code?".
+Together they answer three questions a reviewer asks: "what risks did you consider?", "what would an attacker do against the agent itself?", and "what would an AIMS-certified organization need to point at?".
 
 ## Documentation index
 
 - [`docs/design.md`](docs/design.md) — the engineering brief. Architecture decisions with rejected alternatives, threat model with finding-to-fix mapping, defended invariants table, residual risks, testing strategy, operational notes.
 - [`docs/owasp_llm_top10.md`](docs/owasp_llm_top10.md) — OWASP LLM Top 10 (2025) mapping matrix with code citations.
 - [`docs/mitre_atlas.md`](docs/mitre_atlas.md) — MITRE ATLAS mapping (AI-specific adversary tactics).
+- [`docs/iso_42001.md`](docs/iso_42001.md) — ISO/IEC 42001:2023 alignment matrix with explicit out-of-scope declarations.
 - [`docs/frontend.md`](docs/frontend.md) — frontend component map, SSE wire protocol, theming, state management.
 - [`examples/triage_walkthrough.md`](examples/triage_walkthrough.md) — three real agent sessions captured against the live stack on 2026-05-18.
 - [`SECURITY.md`](SECURITY.md) — responsible-disclosure policy and safe-harbor terms.
