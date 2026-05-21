@@ -1,6 +1,13 @@
 """Contract tests for the attack_mapping MCP tool."""
 
-from sec_recon_agent.mcp_server.tools.attack import attack_mapping
+import pytest
+
+from sec_recon_agent.mcp_server.errors import InvalidCweInputError
+from sec_recon_agent.mcp_server.tools.attack import (
+    _CWE_ID_MAX_LEN,
+    _CWE_IDS_MAX_COUNT,
+    attack_mapping,
+)
 
 
 def test_path_traversal_maps_to_t1190() -> None:
@@ -71,3 +78,25 @@ def test_ordering_by_related_cwe_count() -> None:
     ids_in_order = [t.id for t in result]
     if "T1190" in ids_in_order and "T1083" in ids_in_order:
         assert ids_in_order.index("T1190") < ids_in_order.index("T1083")
+
+
+def test_rejects_overlong_cwe_list() -> None:
+    """A list with more than _CWE_IDS_MAX_COUNT entries is refused before lookup."""
+    payload = ["CWE-22"] * (_CWE_IDS_MAX_COUNT + 1)
+    with pytest.raises(InvalidCweInputError, match="exceeds"):
+        attack_mapping(payload)
+
+
+def test_rejects_overlong_cwe_entry() -> None:
+    """A single entry longer than _CWE_ID_MAX_LEN is refused (defense against
+    prompt-injection text smuggled in what should be a structured ID)."""
+    payload = ["CWE-" + "9" * (_CWE_ID_MAX_LEN + 1)]
+    with pytest.raises(InvalidCweInputError, match="exceeds"):
+        attack_mapping(payload)
+
+
+def test_accepts_list_at_cap() -> None:
+    """Exactly at the cap is allowed."""
+    payload = ["CWE-22"] * _CWE_IDS_MAX_COUNT
+    result = attack_mapping(payload)
+    assert any(t.id == "T1190" for t in result)
