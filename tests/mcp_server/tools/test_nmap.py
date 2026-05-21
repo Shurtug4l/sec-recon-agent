@@ -100,3 +100,27 @@ def test_parse_skips_host_without_ip() -> None:
     result = nmap_parse_xml(xml)
     assert len(result.hosts) == 1
     assert result.hosts[0].ip == "10.0.0.1"
+
+
+def test_parse_rejects_oversized_payload() -> None:
+    """Inputs above the 20MB cap must be refused before defusedxml runs."""
+    from sec_recon_agent.mcp_server.tools.nmap import _NMAP_XML_MAX_BYTES
+
+    oversized = "<nmaprun>" + ("a" * (_NMAP_XML_MAX_BYTES + 1)) + "</nmaprun>"
+    with pytest.raises(MalformedNmapXmlError, match="too large"):
+        nmap_parse_xml(oversized)
+
+
+def test_parse_caps_host_count() -> None:
+    """At most _NMAP_HOST_CAP <host> elements are processed, regardless of input size."""
+    from sec_recon_agent.mcp_server.tools.nmap import _NMAP_HOST_CAP
+
+    host_template = (
+        '<host><status state="up"/><address addr="10.{octet}.0.1" addrtype="ipv4"/></host>'
+    )
+    # Build _NMAP_HOST_CAP + 50 distinct hosts so the cap kicks in.
+    bodies = "".join(host_template.format(octet=i % 256) for i in range(_NMAP_HOST_CAP + 50))
+    xml = f'<?xml version="1.0"?><nmaprun start="0">{bodies}</nmaprun>'
+
+    result = nmap_parse_xml(xml)
+    assert len(result.hosts) == _NMAP_HOST_CAP
