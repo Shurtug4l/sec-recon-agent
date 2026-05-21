@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     # as JSON" for list[] fields — we want plain CSV input, handled by
     # the validator below.
     api_keys: Annotated[list[SecretStr], NoDecode] = Field(default_factory=list)
+    # Bearer token for the MCP transport. When unset (default), the MCP
+    # server is open (relies on the docker-compose internal network /
+    # localhost binding for isolation). When set, every HTTP request to
+    # the MCP server must carry `Authorization: Bearer <token>`. Use this
+    # whenever the MCP port is published beyond the container network.
+    mcp_auth_token: SecretStr | None = None
     # Per-IP rate limit on /v1/triage, in requests per minute. 0 or
     # None disables the limiter. Set to e.g. 30 for a dev deployment;
     # production behind a real WAF would set this much lower or rely
