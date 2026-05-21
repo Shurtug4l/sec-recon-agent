@@ -490,15 +490,16 @@ OK: 2 event(s) verified, chain intact.
 Every "HIGH" finding from an independent security review is mapped to the code change that addressed it, documented in [`docs/design.md`](docs/design.md#threat-model). Highlights:
 
 - **Strict typing at the model boundary** — every tool I/O is a Pydantic model. `mypy --strict` enforced.
-- **Untrusted-content fencing** — every free-text vendor field returned by a tool is wrapped with `<UNTRUSTED_CONTENT>...</UNTRUSTED_CONTENT>` markers at the code boundary (see `mcp_server/security.py`). The agent system prompt names these markers and instructs the LLM to treat their content as data.
+- **Untrusted-content fencing** — every free-text vendor field returned by a tool is wrapped with `<UNTRUSTED_CONTENT>...</UNTRUSTED_CONTENT>` markers at the code boundary (see `mcp_server/security.py`). The agent system prompt names these markers and instructs the LLM to treat their content as data. The `references` URLs on `CVEDetail` and `PatchAvailability` are lifted verbatim from NVD and carry the same untrusted contract: no downstream tool dereferences them, and the system prompt forbids fact-claims based on their content.
 - **XXE-safe XML parsing** — `defusedxml` with explicit `forbid_dtd=True` (tighter than defusedxml's default). Tested against the classic, external-DTD, parameter-entity, and billion-laughs payloads.
 - **Sliding-window rate limiter, race-free** — the NVD client limiter sleeps outside its lock (a CRITICAL bug caught in the security review and fixed).
-- **Bounded resource consumption** — ExploitDB CSV streamed with a 20 MB cap and post-redirect host validation against `gitlab.com`; semantic search query truncated at the tool boundary; Nmap hostnames / ports per host capped at 50 / 200; seed pagination capped at 25 pages per severity.
+- **Bounded resource consumption** — every tool input that crosses the MCP boundary is double-capped (`Annotated[..., Field(max_length=...)]` for protocol clients + a runtime pre-flight check for direct callers): `nmap_parse_xml` XML payload 20 MB and at most 1000 `<host>` elements per scan, `attack_mapping` 200 CWE entries max with 40 chars each, hostnames / ports per host capped at 50 / 200. ExploitDB CSV streamed with a 20 MB cap and post-redirect host validation against `gitlab.com`; semantic search query truncated at the tool boundary; seed pagination capped at 25 pages per severity.
 - **Singletons concurrency-safe** — double-checked locking on the ChromaDB collection and the Exploit-DB index, both for the threading and the asyncio paths.
 - **Error-payload allowlist** — the SSE `error` event surfaces a generic message for any exception type not on an explicit allowlist. Internal exception messages (with params, paths, library internals) never leak to the client.
 - **Container hardening** — non-root users (`secrecon` uid 1000 backend, `node` uid 1000 frontend), `read_only: true`, `tmpfs:/tmp`, `no-new-privileges`, ports bound to `127.0.0.1`. `apt upgrade` in the runtime stage to pick up Debian security patches; `docker scout cves` reports 0 CRITICAL and only inherited HIGH findings in base-image packages our runtime does not invoke.
 - **Trivy in CI** — `ci-docker-scan.yml` builds both images and scans them with Aqua Trivy. CRITICAL findings exit non-zero (blocking). HIGH findings are uploaded as SARIF to the GitHub Security tab (informational). Triggered on Dockerfile / dependency changes plus a weekly Monday cron so a fresh base-image CVE surfaces without code activity. Currently-open findings (all build-time transitive or inside an opaque native wheel) are triaged in [`docs/security_findings.md`](docs/security_findings.md) with explicit accept reasoning.
 - **Opt-in API auth + per-IP rate limit** — `API_KEYS=<csv>` switches on `Authorization: Bearer` / `X-API-Key` enforcement on `/v1/triage` and `/v1/meta` (`/v1/health` stays public for orchestrators); `RATE_LIMIT_PER_MINUTE=<n>` enables a slowapi limiter. The auth dependency uses `hmac.compare_digest` for constant-time comparison and the 429 body never echoes the configured limit.
+- **Opt-in MCP transport bearer auth** — `MCP_AUTH_TOKEN=<secret>` wraps the FastMCP SSE app in a plain ASGI middleware that enforces `Authorization: Bearer <secret>` on every HTTP request (constant-time comparison via `secrets.compare_digest`). Default off so docker-compose-internal usage stays frictionless; flip on whenever the MCP port (`:8001`) is published beyond the compose network.
 
 ### Authentication and rate limiting
 
@@ -525,6 +526,19 @@ curl -N -X POST http://localhost:8000/v1/triage \
 ```
 
 `/v1/health` remains open under any configuration — required so container orchestrators (Docker, Kubernetes) can run liveness probes without holding a key.
+
+### MCP transport authentication
+
+The MCP server (`:8001`) is the more powerful surface in the stack: direct tool access, no agent guardrails. By default it has no auth of its own and relies on docker-compose internal-network isolation (the port is **not** published to the host). Whenever the port is reachable beyond that perimeter, set a shared bearer secret:
+
+```bash
+# In .env or the host environment
+MCP_AUTH_TOKEN="long-random-string"
+```
+
+With the token set, every HTTP request to the MCP server must carry `Authorization: Bearer long-random-string` or the response is `401 Unauthorized` with `WWW-Authenticate: Bearer realm="mcp"`. Comparison is constant-time. Lifespan and non-HTTP ASGI scopes pass through untouched. The token is held as `SecretStr` in `config.py` so it never leaks into structured logs.
+
+The `agent-api` process does not need any extra configuration: it talks to the MCP server over the in-process Pydantic AI client and is co-deployed with the secret. Standalone callers (third-party MCP clients, manual smoke from a separate host) must attach the header explicitly.
 
 ## Development workflow
 
