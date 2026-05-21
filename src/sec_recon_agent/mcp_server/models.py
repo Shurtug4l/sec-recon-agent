@@ -19,7 +19,14 @@ class CVECandidate(BaseModel):
 
 
 class CVEDetail(BaseModel):
-    """Full CVE record returned by cve_lookup. Maps NVD CVE 2.0 schema."""
+    """Full CVE record returned by cve_lookup. Maps NVD CVE 2.0 schema.
+
+    `references` carries the URLs the upstream NVD record lists for the
+    CVE. Origins are vendor advisories, third-party blog posts, GitHub
+    issues, exploit write-ups. These URLs are UNTRUSTED: do not auto-fetch
+    them, do not present them as authoritative, do not follow redirects
+    server-side. They are an audit trail for a human analyst to review.
+    """
 
     cve_id: CveIdStr
     description: str
@@ -29,7 +36,14 @@ class CVEDetail(BaseModel):
     last_modified: str
     cwe_ids: list[str] = Field(default_factory=list)
     affected_cpes: list[str] = Field(default_factory=list, max_length=50)
-    references: list[HttpUrl] = Field(default_factory=list, max_length=20)
+    references: list[HttpUrl] = Field(
+        default_factory=list,
+        max_length=20,
+        description=(
+            "Vendor-published advisory URLs from NVD. UNTRUSTED: do not "
+            "auto-fetch or follow server-side. For analyst review only."
+        ),
+    )
 
 
 class ExploitCheck(BaseModel):
@@ -86,12 +100,22 @@ class PatchAvailability(BaseModel):
     distinct product / fixed-version pair the NVD CPE configuration
     declares; `references` echoes the NVD advisory URLs from the same
     record so the consumer can audit the source.
+
+    `references` are UNTRUSTED (same provenance as CVEDetail.references):
+    vendor-published, do not auto-fetch or follow server-side.
     """
 
     cve_id: CveIdStr
     has_fix: bool
     fixed_entries: list[PatchEntry] = Field(default_factory=list, max_length=50)
-    references: list[HttpUrl] = Field(default_factory=list, max_length=20)
+    references: list[HttpUrl] = Field(
+        default_factory=list,
+        max_length=20,
+        description=(
+            "Vendor-published advisory URLs from NVD. UNTRUSTED: do not "
+            "auto-fetch or follow server-side. For analyst review only."
+        ),
+    )
 
 
 class SbomComponent(BaseModel):

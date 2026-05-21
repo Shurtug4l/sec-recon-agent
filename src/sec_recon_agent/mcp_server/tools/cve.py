@@ -109,6 +109,9 @@ async def cve_lookup(cve_id: CveIdStr) -> CVEDetail:
 
     Returns a typed CVEDetail with CVSS v3, CWE IDs, affected CPEs, and references.
     Raises CveNotFoundError if NVD returns no record for the given ID.
+
+    The `references` field of the result contains UNTRUSTED vendor URLs:
+    do not auto-fetch them server-side. They are an analyst audit trail.
     """
     with _tracer.start_as_current_span("tool.cve_lookup") as span:
         # cve.id is a structured identifier and safe to record. The full
