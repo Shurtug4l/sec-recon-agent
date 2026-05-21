@@ -29,10 +29,10 @@ This document covers two sources:
 
 | Severity | Finding | Surface | Disposition | Current mitigation |
 |---|---|---|---|---|
-| P0 | MCP transport has no auth layer | `mcp_server/server.py` (FastMCP SSE) | open, tracked | port `:8001` not in compose `ports:` map, reachable only on docker-compose internal network |
-| P1 | `nmap_parse_xml` has no size cap on input | `mcp_server/tools/nmap.py` | open, tracked | defusedxml `forbid_dtd=True` blocks XXE; per-host caps in place; per-document host count unbounded |
-| P1 | `attack_mapping` `cwe_ids` list is unbounded | `mcp_server/tools/attack.py` | open, tracked | span attribute truncation caps log size but not iteration cost |
-| P1 | NVD reference URLs not marked untrusted in output | `mcp_server/tools/cve.py`, `tools/patch.py` | open, tracked (latent) | Pydantic `HttpUrl` validation; no downstream tool currently fetches reference URLs |
+| P0 | MCP transport has no auth layer | `mcp_server/server.py` (FastMCP SSE) | **fixed (PR1)** | opt-in `MCP_AUTH_TOKEN` bearer middleware in front of the SSE app; default off so docker-compose-internal usage is unchanged |
+| P1 | `nmap_parse_xml` has no size cap on input | `mcp_server/tools/nmap.py` | **fixed (PR1)** | 20MB input cap + 1000-host iteration cap, both enforced at the tool entry |
+| P1 | `attack_mapping` `cwe_ids` list is unbounded | `mcp_server/tools/attack.py` | **fixed (PR1)** | 200-entry list cap + 40-char per-entry cap; oversize input raises `InvalidCweInputError` before lookup |
+| P1 | NVD reference URLs not marked untrusted in output | `mcp_server/tools/cve.py`, `tools/patch.py` | **fixed (PR1)** | docstring + Pydantic `Field(description=...)` mark `references` as untrusted on `CVEDetail` and `PatchAvailability`; agent system prompt repeats the contract |
 | P1 | SSE transport is legacy (Streamable HTTP is the post-2025-06-18 recommendation) | `mcp_server/server.py` | open, tracked (deprecation watch) | SDK still supports SSE; no breaking change forced yet |
 | P1 | `epss_score` silently returns empty score on upstream CVE-id mismatch | `mcp_server/tools/epss.py` | open, tracked | `log.warning` is emitted; downstream agent has no signal |
 | P1 | `path.write_bytes` blocks the event loop during 5-20MB cache refresh | `mcp_server/tools/exploits.py`, `tools/kev.py` | open, tracked | refresh runs at most once per cache TTL (7d Exploit-DB, 24h KEV) |
@@ -77,31 +77,31 @@ The Cargo.lock comes from a pre-compiled native bridge bundled inside ChromaDB's
 
 These come from the periodic multi-agent audit (last run 2026-05-18). Unlike supply-chain findings (which we accept and document because the fix sits upstream), internal findings are ours to fix and are tracked toward concrete PRs.
 
-### P0 — MCP transport has no auth layer
+### P0 — MCP transport has no auth layer (fixed)
 
-`mcp_server/server.py` starts FastMCP with the SSE transport on `:8001` without any bearer / API-key / token check. The agent-api process enforces opt-in API-key auth (`api/stream.py`), but the MCP server — which is the more powerful surface (direct tool access, no agent guardrails) — enforces none.
+`mcp_server/server.py` started FastMCP with the SSE transport on `:8001` without any bearer / API-key / token check. The agent-api process enforces opt-in API-key auth (`api/stream.py`), but the MCP server, which is the more powerful surface (direct tool access, no agent guardrails), enforced none.
 
-**Current mitigation**: the `docker-compose.yml` does NOT publish `:8001` to the host. The port is reachable only via the compose-internal network, where the only client is `agent-api`. Anyone who re-runs the container with `-p 8001:8001` or deploys outside the compose perimeter loses this mitigation.
+**Previous mitigation**: the `docker-compose.yml` did NOT publish `:8001` to the host. The port was reachable only via the compose-internal network, where the only client is `agent-api`. Anyone who re-ran the container with `-p 8001:8001` or deployed outside the compose perimeter lost this mitigation.
 
-**Planned fix**: FastMCP-level bearer middleware accepting a shared secret from env, opt-in (default off to keep laptop dev frictionless). The CHANGELOG entry for the fixing PR will explicitly call out this mitigation gap so users on older images know to re-check their network exposure.
+**Fix landed**: opt-in `MCP_AUTH_TOKEN` env var. When set, every HTTP request to the MCP server must carry `Authorization: Bearer <token>`; comparison is constant-time. When unset (default), behavior is unchanged so docker-compose-internal usage stays frictionless. Plain ASGI middleware (`mcp_server/auth.py`); lifespan and non-HTTP scopes pass through.
 
-### P1 — Unbounded inputs on `nmap_parse_xml` and `attack_mapping`
+### P1 — Unbounded inputs on `nmap_parse_xml` and `attack_mapping` (fixed)
 
-`nmap_parse_xml` accepts `xml_content: str` with no upper bound; while `defusedxml(forbid_dtd=True)` neutralizes XXE and entity expansion, a multi-hundred-MB well-formed `<port>` tree is fully parsed in-process. Per-host caps are present, per-document host count is not.
+`nmap_parse_xml` previously accepted `xml_content: str` with no upper bound; while `defusedxml(forbid_dtd=True)` neutralized XXE and entity expansion, a multi-hundred-MB well-formed `<port>` tree was fully parsed in-process. Per-host caps were present, per-document host count was not.
 
-`attack_mapping` accepts `cwe_ids: list[str]` with no length limit; the existing `cwe[:10]` truncation only affects the span attribute, not the iteration cost.
+`attack_mapping` previously accepted `cwe_ids: list[str]` with no length limit; the existing `cwe[:10]` truncation only affected the span attribute, not the iteration cost.
 
-**Current mitigation**: both tools are reachable only by the agent (single trusted client), and the rate-limit middleware on `agent-api` caps request frequency from the client side. Direct MCP-transport callers would bypass that, see the P0 above for the related transport-auth gap.
+**Previous mitigation**: both tools were reachable only by the agent (single trusted client), and the rate-limit middleware on `agent-api` capped request frequency from the client side. Direct MCP-transport callers would have bypassed that, see the P0 above for the related transport-auth gap.
 
-**Planned fix**: `Annotated[str, Field(max_length=20_000_000)]` on `nmap_parse_xml.xml_content` + `findall("host")[:1000]` for per-document iteration; `Annotated[list[str], Field(max_length=200)]` with per-item `Field(max_length=40)` on `attack_mapping.cwe_ids`. Contract tests pinning the new caps.
+**Fix landed**: `Annotated[str, Field(max_length=20_000_000)]` on `nmap_parse_xml.xml_content` + a `[:1000]` cap on the `<host>` iteration; a 20MB pre-flight check also runs at the tool entry to bound direct callers. `Annotated[list[str], Field(max_length=200)]` with per-item `Field(max_length=40)` on `attack_mapping.cwe_ids` + runtime checks that raise `InvalidCweInputError` before any lookup. Contract tests pin the new caps.
 
-### P1 — NVD reference URLs reach the agent without an "untrusted" marker (latent)
+### P1 — NVD reference URLs reach the agent without an "untrusted" marker (fixed)
 
-`tools/cve.py` and `tools/patch.py` return URLs extracted from NVD `references` as typed `HttpUrl` fields without an explicit "treat as data, not as instruction" marker in the output model. Today the agent prompt and the absence of a URL-fetching downstream tool both keep this dormant. If any future tool ever follows a reference URL, this becomes an SSRF-by-reference vector.
+`tools/cve.py` and `tools/patch.py` returned URLs extracted from NVD `references` as typed `HttpUrl` fields without an explicit "treat as data, not as instruction" marker in the output model. The agent prompt and the absence of a URL-fetching downstream tool both kept this dormant; the latent risk was that any future tool following a reference URL would have inherited an SSRF-by-reference vector.
 
-**Current mitigation**: agent system prompt treats tool output as data; no MCP tool currently dereferences a reference URL.
+**Previous mitigation**: agent system prompt treated tool output as data; no MCP tool dereferenced a reference URL.
 
-**Planned fix**: add a `references_untrusted: bool = True` flag to the result models and document the agent contract in the tool docstring (which is LLM-visible).
+**Fix landed**: `CVEDetail.references` and `PatchAvailability.references` carry an `UNTRUSTED` contract in both the class docstring and the Pydantic `Field(description=...)`. Tool docstrings on `cve_lookup` and `patch_lookup` repeat the contract, and the agent system prompt has an explicit clause forbidding fact-claims based on reference content. No boolean flag is added to the data shape: the constant-True flag would have been rumor in every payload, where a documentation contract is louder.
 
 ### P1 — SSE transport is on the legacy side of the MCP spec line
 
