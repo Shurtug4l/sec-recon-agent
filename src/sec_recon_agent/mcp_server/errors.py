@@ -81,3 +81,11 @@ class EpssRequestError(EpssError):
 
 class MalformedEpssPayloadError(EpssError):
     """EPSS API response did not match the expected schema."""
+
+
+class AttackError(SecReconError):
+    """Base for MITRE ATT&CK mapping failures."""
+
+
+class InvalidCweInputError(AttackError):
+    """attack_mapping received a cwe_ids list that breaches the input caps."""

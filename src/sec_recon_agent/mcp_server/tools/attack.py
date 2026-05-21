@@ -11,10 +11,12 @@ than a wrong one. The transparency tab surfaces this contract.
 import json
 import threading
 from importlib import resources
-from typing import Any
+from typing import Annotated, Any
 
 import structlog
+from pydantic import Field
 
+from sec_recon_agent.mcp_server.errors import InvalidCweInputError
 from sec_recon_agent.mcp_server.models import AttackMitigation, AttackTechnique
 from sec_recon_agent.mcp_server.server import mcp
 from sec_recon_agent.observability import get_tracer
@@ -23,6 +25,20 @@ log = structlog.get_logger()
 _tracer = get_tracer()
 
 MAX_TECHNIQUES_RETURNED = 20
+
+# Hard cap on the cwe_ids input list. A typical CVE has 1-5 CWE entries;
+# 200 is a generous ceiling that prevents an abusive caller from inflating
+# the lookup table walk into a DoS vector.
+_CWE_IDS_MAX_COUNT = 200
+
+# Per-item cap. Real CWE identifiers are `CWE-<digits>` (typically 6-9
+# chars); 40 leaves headroom while rejecting payloads designed to inflate
+# log lines or to embed prompt-injection text in what should be a
+# structured identifier.
+_CWE_ID_MAX_LEN = 40
+
+CweIdInput = Annotated[str, Field(max_length=_CWE_ID_MAX_LEN)]
+CweIdList = Annotated[list[CweIdInput], Field(max_length=_CWE_IDS_MAX_COUNT)]
 
 _attack_data: dict[str, Any] | None = None
 _attack_data_lock = threading.Lock()
@@ -80,7 +96,7 @@ def _build_technique(
 
 
 @mcp.tool()
-def attack_mapping(cwe_ids: list[str]) -> list[AttackTechnique]:
+def attack_mapping(cwe_ids: CweIdList) -> list[AttackTechnique]:
     """Map a set of CWE IDs to MITRE ATT&CK techniques and their mitigations.
 
     Each input CWE (e.g. "CWE-22") is looked up in a curated CWE-to-technique
@@ -92,6 +108,10 @@ def attack_mapping(cwe_ids: list[str]) -> list[AttackTechnique]:
     an empty technique list means none of the CVE's CWEs are in the curated
     mapping table (transparent: the data file is shipped with the repo and
     versioned).
+
+    Input bounds: at most 200 CWE entries per call, at most 40 chars per
+    entry. Inputs breaching either cap raise InvalidCweInputError before
+    any lookup runs.
     """
     with _tracer.start_as_current_span("tool.attack_mapping") as span:
         span.set_attribute("tool.name", "attack_mapping")
@@ -99,6 +119,20 @@ def attack_mapping(cwe_ids: list[str]) -> list[AttackTechnique]:
         # CWE IDs are short, ASCII, regex-bounded by Pydantic upstream;
         # safe to record as an attribute for operational visibility.
         span.set_attribute("cwe.ids", ",".join(cwe_ids[:10]))
+
+        # Belt-and-suspenders: Annotated caps fire only at the MCP
+        # boundary. Direct callers must also be bounded.
+        if len(cwe_ids) > _CWE_IDS_MAX_COUNT:
+            span.set_attribute("tool.success", False)
+            raise InvalidCweInputError(
+                f"cwe_ids exceeds {_CWE_IDS_MAX_COUNT} entries ({len(cwe_ids)})",
+            )
+        for raw in cwe_ids:
+            if len(raw) > _CWE_ID_MAX_LEN:
+                span.set_attribute("tool.success", False)
+                raise InvalidCweInputError(
+                    f"cwe_id entry exceeds {_CWE_ID_MAX_LEN} chars",
+                )
 
         try:
             data = _load_attack_data()
