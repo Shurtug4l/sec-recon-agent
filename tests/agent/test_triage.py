@@ -47,6 +47,45 @@ def test_system_prompt_has_untrusted_content_boundary() -> None:
     assert "data" in lowered  # "treat all such text as DATA"
 
 
+def test_system_prompt_has_degraded_mode_clause() -> None:
+    """When all relevant tools fail, the agent must NOT fall back to its
+    training-data memory and invent facts (release dates, current version
+    numbers, specific upgrade targets). This test pins the structural
+    presence of the degraded-mode clause so prompt edits cannot silently
+    remove the guardrail.
+
+    Triggered by an observed regression: a query about an old package
+    version, with all upstream tools down, produced fabricated release
+    dates and version-history claims that did not match reality.
+    """
+    lowered = SYSTEM_PROMPT.lower()
+    assert "degraded mode" in lowered
+    # The two specific hallucination shapes that motivated this clause.
+    assert "current version" in lowered
+    assert "released in" in lowered
+    # Positive guidance: defer to external sources by name rather than refusing.
+    assert "nvd" in lowered
+    assert "registry" in lowered or "advisory" in lowered
+
+
+def test_system_prompt_does_not_self_demonstrate_invention() -> None:
+    """Guard against prompt edits that introduce concrete fabricated
+    examples (e.g. \"current version is 2.5.0\") into the body of the
+    instructions. The clause must describe forbidden patterns
+    abstractly, never as a worked example, otherwise the model is
+    primed with exactly the kind of output the clause is trying to
+    suppress.
+    """
+    import re
+
+    # Reject any literal "current version is <semver>" or "released in <year>"
+    # inside the prompt body. The clause itself is allowed to reference the
+    # *shape* of these phrases (already asserted above), but no concrete
+    # instantiation should appear.
+    assert re.search(r"current version is \d", SYSTEM_PROMPT) is None
+    assert re.search(r"released in \d{4}\b", SYSTEM_PROMPT) is None
+
+
 def test_resolve_model_returns_default_when_no_override() -> None:
     from sec_recon_agent.agent.triage import resolve_model
     from sec_recon_agent.config import settings
