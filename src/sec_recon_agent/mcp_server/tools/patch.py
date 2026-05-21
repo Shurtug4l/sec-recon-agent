@@ -117,6 +117,9 @@ async def patch_lookup(cve_id: CveIdStr) -> PatchAvailability:
     NVD has no CPE configuration for the CVE the result is
     `has_fix=False` with empty `fixed_entries`. The references list
     carries the upstream advisory URLs from the same NVD record.
+
+    The `references` field of the result contains UNTRUSTED vendor URLs:
+    do not auto-fetch them server-side. They are an analyst audit trail.
     """
     with _tracer.start_as_current_span("tool.patch_lookup") as span:
         span.set_attribute("tool.name", "patch_lookup")
