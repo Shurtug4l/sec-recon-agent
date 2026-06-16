@@ -34,7 +34,11 @@ repos:
       - id: check-toml
       - id: check-merge-conflict
       - id: check-added-large-files
+        # 512 KB guards source/tests against accidental binary commits.
+        # docs/assets/ is exempt: README demo media (GIF / screenshots) is
+        # intentionally large, hand-curated, and reviewed in the PR diff.
         args: ["--maxkb=512"]
+        exclude: ^docs/assets/
 
   # mypy --strict against src/ only. Tests are excluded to keep the
   # local loop fast (the matching test types are picked up by ruff +
