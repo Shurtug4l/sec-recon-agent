@@ -100,6 +100,13 @@ testpaths = ["tests"]
 markers = [
     "slow: tests that load the sentence-transformer model or hit ChromaDB; can be skipped via `pytest -m 'not slow'`",
 ]
+filterwarnings = [
+    # asyncio.iscoroutinefunction is deprecated on Python 3.14 (removal in 3.16);
+    # the call comes from starlette/fastapi routing, not from this codebase.
+    # Scoped to the exact message so genuine DeprecationWarnings still surface.
+    # Remove once the pinned upstreams move to inspect.iscoroutinefunction.
+    "ignore:'asyncio.iscoroutinefunction' is deprecated:DeprecationWarning",
+]
 
 [tool.coverage.run]
 source = ["sec_recon_agent"]
