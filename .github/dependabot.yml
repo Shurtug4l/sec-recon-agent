@@ -44,12 +44,17 @@ updates:
     # through @rushstack/eslint-patch, which only recognises the eslint major
     # it was built against. A solo eslint major (e.g. 9 -> 10) breaks
     # `eslint .` at load time until eslint-config-next ships matching support.
+    # tailwindcss major is the same shape: v4 is a CSS-first rewrite that drops
+    # the `tailwind.config.ts` model this project uses. A solo v3 -> v4 bump
+    # breaks the build until the config and theme tokens are migrated by hand.
     ignore:
       - dependency-name: "next"
         update-types: ["version-update:semver-major"]
       - dependency-name: "eslint-config-next"
         update-types: ["version-update:semver-major"]
       - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "tailwindcss"
         update-types: ["version-update:semver-major"]
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
