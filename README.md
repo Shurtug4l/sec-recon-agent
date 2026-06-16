@@ -7,6 +7,15 @@
 
 Type-safe security triage built on Pydantic AI and a custom Model Context Protocol server, behind a Next.js + React frontend.
 
+<!--
+  Demo slot (above the fold). Once the GIF is captured, replace this comment with:
+
+  ![sec-recon-agent: a live triage from query to TriageReport](docs/assets/demo.gif)
+
+  Capture recipe is in the project notes; keep the clip under ~15s, one query
+  (e.g. Log4Shell) from typing to the rendered report with KEV / EPSS badges.
+-->
+
 Given a CVE ID, a product version, raw Nmap XML, or a CycloneDX / SPDX / requirements.txt SBOM, the agent grounds every answer with nine typed MCP tools (CVE lookup, semantic search, public-exploit availability, CISA KEV membership, FIRST.org EPSS score, patch availability, SBOM ingestion, Nmap parsing, MITRE ATT&CK mapping) and returns a `TriageReport` Pydantic model: severity, exploit availability, operational signals (KEV / ransomware / EPSS), recommended action with a concrete fixed version when one exists, and the full reasoning chain. The LLM never produces free-text guessing; the output schema is enforced at the model boundary.
 
 The whole stack runs with `make up`: backend (MCP server + FastAPI agent) + frontend (Next.js UI on `:3000`) + an optional Jaeger sidecar for distributed tracing.
@@ -649,8 +658,9 @@ sec-recon-agent/
 
 ## Governance and compliance mapping
 
-For an AI Security / governance reviewer, three documents map every applied control against the relevant external taxonomy:
+For an AI Security / governance reviewer, start with the narrative and then drill into the matrices:
 
+- [`docs/case_study.md`](docs/case_study.md) — the design story behind the trust boundary: how the agent ingests adversary-influenced vulnerability data (vendor CVE text, attacker-set service banners, user SBOMs) without letting hostile content acquire authority over its behavior or output. Reads linearly in a few minutes; the matrices below are its evidence base.
 - [`docs/owasp_llm_top10.md`](docs/owasp_llm_top10.md) — the codebase mapped against [OWASP Top 10 for LLM Applications (2025)](https://owasp.org/www-project-top-10-for-large-language-model-applications/). One row per risk (LLM01..LLM10) with status (mitigated / partial / N/A), layered controls, file:line citations, and the falsifiable tests that defend each invariant.
 - [`docs/mitre_atlas.md`](docs/mitre_atlas.md) — the codebase mapped against [MITRE ATLAS](https://atlas.mitre.org/) tactics + techniques. Pairs with the adversary-side MITRE ATT&CK framework already integrated via the `attack_mapping` tool.
 - [`docs/iso_42001.md`](docs/iso_42001.md) — the codebase mapped against [ISO/IEC 42001:2023](https://www.iso.org/standard/81230.html) clauses + Annex A controls, with an honest declaration of which clauses are out of scope for a single-author portfolio repo.
@@ -659,6 +669,7 @@ Together they answer three questions a reviewer asks: "what risks did you consid
 
 ## Documentation index
 
+- [`docs/case_study.md`](docs/case_study.md) — design narrative on the untrusted-data trust boundary: threat model, why the obvious defenses fail, the four-layer design, residual risk, and the transferable principle.
 - [`docs/design.md`](docs/design.md) — the engineering brief. Architecture decisions with rejected alternatives, threat model with finding-to-fix mapping, defended invariants table, residual risks, testing strategy, operational notes.
 - [`docs/owasp_llm_top10.md`](docs/owasp_llm_top10.md) — OWASP LLM Top 10 (2025) mapping matrix with code citations.
 - [`docs/mitre_atlas.md`](docs/mitre_atlas.md) — MITRE ATLAS mapping (AI-specific adversary tactics).
