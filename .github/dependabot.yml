@@ -38,12 +38,18 @@ updates:
     # eslint-config-next and typescript are tightly coupled to Next.js's
     # major: bumping them independently lands in CI red until Next itself
     # moves. Skip the major bump for both; minor/patch still come through.
-    # Same logic for next itself — its major bump is a deliberate
+    # Same logic for next itself: its major bump is a deliberate
     # decision that needs the surrounding ecosystem moved together.
+    # eslint follows the same constraint: eslint-config-next patches eslint
+    # through @rushstack/eslint-patch, which only recognises the eslint major
+    # it was built against. A solo eslint major (e.g. 9 -> 10) breaks
+    # `eslint .` at load time until eslint-config-next ships matching support.
     ignore:
       - dependency-name: "next"
         update-types: ["version-update:semver-major"]
       - dependency-name: "eslint-config-next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint"
         update-types: ["version-update:semver-major"]
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
