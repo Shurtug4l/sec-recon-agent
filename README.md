@@ -7,14 +7,7 @@
 
 Type-safe security triage built on Pydantic AI and a custom Model Context Protocol server, behind a Next.js + React frontend.
 
-<!--
-  Demo slot (above the fold). Once the GIF is captured, replace this comment with:
-
-  ![sec-recon-agent: a live triage from query to TriageReport](docs/assets/demo.gif)
-
-  Capture recipe is in the project notes; keep the clip under ~15s, one query
-  (e.g. Log4Shell) from typing to the rendered report with KEV / EPSS badges.
--->
+![sec-recon-agent: a live Log4Shell triage from query to a typed TriageReport with CISA KEV, ransomware, and EPSS signals](docs/assets/demo.gif)
 
 Given a CVE ID, a product version, raw Nmap XML, or a CycloneDX / SPDX / requirements.txt SBOM, the agent grounds every answer with nine typed MCP tools (CVE lookup, semantic search, public-exploit availability, CISA KEV membership, FIRST.org EPSS score, patch availability, SBOM ingestion, Nmap parsing, MITRE ATT&CK mapping) and returns a `TriageReport` Pydantic model: severity, exploit availability, operational signals (KEV / ransomware / EPSS), recommended action with a concrete fixed version when one exists, and the full reasoning chain. The LLM never produces free-text guessing; the output schema is enforced at the model boundary.
 
