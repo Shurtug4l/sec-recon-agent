@@ -389,20 +389,15 @@ The frontend ESLint setup uses the flat config (`frontend/eslint.config.mjs`) br
 
 The backend CI runs on a Python version matrix (3.12 + 3.13) so the declared `requires-python = ">=3.12"` is actually exercised, not just declared. Coverage on the fast suite holds at **~87%** with a soft 70% floor (`tool.coverage.report.fail_under`).
 
-**Suite count: 195 passing** (193 fast + 2 slow). Breakdown:
-- **36 contract tests** — every MCP tool has Pydantic I/O contract tests with `respx`-mocked HTTP. Tool fail modes (NVD 404, malformed payload, 5xx retry, 429 retry, XXE refusal, oversized CSV download) all covered. Includes `/v1/meta` endpoint contract.
-- **11 KEV contract tests** — hit, miss, ransomware flag normalization, single-fetch invariant, oversized payload, non-200, malformed JSON, missing top-level list, hostile entry tolerance, free-text truncation, untrusted-content fencing for hostile vendor payloads.
-- **9 EPSS contract tests** — hit, miss, non-200, non-JSON, missing data field, wrong-type entry, mismatched CVE defense, out-of-range scores, non-numeric scores.
-- **9 ATT&CK mapping contract tests** — CWE→technique table, deduplication, mitigation presence, unknown-CWE silence, malformed input.
-- **11 property tests** — Hypothesis invariants on `fence_untrusted`, `CveIdStr` regex, Pydantic field constraints.
-- **32 adversarial parametrizations** — prompt injection (8 payloads + marker forgery), XXE variants (4), malformed CVE IDs (14), Unicode homoglyphs (5), resource exhaustion (oversize CSV, huge hostname/port lists).
-- **10 observability tests** — span emission per tool, attribute schema, privacy invariants (no secret / no user query text / no NVD description / no KEV vendor text in span attributes; EPSS span attribute allowlist).
-- **14 eval-suite unit tests** — 9 scorer tests (severity tolerance, CVE recall threshold, KEV / ransomware flag honoring) + 5 runner tests (SSE CRLF and LF tolerance, error-event surfacing, missing-final-event handling, HTTP 5xx).
-- **14 audit-trail tests** — 7 hash-chain model tests (canonical serialization, seal determinism, tamper detection at the link level) + 7 store tests (genesis chaining, subsequent-row chaining, verify on clean chain, field-mutation tamper, forged-row insert, SQLite trigger enforcement, tail ordering). Two API integration tests assert that one event lands per call (success or error path).
-- **13 SBOM contract tests** — CycloneDX, SPDX, requirements.txt happy paths; dedup, truncation, missing-name skip; malformed JSON; unsupported shapes; extras + environment markers in requirements lines.
-- **7 patch_lookup contract tests** — versionEndExcluding extraction, dedup across CPE configurations, skip when no fix declared, range-start fallback (Including vs Excluding), CVE-not-found, 50-entry cap.
-- **13 red-team scorer tests** — pattern absence (case-insensitive), value-equality refusals, multi-check pass/fail semantics, `any` field aggregation, summary aggregator, ATLAS-technique propagation + aggregation, drift detector that every production payload carries an ATLAS technique.
-- **6 auth + rate-limit tests** — meta endpoint open by default, requires Bearer / X-API-Key when configured, wrong key rejected, health stays open, triage 401 without key + 200 with key, rate-limit 429 above the cap with generic detail, settings csv parser from env.
+**Suite count: 212 passing** (210 fast + 2 slow ChromaDB round-trip, excluded from the fast run). Breakdown by area:
+- **88 MCP server tests** — Pydantic I/O contract tests for all nine tools with `respx`-mocked HTTP (NVD 404 / malformed / 5xx + 429 retry, KEV ransomware-flag normalization + free-text fencing, EPSS CVE-mismatch defense, ATT&CK CWE->technique mapping, SBOM CycloneDX/SPDX/requirements, `patch_lookup` versionEndExcluding), plus the `fence_untrusted` security primitive, the `/v1/meta` contract, input-bound caps on `nmap_parse_xml` / `attack_mapping`, and the bearer-auth middleware (PR #45).
+- **45 property + adversarial tests** — Hypothesis invariants (`fence_untrusted`, `CveIdStr` regex, Pydantic field constraints) plus the adversarial corpus: prompt injection + marker forgery, XXE variants, malformed CVE IDs, Unicode homoglyphs, resource exhaustion.
+- **17 API tests** — opt-in auth + per-IP rate limit, model-override allowlist, SSE framing, audit integration (one event per call, success or error path).
+- **14 audit-trail tests** — hash-chain model (canonical serialization, seal determinism, link-level tamper detection) + store (genesis + forward chaining, clean-chain verify, field-mutation and forged-row tamper, SQLite trigger enforcement, tail ordering).
+- **14 eval-suite unit tests** — scorer (severity tolerance, CVE recall threshold, KEV / ransomware honoring) + runner (SSE CRLF/LF tolerance, error-event surfacing, missing-final handling, HTTP 5xx).
+- **13 red-team scorer tests** — pattern absence (case-insensitive), value-equality refusals, multi-check semantics, summary + per-ATLAS-technique aggregation, drift detector requiring an ATLAS tag on every production payload.
+- **11 agent tests** — system-prompt drift detector, model-allowlist refusals, degraded-mode clause (no fact invention on tool failure, PR #46).
+- **10 observability tests** — span emission per tool + privacy invariants (no secret / user query / NVD description / KEV vendor text in span attributes; EPSS attribute allowlist).
 
 See [`docs/design.md`](docs/design.md#defended-invariants-property-and-adversarial-tests) for the full invariant table.
 
