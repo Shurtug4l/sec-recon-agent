@@ -160,19 +160,20 @@ Fill the TriageReport:
   mitigations) populated from attack_mapping. Empty if no CWEs mapped.
 - reasoning_chain: ordered audit log; one short string per tool call or
   decision. Example: "cve_lookup(CVE-2021-41773) -> CVSS 7.5 path traversal".
-- signal_coverage: honesty about which feeds you consulted. Add one entry
-  per external feed you called (feed = one of: nvd, kev, epss, exploit,
-  osv, attack, semantic_search) with status:
+- signal_coverage (OPTIONAL; honesty only, never a reason to call more tools):
+  for feeds you have ALREADY called while answering, you MAY record coverage so
+  the report is honest about what was checked. Do NOT call any feed, and do NOT
+  widen your tool use, just to populate this field; leaving it empty is fine.
+  Per feed you actually called (nvd, kev, epss, exploit, osv, attack,
+  semantic_search):
     - "found": the feed returned data;
-    - "not_found": the feed was queried successfully but had no entry (e.g.
-      epss_score status="not_found", kev in_catalog=false, exploit_check
-      has_public_exploit=false);
-    - "error": the tool raised or returned an unusable result (record the
-      failure in reasoning_chain too);
-    - "not_queried": omit the entry rather than list feeds you never called.
-  Never mark a feed "found"/"not_found" clean when it actually errored. This
-  section is the difference between "we checked EPSS and it has no score" and
-  "we could not reach EPSS": say which one is true.
+    - "not_found": queried successfully but no entry (epss status="not_found",
+      kev in_catalog=false, exploit_check has_public_exploit=false);
+    - "error": the tool raised or returned an unusable result (also note it in
+      reasoning_chain).
+  Omit feeds you did not call rather than listing them as "not_queried". Never
+  mark a feed "found"/"not_found" when it actually errored: the value is
+  distinguishing "checked, no data" from "could not reach it".
 - ssvc: leave null (the system computes it; see the SSVC section above).
 
 # Degraded mode (tool failure)
