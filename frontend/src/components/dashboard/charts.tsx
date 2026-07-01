@@ -14,22 +14,39 @@ import {
 
 import { cn } from "@/lib/utils";
 
-// Catppuccin-aligned tones for severity. Kept in JS so Recharts can read them;
-// the equivalent CSS vars exist in globals.css for the rest of the UI.
+// Slate Recon severity + categorical palette. Kept as literal hex here because
+// Recharts writes SVG `fill` attributes, where CSS custom properties do not
+// resolve. These MIRROR the --severity-* and --chart-* tokens in globals.css;
+// keep the two in sync (globals.css is the canonical source).
 const SEVERITY_COLORS: Record<string, string> = {
-  critical: "#ED8796",
-  high: "#F5A97F",
-  medium: "#EED49F",
-  low: "#8AADF4",
-  info: "#6E738D",
+  critical: "#FF5964",
+  high: "#FF8A3D",
+  medium: "#FFC24B",
+  low: "#4CC3FF",
+  info: "#8592A6",
 };
 
-const TOOL_COLORS = ["#C6A0F6", "#8AADF4", "#A6DA95", "#F5BDE6"];
+const FALLBACK_COLOR = "#8592A6";
+
+const TOOL_COLORS = [
+  "#5CB8EE",
+  "#E39A38",
+  "#9A5CEA",
+  "#E8566E",
+  "#ECE87A",
+  "#B85E93",
+  "#5A78D6",
+  "#A89A5E",
+];
 
 export function SeverityBarChart({ data }: { data: Array<{ severity: string; count: number }> }) {
   return (
     <ResponsiveContainer width="100%" height={220}>
-      <BarChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+      <BarChart
+        accessibilityLayer
+        data={data}
+        margin={{ top: 8, right: 8, left: -16, bottom: 0 }}
+      >
         <XAxis
           dataKey="severity"
           tick={{ fill: "currentColor", fontSize: 11, opacity: 0.7 }}
@@ -58,7 +75,7 @@ export function SeverityBarChart({ data }: { data: Array<{ severity: string; cou
           {data.map((entry) => (
             <Cell
               key={entry.severity}
-              fill={SEVERITY_COLORS[entry.severity] ?? "#6E738D"}
+              fill={SEVERITY_COLORS[entry.severity] ?? FALLBACK_COLOR}
             />
           ))}
         </Bar>

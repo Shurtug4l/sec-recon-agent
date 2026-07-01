@@ -253,6 +253,10 @@ function NavCard({
 
 type Accent = "default" | "primary" | "sky" | "emerald" | "rose";
 
+// Pipeline-stage accents, driven off the unified tokens (primary + the
+// colorblind-safe categorical --chart-* ramp) instead of raw Tailwind
+// sky/emerald/rose literals. Keys are kept stable; the hues map to the chart
+// ramp so the diagram stays consistent with the dashboard.
 const ACCENT_CLASSES: Record<Accent, { ring: string; bg: string; iconBg: string }> = {
   default: {
     ring: "border-border",
@@ -265,19 +269,19 @@ const ACCENT_CLASSES: Record<Accent, { ring: string; bg: string; iconBg: string 
     iconBg: "bg-primary/15 text-primary",
   },
   sky: {
-    ring: "border-sky-400/40",
-    bg: "bg-sky-400/5",
-    iconBg: "bg-sky-400/15 text-sky-500 dark:text-sky-300",
+    ring: "border-[hsl(var(--chart-1)/0.4)]",
+    bg: "bg-[hsl(var(--chart-1)/0.06)]",
+    iconBg: "bg-[hsl(var(--chart-1)/0.15)] text-[hsl(var(--chart-1))]",
   },
   emerald: {
-    ring: "border-emerald-400/40",
-    bg: "bg-emerald-400/5",
-    iconBg: "bg-emerald-400/15 text-emerald-600 dark:text-emerald-300",
+    ring: "border-[hsl(var(--success)/0.4)]",
+    bg: "bg-[hsl(var(--success)/0.06)]",
+    iconBg: "bg-[hsl(var(--success)/0.15)] text-[hsl(var(--success))]",
   },
   rose: {
-    ring: "border-rose-400/40",
-    bg: "bg-rose-400/5",
-    iconBg: "bg-rose-400/15 text-rose-500 dark:text-rose-300",
+    ring: "border-[hsl(var(--chart-4)/0.4)]",
+    bg: "bg-[hsl(var(--chart-4)/0.06)]",
+    iconBg: "bg-[hsl(var(--chart-4)/0.15)] text-[hsl(var(--chart-4))]",
   },
 };
 
