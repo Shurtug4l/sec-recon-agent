@@ -66,45 +66,62 @@ export default function Landing() {
     <div className="flex min-h-screen flex-col bg-background">
       <Header />
       <main className="flex-1">
-        {/* Hero */}
-        <section className="border-b border-border/60">
-          <div className="container max-w-5xl py-16 md:py-24">
-            <Badge variant="secondary" className="mb-4 font-mono text-[10px]">
-              Pydantic AI · MCP · 10 typed tools
-            </Badge>
-            <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">
-              Security triage that
-              <br />
-              cites its sources.
-            </h1>
-            <p className="mt-6 max-w-2xl text-base leading-relaxed text-muted-foreground">
-              <span className="font-mono text-foreground">sec-recon-agent</span>{" "}
-              answers vulnerability questions by calling a fixed surface of typed
-              tools (NVD, CISA KEV, FIRST EPSS, Exploit-DB, MITRE ATT&amp;CK, SBOM
-              and Nmap parsers) and returns a strictly-typed{" "}
-              <code className="font-mono text-foreground">TriageReport</code>.
-              No hallucinated CVSS, no invented patches, no free-text bypass.
-            </p>
-            <div className="mt-8 flex flex-wrap items-center gap-3">
-              <Button asChild size="lg">
-                <Link href="/triage">
-                  Start a triage <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Button>
-              <Button asChild variant="outline" size="lg">
-                <Link href="/guide">
-                  <BookOpen className="h-4 w-4" /> Read the guide
-                </Link>
-              </Button>
-              <Button asChild variant="ghost" size="lg">
-                <a
-                  href="https://github.com/Shurtug4l/sec-recon-agent"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <GithubLogo className="h-4 w-4" /> Source on GitHub
-                </a>
-              </Button>
+        {/* Hero — split: copy + a real signature (the live pipeline diagram) */}
+        <section className="relative overflow-hidden border-b border-border/60">
+          <div
+            aria-hidden
+            className="blueprint-grid pointer-events-none absolute inset-0 opacity-70"
+          />
+          <div className="container relative max-w-6xl py-14 md:py-20">
+            <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-14">
+              <div>
+                <Badge variant="secondary" className="mb-4 font-mono text-[10px]">
+                  Pydantic AI · MCP · 10 typed tools
+                </Badge>
+                <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">
+                  Security triage that
+                  <br />
+                  cites its sources.
+                </h1>
+                <p className="mt-6 max-w-xl text-base leading-relaxed text-muted-foreground">
+                  <span className="font-mono text-foreground">sec-recon-agent</span>{" "}
+                  answers vulnerability questions by calling a fixed surface of
+                  typed tools (NVD, CISA KEV, FIRST EPSS, Exploit-DB, MITRE
+                  ATT&amp;CK, SBOM and Nmap parsers) and returns a strictly-typed{" "}
+                  <code className="font-mono text-foreground">TriageReport</code>.
+                  No hallucinated CVSS, no invented patches, no free-text bypass.
+                </p>
+                <div className="mt-8 flex flex-wrap items-center gap-3">
+                  <Button asChild size="lg">
+                    <Link href="/triage">
+                      Start a triage <ArrowRight className="h-4 w-4" />
+                    </Link>
+                  </Button>
+                  <Button asChild variant="outline" size="lg">
+                    <Link href="/guide">
+                      <BookOpen className="h-4 w-4" /> Read the guide
+                    </Link>
+                  </Button>
+                  <Button asChild variant="ghost" size="lg">
+                    <a
+                      href="https://github.com/Shurtug4l/sec-recon-agent"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <GithubLogo className="h-4 w-4" /> Source on GitHub
+                    </a>
+                  </Button>
+                </div>
+                <HeroStats />
+              </div>
+              <div className="lg:pl-2">
+                <ArchitectureDiagram />
+                <p className="mt-3 text-center text-[11px] leading-relaxed text-muted-foreground">
+                  Cross-process W3C <code className="font-mono">traceparent</code>{" "}
+                  · browser talks only to the same-origin proxy · SHA-256
+                  hash-chained, tamper-evident audit.
+                </p>
+              </div>
             </div>
           </div>
         </section>
@@ -163,22 +180,6 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* Architecture diagram */}
-        <section className="border-b border-border/60">
-          <div className="container max-w-5xl py-12 md:py-16">
-            <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              How it fits together
-            </h2>
-            <ArchitectureDiagram />
-            <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
-              Cross-process W3C <code className="font-mono">traceparent</code>{" "}
-              propagation. The browser only talks to the Next.js same-origin
-              proxy. Audit trail in SQLite WAL with a SHA-256 hash chain
-              (append-only triggers; tamper-evident).
-            </p>
-          </div>
-        </section>
-
         {/* Quick nav to sections */}
         <section>
           <div className="container max-w-5xl py-12 md:py-16">
@@ -220,6 +221,33 @@ export default function Landing() {
         </section>
       </main>
     </div>
+  );
+}
+
+// A compact "system status" strip under the hero copy. Structural facts about
+// the design (always true, no drift), rendered as mono stat tiles so the hero
+// reads like an instrument panel, not a splash page.
+const HERO_STATS: { value: string; label: string }[] = [
+  { value: "10", label: "typed tool contracts" },
+  { value: "4-stop", label: "deterministic SSVC verdict" },
+  { value: "MITRE", label: "ATLAS red-team battery" },
+  { value: "SHA-256", label: "tamper-evident audit" },
+];
+
+function HeroStats() {
+  return (
+    <dl className="mt-10 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-4">
+      {HERO_STATS.map((stat) => (
+        <div key={stat.label} className="bg-card px-3 py-3">
+          <dt className="font-mono text-lg font-semibold tabular-nums text-primary">
+            {stat.value}
+          </dt>
+          <dd className="mt-0.5 text-[11px] leading-tight text-muted-foreground">
+            {stat.label}
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 

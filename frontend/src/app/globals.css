@@ -102,6 +102,18 @@
   }
 }
 
+/* Faint blueprint dot-grid for the hero backdrop (Vercel/Linear idiom). Dots
+ * in the border tone, faded out with a radial mask so they never compete with
+ * foreground content. */
+@layer utilities {
+  .blueprint-grid {
+    background-image: radial-gradient(hsl(var(--border)) 1px, transparent 1px);
+    background-size: 22px 22px;
+    -webkit-mask-image: radial-gradient(ellipse 75% 60% at 50% 0%, #000 30%, transparent 100%);
+    mask-image: radial-gradient(ellipse 75% 60% at 50% 0%, #000 30%, transparent 100%);
+  }
+}
+
 /* Print-to-PDF. The 'Export PDF' button on the TriageReportView calls
  * window.print(); these rules hide chrome and show only the report,
  * forcing a light-on-white render regardless of the current theme. */
