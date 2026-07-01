@@ -72,11 +72,27 @@ export interface TriageReport {
   signal_coverage: FeedStatus[];
 }
 
+// Token usage for one run, emitted by api/stream.py as a `usage` SSE event
+// after `final`. Any field may be null when pydantic-ai does not surface it.
+export interface TokenUsage {
+  input_tokens: number | null;
+  output_tokens: number | null;
+  requests: number | null;
+}
+
+// One streamed agent `node` event, timestamped on arrival (client-side) so the
+// observability view can draw a real waterfall instead of a synthesized one.
+export interface NodeEvent {
+  name: string; // pydantic-ai node class name (e.g. ModelRequestNode)
+  atMs: number; // arrival offset from run start, milliseconds
+}
+
 // SSE event payload shapes emitted by api/stream.py.
 export type SseEvent =
   | { type: "started"; data: { query: string } }
   | { type: "node"; data: { node: string } }
   | { type: "final"; data: TriageReport }
+  | { type: "usage"; data: TokenUsage }
   | { type: "error"; data: { type: string; message: string } };
 
 // Local history entry persisted in localStorage.
@@ -87,6 +103,10 @@ export interface HistoryEntry {
   startedAt: string; // ISO 8601
   durationMs: number | null;
   error: string | null;
+  // Real per-node arrival times + token usage. Null on entries predating this
+  // (older localStorage) or when the stream ended before they were captured.
+  nodeEvents: NodeEvent[] | null;
+  usage: TokenUsage | null;
 }
 
 // /v1/meta response — system prompt + tool inventory for the transparency view.
