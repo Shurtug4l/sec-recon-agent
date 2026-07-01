@@ -62,7 +62,8 @@ def fake_agent_factory(fake_report: TriageReport) -> Any:
             self._output = output
 
         @asynccontextmanager
-        async def iter(self, query: str) -> Any:
+        async def iter(self, query: str, usage_limits: Any = None) -> Any:
+            del usage_limits  # accepted for signature parity with the real agent
             yield _FakeRun(self._output)
 
     def _factory(model_override: str | None = None) -> _FakeAgent:
@@ -206,7 +207,8 @@ def test_triage_emits_usage_event(
 
     class _FakeAgent:
         @asynccontextmanager
-        async def iter(self, query: str) -> Any:
+        async def iter(self, query: str, usage_limits: Any = None) -> Any:
+            del usage_limits
             yield _FakeRun(fake_report)
 
     monkeypatch.setattr(stream_module, "build_agent", lambda model_override=None: _FakeAgent())
@@ -224,6 +226,58 @@ def test_triage_emits_usage_event(
     assert payload["input_tokens"] == 1234
     assert payload["output_tokens"] == 567
     assert payload["requests"] == 2
+
+
+def test_triage_round_cap_emits_clean_error(monkeypatch: MonkeyPatch) -> None:
+    """When the agent exceeds its request-limit round cap, the endpoint emits a
+    single human-readable error event (not the generic 'internal error') and no
+    final report. The runaway loop terminates cleanly instead of thrashing to the
+    client timeout."""
+    from pydantic_ai.exceptions import UsageLimitExceeded
+
+    from sec_recon_agent.config import settings
+
+    class _FakeRun:
+        result = None
+
+        def __aiter__(self) -> Any:
+            async def gen() -> Any:
+                yield object()  # one node, then the cap trips on the next round
+                raise UsageLimitExceeded(
+                    f"The next request would exceed the request_limit of "
+                    f"{settings.agent_request_limit}",
+                )
+
+            return gen()
+
+    class _FakeAgent:
+        @asynccontextmanager
+        async def iter(self, query: str, usage_limits: Any = None) -> Any:
+            # The cap must actually be wired into the run, at the configured value.
+            assert usage_limits is not None
+            assert usage_limits.request_limit == settings.agent_request_limit
+            yield _FakeRun()
+
+    monkeypatch.setattr(stream_module, "build_agent", lambda model_override=None: _FakeAgent())
+
+    client = TestClient(app)
+    with client.stream("POST", "/v1/triage", json={"query": "loop forever"}) as response:
+        assert response.status_code == 200
+        body = "".join(response.iter_text())
+
+    assert "event: error" in body
+    assert "event: final" not in body
+    err_line = next(
+        line
+        for line in body.splitlines()
+        if line.startswith("data: ") and "UsageLimitExceeded" in line
+    )
+    payload = json.loads(err_line[len("data: ") :])
+    assert payload["type"] == "UsageLimitExceeded"
+    # Tailored, safe message -- not the generic internal-error fallback.
+    assert "step budget" in payload["message"]
+    assert f"{settings.agent_request_limit} model rounds" in payload["message"]
+    assert "Internal error" not in payload["message"]
 
 
 def test_triage_rejects_unknown_model_override(monkeypatch: MonkeyPatch) -> None:
@@ -310,7 +364,8 @@ def test_triage_appends_audit_event_on_error(monkeypatch: MonkeyPatch, tmp_path:
 
     class _BrokenAgent:
         @asynccontextmanager
-        async def iter(self, query: str) -> Any:
+        async def iter(self, query: str, usage_limits: Any = None) -> Any:
+            del usage_limits
             raise RuntimeError("boom")
             yield  # pragma: no cover
 
@@ -485,7 +540,8 @@ def test_rate_limit_numeric_env_string_parsed(monkeypatch: MonkeyPatch) -> None:
 def test_triage_emits_error_event_when_agent_raises(monkeypatch: MonkeyPatch) -> None:
     class _BrokenAgent:
         @asynccontextmanager
-        async def iter(self, query: str) -> Any:
+        async def iter(self, query: str, usage_limits: Any = None) -> Any:
+            del usage_limits
             raise RuntimeError("agent boom with internal context: /var/lib/secret")
             yield  # pragma: no cover
 

@@ -316,6 +316,7 @@ Environment variables of note (full list in `.env.example`):
 | `LLM_MODEL` | no | Default `claude-haiku-4-5-20251001` (cheapest tier, sufficient for tool calling + structured output). Override to `claude-sonnet-4-6` for richer prose or `claude-opus-4-7` for strongest reasoning at higher cost. |
 | `CHROMA_PERSIST_DIR` | no | Default `./data/cve_index`; on disk |
 | `NVD_RATE_LIMIT_PER_30S` | no | Override the local sliding-window cap (default 5) |
+| `AGENT_REQUEST_LIMIT` | no | Max model requests (ReAct rounds) per triage before `UsageLimitExceeded` stops the run (default 25). Bounds a runaway loop; legitimate triages use far fewer |
 
 Environment variables of note:
 - `ANTHROPIC_API_KEY` — required for the agent to call the model.

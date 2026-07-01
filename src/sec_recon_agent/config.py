@@ -84,6 +84,17 @@ class Settings(BaseSettings):
     audit_include_summary: bool = False
 
     nvd_rate_limit_per_30s: int = Field(default=5, ge=1, le=50)
+
+    # Runaway-loop guard: the maximum number of model requests (ReAct rounds)
+    # one triage may make before Pydantic AI raises UsageLimitExceeded. A
+    # legitimate triage converges in a handful of rounds because Anthropic
+    # models batch tool calls per turn; a stuck agent (a tool that keeps
+    # failing, an over-broad query) otherwise thrashes for 180s+ until the
+    # client times out. 25 leaves generous headroom over observed legitimate
+    # use while bounding the pathological case; tune down after a live eval.
+    # pydantic-ai's own default is 50, deliberately tightened here.
+    agent_request_limit: int = Field(default=25, ge=1, le=200)
+
     log_level: str = "INFO"
 
     @property
