@@ -70,7 +70,7 @@ Four processes, deliberately. The frontend, the agent API, and the MCP server ar
 
 **`frontend/`** — a Next.js 15 App Router application on React 19. The browser is the primary interface; `/api/triage` proxies the SSE stream from the FastAPI backend without ever exposing CORS. See [`docs/frontend.md`](frontend.md) for the component map.
 
-**`src/sec_recon_agent/eval/`** — the end-to-end golden-set runner exposed as the `sec-recon-eval` CLI. `golden_set.py` declares 10 cases, `runner.py` speaks HTTP+SSE against the live API, `scorer.py` applies soft assertions (severity tolerance, CVE recall threshold, KEV / ransomware flag honoring), `cli.py` is the argparse entry point. Not part of the unit-test fast lane — requires `make up` and bills the LLM.
+**`src/sec_recon_agent/eval/`** — the end-to-end golden-set runner exposed as the `sec-recon-eval` CLI. `golden_set.py` declares 11 cases, `runner.py` speaks HTTP+SSE against the live API, `scorer.py` applies soft assertions (severity tolerance, CVE recall threshold, KEV / ransomware flag honoring), `cli.py` is the argparse entry point. Not part of the unit-test fast lane — requires `make up` and bills the LLM.
 
 **`src/sec_recon_agent/audit/`** — append-only audit trail. `models.py` declares `TriageEvent` with a SHA-256 hash-chain (`prev_event_hash` -> `this_event_hash` over canonical JSON), `store.py` persists rows to SQLite with WAL journal + append-only triggers, `cli.py` exposes `sec-recon-audit verify / tail / count`. The API hook in `stream.py` runs best-effort in a `finally` block so a logging failure never breaks a triage.
 
@@ -267,12 +267,12 @@ Unit + contract tests, no integration suite. Specifically:
 
 - **Tool I/O contracts.** Every tool has tests verifying its Pydantic output shape against mocked HTTP via `respx`. Failure modes (NVD 404, malformed payload, NVD 5xx retry exhaustion, XXE refusal, oversized download) are covered.
 - **Cross-cutting primitives.** `fence_untrusted` has its own unit tests. The marker invariant is asserted in every tool that applies fencing.
-- **Agent wiring.** Smoke tests verify the agent constructs, the system prompt declares all seven tool names verbatim (drift detector), and the untrusted-content guardrail is present.
+- **Agent wiring.** Smoke tests verify the agent constructs, the system prompt declares all ten tool names verbatim (drift detector), and the untrusted-content guardrail is present.
 - **API surface.** FastAPI `TestClient` covers health, request validation (missing/empty query), the SSE event sequence (`started` → `node` → `final`), and the error-event sanitization invariant.
 
 Marked `@pytest.mark.slow` (3 tests): full seed + semantic search round-trip with real ChromaDB and the ONNX embedder. ~30 s first session run (ONNX model cache), <1 s subsequent.
 
-End-to-end runs against a real LLM are not in the unit-test fast lane. They live in `src/sec_recon_agent/eval/` and are driven by the `sec-recon-eval` CLI (also exposed as `make eval`). The suite ships a curated golden set of 10 queries (named CVEs, fuzzy descriptions, degraded inputs) and uses soft assertions on `TriageReport`: severity within +-1 step, expected CVE recall >= 0.5, KEV / ransomware flags honored when expected. The runner speaks HTTP+SSE against the live `/v1/triage`, so it also exercises the wire-level contract the frontend depends on. Out-of-CI by design (requires a live stack and bills the LLM).
+End-to-end runs against a real LLM are not in the unit-test fast lane. They live in `src/sec_recon_agent/eval/` and are driven by the `sec-recon-eval` CLI (also exposed as `make eval`). The suite ships a curated golden set of 11 queries (named CVEs, fuzzy descriptions, degraded inputs) and uses soft assertions on `TriageReport`: severity within +-1 step, expected CVE recall >= 0.5, KEV / ransomware flags honored when expected. The runner speaks HTTP+SSE against the live `/v1/triage`, so it also exercises the wire-level contract the frontend depends on. Out-of-CI by design (requires a live stack and bills the LLM).
 
 ## Operational notes
 

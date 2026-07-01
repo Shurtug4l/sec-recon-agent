@@ -152,7 +152,7 @@ The runner speaks HTTP+SSE, so the eval also exercises the wire-level frame layo
 
 ### Red-team battery (prompt-injection regression)
 
-Curated set of 20 injection payloads across five categories (direct prompt override, role-play, fake authority, marker forgery, system-prompt extraction, indirect via tool output). Each payload declares falsifiable resistance checks — substring absence or forbidden field values on the returned `TriageReport`. A payload "passes" when every check holds; the aggregate is a **resistance rate**.
+Curated set of 18 injection payloads across six categories (direct prompt override, role-play, fake authority, marker forgery, system-prompt extraction, indirect via tool output). Each payload declares falsifiable resistance checks — substring absence or forbidden field values on the returned `TriageReport`. A payload "passes" when every check holds; the aggregate is a **resistance rate**.
 
 Every payload is tagged with the MITRE ATLAS technique IDs it exercises (`AML.T0024`, `T0029`, `T0040`, `T0054`, `T0055` in current use). The CLI prints a per-technique resistance rate alongside the per-category one, so a reviewer can ask "how well does the agent hold up against T0055 indirect injection?" and get a number. A drift detector in the test suite refuses to merge a new production payload without an ATLAS tag.
 
