@@ -57,8 +57,10 @@ const config: Config = {
         ring: "hsl(var(--ring))",
       },
       fontFamily: {
-        mono: ["JetBrains Mono", "ui-monospace", "Menlo", "monospace"],
-        sans: ["Inter", "system-ui", "sans-serif"],
+        // Point at the CSS variables set by next/font in layout.tsx; the bare
+        // family names here never loaded a webfont on their own.
+        mono: ["var(--font-mono)", "ui-monospace", "Menlo", "monospace"],
+        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
       },
       borderRadius: {
         lg: "var(--radius)",
