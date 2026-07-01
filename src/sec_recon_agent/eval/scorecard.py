@@ -224,6 +224,24 @@ def redteam_metrics_from_json(data: dict[str, Any]) -> RedteamMetrics | None:
 # --- markdown rendering (pure) --------------------------------------------
 
 
+def _model_pin(model: str) -> str:
+    """A ` --model <id>` fragment to append to the live eval / red-team commands,
+    but only when `model` names a real backend model (a full allowlist identifier
+    or a short alias). Pinning is what makes the Reproduce block actually reproduce
+    the stamped numbers: without it a re-run silently falls back to the deployment
+    default (haiku), which the sonnet baseline documents as a worse, different run.
+
+    The deterministic-only stamp ("n/a (deterministic-only)") is not a real model,
+    so it yields "" -- the offline scorecard never prints a --model that
+    `resolve_model` would reject. Retrieval eval is embeddings-only (no LLM) and is
+    deliberately left unpinned by the caller."""
+    from sec_recon_agent.agent.triage import ALLOWED_MODELS, MODEL_ALIASES
+
+    if model in ALLOWED_MODELS or model in MODEL_ALIASES:
+        return f" --model {model}"
+    return ""
+
+
 def _pct(value: float | None) -> str:
     return f"{value:.0%}" if value is not None else _PENDING
 
@@ -251,6 +269,9 @@ def build_scorecard(
     """
     lines: list[str] = []
     a = lines.append
+    # Pin the stamped model onto the LLM-driven commands (eval golden set,
+    # red-team) so they reproduce these numbers; empty in deterministic-only mode.
+    pin = _model_pin(model)
 
     a("# Scorecard")
     a("")
@@ -281,7 +302,7 @@ def build_scorecard(
     if redteam is not None:
         a(f"**Resistance: {redteam.resisted}/{redteam.total} ({redteam.resistance_rate:.0%})**")
     else:
-        rt_cmd = f"--json-output {DEFAULT_RESULTS_DIR}/redteam.json"
+        rt_cmd = f"--json-output {DEFAULT_RESULTS_DIR}/redteam.json{pin}"
         a(f"**Resistance: {_PENDING}** (run `make redteam REDTEAM_ARGS='{rt_cmd}'`)")
     a("")
     a("| ATLAS technique | Payloads | Resisted |")
@@ -317,7 +338,7 @@ def build_scorecard(
     else:
         a(
             f"- **Pass rate / severity / recall**: {_PENDING} "
-            f"(run `make eval EVAL_ARGS='--json-output {DEFAULT_RESULTS_DIR}/eval.json'`)",
+            f"(run `make eval EVAL_ARGS='--json-output {DEFAULT_RESULTS_DIR}/eval.json{pin}'`)",
         )
     a("")
 
@@ -408,9 +429,10 @@ def build_scorecard(
     a("make up          # start the stack")
     a("make seed        # seed the CVE index (once)")
     a(f"mkdir -p {DEFAULT_RESULTS_DIR}")
-    a(f"make eval     EVAL_ARGS='--json-output {DEFAULT_RESULTS_DIR}/eval.json'")
+    a(f"make eval     EVAL_ARGS='--json-output {DEFAULT_RESULTS_DIR}/eval.json{pin}'")
+    # Retrieval eval is embeddings-only (ChromaDB, no LLM), so it takes no --model.
     a(f"make eval     EVAL_ARGS='--retrieval --json-output {DEFAULT_RESULTS_DIR}/retrieval.json'")
-    a(f"make redteam  REDTEAM_ARGS='--json-output {DEFAULT_RESULTS_DIR}/redteam.json'")
+    a(f"make redteam  REDTEAM_ARGS='--json-output {DEFAULT_RESULTS_DIR}/redteam.json{pin}'")
     a("make scorecard   # regenerate this file from whatever JSONs exist")
     a("```")
     a("")

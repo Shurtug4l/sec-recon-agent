@@ -196,6 +196,43 @@ def test_build_scorecard_fills_live_sections() -> None:
     assert "Pass rate" in md
 
 
+# --- model pinning in reproduce / pending commands -----------------------
+
+
+def test_reproduce_pins_real_model_on_llm_commands() -> None:
+    # A full allowlist identifier is a real backend model.
+    md = _build(model="claude-sonnet-4-6")
+    # Golden-set eval and red-team are LLM-driven -> pinned.
+    assert "--json-output data/scorecard/eval.json --model claude-sonnet-4-6" in md
+    assert "--json-output data/scorecard/redteam.json --model claude-sonnet-4-6" in md
+    # Retrieval eval is embeddings-only -> never pinned.
+    assert "--retrieval --json-output data/scorecard/retrieval.json --model" not in md
+
+
+def test_pending_commands_pin_real_model() -> None:
+    # No live metrics: the inline "pending" run commands still carry the pin.
+    md = _build(model="claude-sonnet-4-6", eval_metrics=None, redteam=None)
+    assert (
+        "make eval EVAL_ARGS='--json-output data/scorecard/eval.json "
+        "--model claude-sonnet-4-6'" in md
+    )
+    assert (
+        "make redteam REDTEAM_ARGS='--json-output data/scorecard/redteam.json "
+        "--model claude-sonnet-4-6'" in md
+    )
+
+
+def test_short_alias_is_pinned() -> None:
+    md = _build(model="sonnet")
+    assert "--json-output data/scorecard/eval.json --model sonnet" in md
+
+
+def test_deterministic_only_omits_model_pin() -> None:
+    # The CLI default stamp is not a real model -> no --model anywhere.
+    md = _build(model="n/a (deterministic-only)")
+    assert "--model" not in md
+
+
 # --- CLI end-to-end (deterministic) --------------------------------------
 
 
@@ -219,3 +256,5 @@ def test_main_writes_deterministic_scorecard(tmp_path: Any) -> None:
     assert "# Scorecard" in md
     assert "_pending live run_" in md
     assert f"**{len(PAYLOADS)} payloads**" in md
+    # Default stamp is deterministic-only -> no bogus --model in the commands.
+    assert "--model" not in md
