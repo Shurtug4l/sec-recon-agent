@@ -23,6 +23,12 @@ services:
       MCP_SERVER_PORT: "8001"
       CHROMA_PERSIST_DIR: "/app/data/cve_index"
       NVD_API_KEY: "${NVD_API_KEY:-}"
+      # Local sliding-window cap on NVD requests. Must reach the process that
+      # actually calls NVD (the MCP tools live here), otherwise the config
+      # default holds regardless of what the operator set. Raise to 50 with an
+      # NVD_API_KEY; 5 is the keyless budget. nvd_client retries 429 anyway
+      # (tenacity, >30s backoff), but the right cap avoids the retry cost.
+      NVD_RATE_LIMIT_PER_30S: "${NVD_RATE_LIMIT_PER_30S:-5}"
       GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
       LOG_LEVEL: "${LOG_LEVEL:-INFO}"
       # OTEL_EXPORTER_OTLP_ENDPOINT empty -> spans go to stdout. Set to
@@ -109,6 +115,10 @@ services:
     environment:
       CHROMA_PERSIST_DIR: "/app/data/cve_index"
       NVD_API_KEY: "${NVD_API_KEY:-}"
+      # Seeding is NVD-bound (pulls recent CRITICAL+HIGH CVEs); the cap matters
+      # here most. Same forwarding as mcp-server so both honor the operator's
+      # setting instead of the config default.
+      NVD_RATE_LIMIT_PER_30S: "${NVD_RATE_LIMIT_PER_30S:-5}"
       LOG_LEVEL: "${LOG_LEVEL:-INFO}"
     volumes:
       - sec-recon-data:/app/data
