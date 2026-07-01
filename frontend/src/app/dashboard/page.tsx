@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Activity, BarChart3, Eye } from "lucide-react";
 
 import { Header } from "@/components/header";
@@ -18,9 +18,57 @@ const TABS: Array<{ key: Tab; label: string; icon: React.ElementType }> = [
   { key: "transparency", label: "Transparency", icon: Eye },
 ];
 
+const TAB_KEYS = TABS.map((t) => t.key);
+
+function isTab(value: string | null): value is Tab {
+  return value !== null && (TAB_KEYS as string[]).includes(value);
+}
+
 export default function DashboardPage() {
   const { entries, state } = useTriage();
   const [tab, setTab] = useState<Tab>("statistics");
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  // Deep-link: hydrate the active tab from ?tab= on mount. Reading the query
+  // directly (not useSearchParams) keeps the page statically prerenderable —
+  // no Suspense boundary required — while ?tab=observability stays shareable.
+  useEffect(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get("tab");
+    if (isTab(fromUrl)) setTab(fromUrl);
+  }, []);
+
+  const selectTab = useCallback((next: Tab) => {
+    setTab(next);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", next);
+    window.history.replaceState(null, "", url);
+  }, []);
+
+  function onTabKeyDown(event: React.KeyboardEvent) {
+    const current = TAB_KEYS.indexOf(tab);
+    let nextIndex: number;
+    switch (event.key) {
+      case "ArrowRight":
+      case "ArrowDown":
+        nextIndex = (current + 1) % TABS.length;
+        break;
+      case "ArrowLeft":
+      case "ArrowUp":
+        nextIndex = (current - 1 + TABS.length) % TABS.length;
+        break;
+      case "Home":
+        nextIndex = 0;
+        break;
+      case "End":
+        nextIndex = TABS.length - 1;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    selectTab(TAB_KEYS[nextIndex]);
+    tabRefs.current[nextIndex]?.focus();
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -45,28 +93,56 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <nav className="mb-6 flex items-center gap-1 border-b border-border">
-          {TABS.map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setTab(key)}
-              className={cn(
-                "flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors",
-                tab === key
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-            </button>
-          ))}
-        </nav>
+        <div
+          role="tablist"
+          aria-label="Dashboard sections"
+          onKeyDown={onTabKeyDown}
+          className="mb-6 flex items-center gap-1 border-b border-border"
+        >
+          {TABS.map(({ key, label, icon: Icon }, i) => {
+            const active = tab === key;
+            return (
+              <button
+                key={key}
+                ref={(el) => {
+                  tabRefs.current[i] = el;
+                }}
+                type="button"
+                role="tab"
+                id={`tab-${key}`}
+                aria-selected={active}
+                aria-controls={`panel-${key}`}
+                tabIndex={active ? 0 : -1}
+                onClick={() => selectTab(key)}
+                className={cn(
+                  "flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                  active
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </button>
+            );
+          })}
+        </div>
 
-        {tab === "statistics" && <StatisticsTab entries={entries} />}
-        {tab === "observability" && <ObservabilityTab entries={entries} />}
-        {tab === "transparency" && <TransparencyTab />}
+        {TABS.map(({ key }) => (
+          <div
+            key={key}
+            role="tabpanel"
+            id={`panel-${key}`}
+            aria-labelledby={`tab-${key}`}
+            tabIndex={0}
+            hidden={tab !== key}
+            className="focus-visible:outline-none"
+          >
+            {tab === key && key === "statistics" && <StatisticsTab entries={entries} />}
+            {tab === key && key === "observability" && <ObservabilityTab entries={entries} />}
+            {tab === key && key === "transparency" && <TransparencyTab />}
+          </div>
+        ))}
       </main>
     </div>
   );

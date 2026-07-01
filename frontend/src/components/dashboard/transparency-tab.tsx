@@ -6,6 +6,7 @@ import { AlertTriangle, BookOpen, Copy, Wrench } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { AgentMeta } from "@/lib/types";
 
 export function TransparencyTab() {
@@ -56,11 +57,28 @@ export function TransparencyTab() {
 
   if (!meta) {
     return (
-      <Card>
-        <CardContent className="py-8 text-center text-sm text-muted-foreground">
-          Loading agent metadata...
-        </CardContent>
-      </Card>
+      <div className="space-y-6" aria-busy="true">
+        <span className="sr-only">Loading agent metadata</span>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-3 w-3/4" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-36 w-full" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-5 w-48" />
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-16 w-full" />
+            ))}
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
