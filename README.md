@@ -4,14 +4,31 @@
 [![frontend](https://github.com/Shurtug4l/sec-recon-agent/actions/workflows/ci-frontend.yml/badge.svg)](https://github.com/Shurtug4l/sec-recon-agent/actions/workflows/ci-frontend.yml)
 [![python](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/)
 [![license](https://img.shields.io/badge/license-MIT-green)](#license)
+[![scorecard](https://img.shields.io/badge/scorecard-reproducible-blue)](SCORECARD.md)
 
-Type-safe security triage built on Pydantic AI and a custom Model Context Protocol server, behind a Next.js + React frontend.
+**An LLM vulnerability-triage agent designed the way an AI Solutions Architect would build it and an AI Security Engineer would attack it:** every answer is grounded in live authoritative feeds, the output is a schema-bounded `TriageReport`, the prioritization verdict is deterministic (not LLM-guessed), and the untrusted-data trust boundary is a first-class design concern with a falsifiable red-team battery. Built on Pydantic AI + a custom Model Context Protocol server, behind a Next.js + React frontend.
 
 ![sec-recon-agent: a live Log4Shell triage from query to a typed TriageReport with CISA KEV, ransomware, and EPSS signals](docs/assets/demo.gif)
 
 Given a CVE ID, a product version, raw Nmap XML, or a CycloneDX / SPDX / requirements.txt SBOM, the agent grounds every answer with ten typed MCP tools (CVE lookup, semantic search, public-exploit availability, CISA KEV membership, FIRST.org EPSS score, patch availability, OSV package-version lookup, SBOM ingestion, Nmap parsing, MITRE ATT&CK mapping) and returns a `TriageReport` Pydantic model: severity, exploit availability, operational signals (KEV / ransomware / EPSS), a **deterministic SSVC prioritization verdict** (Act / Attend / Track* / Track, computed server-side from the signals — not by the LLM), per-feed **signal-coverage honesty** (which feeds were checked and whether each returned data, had no entry, or errored), recommended action with a concrete fixed version when one exists, and the full reasoning chain. The LLM never produces free-text guessing; the output schema is enforced at the model boundary.
 
-The whole stack runs with `make up`: backend (MCP server + FastAPI agent) + frontend (Next.js UI on `:3000`) + an optional Jaeger sidecar for distributed tracing.
+## What it is, and what it is not
+
+It is a **reasoning and prioritization layer** for vulnerability triage: give it a CVE, a package + version, an SBOM, or raw Nmap XML, and it fuses CISA KEV + FIRST EPSS + public-exploit availability + ransomware association + MITRE ATT&CK into one grounded, schema-bounded verdict — with a deterministic SSVC decision and honest per-feed coverage. It is deliberately **not**:
+
+- **not a vulnerability scanner** — it does not enumerate your packages or images; feed it an SBOM (pair it with Trivy / Grype, which produce that SBOM);
+- **not a findings-management platform** — no dedup / ticketing / dashboards at fleet scale (that is DefectDojo's job);
+- **not a source of ground truth** — it cites NVD / KEV / EPSS / OSV and refuses to invent facts on tool failure (degraded mode);
+- **not production multi-tenant SaaS** — single-tenant by design; auth and rate-limit are opt-in.
+
+| | **sec-recon-agent** | Trivy / Grype | DefectDojo |
+|---|---|---|---|
+| Primary job | Reason over a vuln from mixed inputs and prioritize it | Scan images / filesystems / SBOMs for known-vuln packages | Aggregate & manage findings from many scanners |
+| Output | Grounded `TriageReport` + deterministic SSVC verdict | List of vulnerable packages + fixed versions | Dashboards, dedup, workflow / tickets |
+| Signal fusion | KEV + EPSS + exploit + ransomware + ATT&CK in one verdict | CVSS / severity from the advisory | whatever the wired scanners emit |
+| Adversarial posture | Untrusted-data boundary + red-team battery are first-class | trusted-input tooling | trusted-input aggregation |
+
+The whole stack runs with `make up`: backend (MCP server + FastAPI agent) + frontend (Next.js UI on `:3000`) + an optional Jaeger sidecar for distributed tracing. A reproducible [scorecard](SCORECARD.md) measures security posture, detection quality, retrieval, cost / latency, and calibration in one stamped document.
 
 ```
 ┌──────────────────────────┐
@@ -657,6 +674,7 @@ For an AI Security / governance reviewer, start with the narrative and then dril
 - [`docs/owasp_llm_top10.md`](docs/owasp_llm_top10.md) — the codebase mapped against [OWASP Top 10 for LLM Applications (2025)](https://owasp.org/www-project-top-10-for-large-language-model-applications/). One row per risk (LLM01..LLM10) with status (mitigated / partial / N/A), layered controls, file:line citations, and the falsifiable tests that defend each invariant.
 - [`docs/mitre_atlas.md`](docs/mitre_atlas.md) — the codebase mapped against [MITRE ATLAS](https://atlas.mitre.org/) tactics + techniques. Pairs with the adversary-side MITRE ATT&CK framework already integrated via the `attack_mapping` tool.
 - [`docs/iso_42001.md`](docs/iso_42001.md) — the codebase mapped against [ISO/IEC 42001:2023](https://www.iso.org/standard/81230.html) clauses + Annex A controls, with an honest declaration of which clauses are out of scope for a single-author portfolio repo.
+- [`docs/mcp_self_audit.md`](docs/mcp_self_audit.md) — the MCP server audited as a plugin surface, tool-by-tool and cross-cutting, mapped to OWASP LLM07 / LLM08 and the community MCP anti-patterns (tool poisoning, rug-pull, confused deputy, token pass-through, naming collision).
 
 Together they answer three questions a reviewer asks: "what risks did you consider?", "what would an attacker do against the agent itself?", and "what would an AIMS-certified organization need to point at?".
 
@@ -667,6 +685,8 @@ Together they answer three questions a reviewer asks: "what risks did you consid
 - [`docs/owasp_llm_top10.md`](docs/owasp_llm_top10.md) — OWASP LLM Top 10 (2025) mapping matrix with code citations.
 - [`docs/mitre_atlas.md`](docs/mitre_atlas.md) — MITRE ATLAS mapping (AI-specific adversary tactics).
 - [`docs/iso_42001.md`](docs/iso_42001.md) — ISO/IEC 42001:2023 alignment matrix with explicit out-of-scope declarations.
+- [`docs/mcp_self_audit.md`](docs/mcp_self_audit.md) — the MCP server audited as a plugin surface (per-tool + cross-cutting) against OWASP LLM07 / LLM08 and MCP anti-patterns.
+- [`SCORECARD.md`](SCORECARD.md) — one reproducible, stamped scorecard across security posture, detection, retrieval, cost / latency, and calibration. Regenerate with `make scorecard`.
 - [`docs/security_findings.md`](docs/security_findings.md) — currently-open Trivy / SARIF findings with triage notes and accept rationale.
 - [`docs/frontend.md`](docs/frontend.md) — frontend component map, SSE wire protocol, theming, state management.
 - [`examples/triage_walkthrough.md`](examples/triage_walkthrough.md) — three real agent sessions captured against the live stack on 2026-05-18.

@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help build seed up down logs ps restart triage test lint eval eval-compare redteam clean
+.PHONY: help build seed up down logs ps restart triage test lint eval eval-compare redteam scorecard clean
 
 help:  ## Show this help.
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -58,6 +58,9 @@ eval-compare:  ## Run the eval suite across haiku/sonnet/opus and print a side-b
 
 redteam:  ## Run the prompt-injection battery against a live stack. Bills the LLM.
 	@uv run sec-recon-redteam $(REDTEAM_ARGS)
+
+scorecard:  ## Regenerate SCORECARD.md from deterministic coverage + any result JSONs in data/scorecard/.
+	@uv run sec-recon-scorecard $(SCORECARD_ARGS)
 
 clean:  ## Stop services and DELETE the ChromaDB volume. Destructive.
 	docker compose down --volumes
