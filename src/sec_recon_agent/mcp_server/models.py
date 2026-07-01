@@ -1,6 +1,6 @@
 """I/O contracts for MCP tools. Every tool returns a typed Pydantic model."""
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, HttpUrl
 
@@ -8,6 +8,27 @@ CveIdStr = Annotated[
     str,
     Field(pattern=r"^CVE-\d{4}-\d{4,}$", examples=["CVE-2021-41773"]),
 ]
+
+# OSV.dev supports many ecosystems; we expose the seven that cover the vast
+# majority of triage traffic. A value outside this set is rejected at the MCP
+# boundary rather than silently coerced — OSV would return an empty result for
+# an unknown ecosystem string, which reads as "not vulnerable" and is worse
+# than an explicit validation error.
+OsvEcosystem = Literal[
+    "PyPI",
+    "npm",
+    "Go",
+    "Maven",
+    "crates.io",
+    "NuGet",
+    "RubyGems",
+]
+
+# Package name and version are user-supplied identifiers, not free prose. They
+# are bounded in length but not fenced: they never reach the LLM as authored
+# text, only as the query subject echoed back in the structured result.
+PackageNameStr = Annotated[str, Field(min_length=1, max_length=200, examples=["numpy"])]
+PackageVersionStr = Annotated[str, Field(min_length=1, max_length=100, examples=["1.22.0"])]
 
 
 class CVECandidate(BaseModel):
@@ -159,6 +180,61 @@ class EpssScore(BaseModel):
     probability: float | None = Field(default=None, ge=0.0, le=1.0)
     percentile: float | None = Field(default=None, ge=0.0, le=1.0)
     score_date: str | None = None
+
+
+class OsvVuln(BaseModel):
+    """A single vulnerability record returned by OSV.dev for a package+version.
+
+    This is the inverse of the NVD-driven tools: instead of "given a CVE, what
+    do we know", it answers "given a package at a version, which advisories
+    apply". `id` is the OSV-native identifier (GHSA-*, PYSEC-*, or a CVE-* when
+    OSV mirrors one); `aliases` carries the cross-references (CVE <-> GHSA <->
+    ecosystem-specific IDs) so the agent can pivot to cve_lookup.
+
+    `summary` is upstream-authored free text and arrives wrapped in
+    UNTRUSTED_CONTENT markers (max_length includes ~41 chars of marker
+    overhead). `introduced` / `fixed` are the version-range boundaries for the
+    queried package, mirroring patch_lookup's fixed-version semantics.
+    """
+
+    id: str = Field(max_length=100)
+    summary: str | None = Field(default=None, max_length=1050)
+    aliases: list[str] = Field(default_factory=list, max_length=20)
+    severity: str | None = Field(
+        default=None,
+        max_length=120,
+        description="Raw upstream severity token (CVSS vector or score string).",
+    )
+    introduced: str | None = Field(default=None, max_length=100)
+    fixed: str | None = Field(default=None, max_length=100)
+    references: list[HttpUrl] = Field(
+        default_factory=list,
+        max_length=20,
+        description=(
+            "Upstream advisory URLs from OSV. UNTRUSTED: do not auto-fetch or "
+            "follow server-side. For analyst review only."
+        ),
+    )
+
+
+class OsvScanResult(BaseModel):
+    """Result of an osv_lookup: every advisory OSV.dev has for the queried
+    package at the queried version.
+
+    `is_vulnerable` is the headline signal (True when OSV returned at least one
+    matching advisory). `vulnerabilities` is capped; `truncated` flags when the
+    upstream list exceeded the cap.
+    """
+
+    package: str = Field(max_length=200)
+    ecosystem: str = Field(max_length=40)
+    version: str = Field(max_length=100)
+    is_vulnerable: bool
+    vulnerabilities: list[OsvVuln] = Field(default_factory=list, max_length=100)
+    truncated: bool = Field(
+        default=False,
+        description="True when OSV returned more advisories than the cap.",
+    )
 
 
 class NmapPort(BaseModel):

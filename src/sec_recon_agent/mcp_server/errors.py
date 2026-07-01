@@ -89,3 +89,24 @@ class AttackError(SecReconError):
 
 class InvalidCweInputError(AttackError):
     """attack_mapping received a cwe_ids list that breaches the input caps."""
+
+
+class OsvError(SecReconError):
+    """Base for OSV.dev vulnerability-query failures."""
+
+
+class OsvServerError(OsvError):
+    """OSV.dev returned 5xx. Retryable (transient upstream)."""
+
+
+class OsvConnectionError(OsvError):
+    """Network failure reaching OSV.dev. Retryable."""
+
+
+class OsvRequestError(OsvError):
+    """Non-retryable OSV.dev request failure: unexpected host after redirect,
+    4xx client error, or an over-cap response body."""
+
+
+class MalformedOsvPayloadError(OsvError):
+    """OSV.dev response did not match the expected schema."""

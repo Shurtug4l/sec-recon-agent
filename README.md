@@ -9,7 +9,7 @@ Type-safe security triage built on Pydantic AI and a custom Model Context Protoc
 
 ![sec-recon-agent: a live Log4Shell triage from query to a typed TriageReport with CISA KEV, ransomware, and EPSS signals](docs/assets/demo.gif)
 
-Given a CVE ID, a product version, raw Nmap XML, or a CycloneDX / SPDX / requirements.txt SBOM, the agent grounds every answer with nine typed MCP tools (CVE lookup, semantic search, public-exploit availability, CISA KEV membership, FIRST.org EPSS score, patch availability, SBOM ingestion, Nmap parsing, MITRE ATT&CK mapping) and returns a `TriageReport` Pydantic model: severity, exploit availability, operational signals (KEV / ransomware / EPSS), recommended action with a concrete fixed version when one exists, and the full reasoning chain. The LLM never produces free-text guessing; the output schema is enforced at the model boundary.
+Given a CVE ID, a product version, raw Nmap XML, or a CycloneDX / SPDX / requirements.txt SBOM, the agent grounds every answer with ten typed MCP tools (CVE lookup, semantic search, public-exploit availability, CISA KEV membership, FIRST.org EPSS score, patch availability, OSV package-version lookup, SBOM ingestion, Nmap parsing, MITRE ATT&CK mapping) and returns a `TriageReport` Pydantic model: severity, exploit availability, operational signals (KEV / ransomware / EPSS), recommended action with a concrete fixed version when one exists, and the full reasoning chain. The LLM never produces free-text guessing; the output schema is enforced at the model boundary.
 
 The whole stack runs with `make up`: backend (MCP server + FastAPI agent) + frontend (Next.js UI on `:3000`) + an optional Jaeger sidecar for distributed tracing.
 
@@ -28,7 +28,7 @@ The whole stack runs with `make up`: backend (MCP server + FastAPI agent) + fron
              ▼
 ┌──────────────────────────┐
 │  MCP Server  ·  FastMCP  │  :8001
-│  9 typed tools           │
+│  10 typed tools          │
 └────────────┬─────────────┘
              │
              ├── NVD CVE 2.0 API           (cve_lookup, async + rate-limited)
@@ -238,7 +238,7 @@ You should see three containers reach `Healthy` and a web UI ready for queries. 
 
 ## What it does
 
-The agent is built around nine MCP tools, each with a typed Pydantic contract.
+The agent is built around ten MCP tools, each with a typed Pydantic contract.
 
 **`cve_lookup(cve_id)`** — fetches the full NVD CVE 2.0 record for a given ID. Returns `CVEDetail` with CVSS v3 score and severity, CWE IDs, affected CPEs, references. Async httpx client with a sliding-window rate limiter (5 req / 30 s without an NVD API key, 50 with) and tenacity exponential backoff on 5xx, 429, and connection errors.
 
@@ -249,6 +249,8 @@ The agent is built around nine MCP tools, each with a typed Pydantic contract.
 **`sbom_ingest(content)`** — autodetects and parses CycloneDX 1.x JSON, SPDX 2.x JSON, or PEP 508-style requirements.txt. Returns `SbomComponentList` with name / version / ecosystem / purl per component, deduplicated, capped at 500 entries (`truncated=True` signals overflow). No network, no XML — anything more exotic raises `UnsupportedSbomFormatError`. The agent calls this first when the user pastes an SBOM, then runs `cve_semantic_search` on the top-N components.
 
 **`patch_lookup(cve_id)`** — extracts fixed-version information directly from the NVD CVE 2.0 record (per affected CPE: `versionEndExcluding` = smallest patched version, plus optional `versionStartIncluding/Excluding` for the range start). Returns `PatchAvailability` with `has_fix`, a list of `(product_cpe, fixed_in_version, version_range_start)` triples (deduplicated, capped at 50), and the NVD advisory references. Pairs with `cve_lookup` when `recommended_action` should cite a concrete release.
+
+**`osv_lookup(package_name, ecosystem, version)`** — the inverse of `cve_lookup` / `patch_lookup`: given a package at a specific version, queries OSV.dev (`POST /v1/query`) and returns `OsvScanResult` with `is_vulnerable` plus one `OsvVuln` per applicable advisory (OSV id, CVE / GHSA aliases, upstream severity, `introduced` / `fixed` version boundaries, references). `ecosystem` is a 7-value `Literal` (PyPI / npm / Go / Maven / crates.io / NuGet / RubyGems). Host-locked to `api.osv.dev` with tenacity retry on transient 5xx, a response size cap, and `summary` fenced as untrusted. Use when the user names a dependency and version rather than a CVE ("is numpy 1.21.0 vulnerable?").
 
 **`kev_check(cve_id)`** — looks the CVE up in the CISA Known Exploited Vulnerabilities catalog (daily-refreshed JSON, cached on disk for 24h). Returns `KevCheck` with `in_catalog`, CISA-provided vendor / product / vulnerability name, `due_date` (federal remediation deadline), `required_action`, and the `known_ransomware_use` flag. KEV membership is the single most actionable "patch now" signal in vulnerability management.
 
@@ -335,7 +337,7 @@ The browser is the primary interface. The header is a macro-tab nav with four en
 
 ### Pages
 
-- **Home (`/`)** — Landing: hero, design pillars (type-safety, grounded answers, adversary-aware, privacy-by-default), a 9-tool surface grid, a composed architecture diagram (vertical pipeline of `Browser -> Next.js proxy -> Agent API -> MCP Server` plus a data-source fan-out grid), and quick-nav cards into the other pages.
+- **Home (`/`)** — Landing: hero, design pillars (type-safety, grounded answers, adversary-aware, privacy-by-default), a 10-tool surface grid, a composed architecture diagram (vertical pipeline of `Browser -> Next.js proxy -> Agent API -> MCP Server` plus a data-source fan-out grid), and quick-nav cards into the other pages.
 - **Triage (`/triage`)** — Form + history sidebar + live report. Textarea with four example chips (named CVE, product version, service list, CycloneDX SBOM), resize-y up to 180px min-height, 100,000-char counter, Triage / Stop buttons. Draft text persists across navigation via the `TriageProvider` context, and selecting an entry from the sidebar seeds the textarea with that entry's query.
 - **Dashboard (`/dashboard`)** — three tabs; see below.
 - **Guide (`/guide`)** — Framework explainer with a sticky TOC. One card per framework / standard the agent grounds answers in: CVE / NVD / CVSS / CWE, CISA KEV, FIRST EPSS, MITRE ATT&CK, MITRE ATLAS, SBOM (CycloneDX 1.x JSON / SPDX 2.x JSON / requirements.txt strict subset of PEP 508), Nmap XML + defusedxml, OWASP LLM Top 10 (2025), ISO/IEC 42001:2023 (38 Annex A controls), Pydantic AI, MCP. Each card has "What it is" / "Why it appears here" / "Used by" tool chips / primary references.
@@ -357,7 +359,7 @@ A separate page with three tabs:
 
 - **Statistics** — KPI cards (total runs, average time, critical count, success rate), severity histogram, tool-call pie chart, top-CVEs table. All computed client-side from the local history. Recharts tooltips are themed against `--popover` / `--popover-foreground` so they read correctly in both Macchiato and Latte.
 - **Observability** — per-run timeline reconstructed from the `reasoning_chain`, with a link to the Jaeger UI for the cross-process span tree.
-- **Transparency** — the literal system prompt the LLM sees (copyable), the nine-tool inventory with descriptions (count rendered from `meta.tools.length`, never hardcoded), runtime metadata (model, output schema, content boundary), and the explicit list of what the agent CANNOT do (no shell, no out-of-band fetch, no key visibility, no PII in spans).
+- **Transparency** — the literal system prompt the LLM sees (copyable), the ten-tool inventory with descriptions (count rendered from `meta.tools.length`, never hardcoded), runtime metadata (model, output schema, content boundary), and the explicit list of what the agent CANNOT do (no shell, no out-of-band fetch, no key visibility, no PII in spans).
 
 The transparency tab fetches `GET /v1/meta` via the Next.js proxy; the endpoint exposes the system prompt and tool list so the UI can render them without coupling to file paths or live MCP connectivity.
 
@@ -389,8 +391,8 @@ The frontend ESLint setup uses the flat config (`frontend/eslint.config.mjs`) br
 
 The backend CI runs on a Python version matrix (3.12 + 3.13) so the declared `requires-python = ">=3.12"` is actually exercised, not just declared. Coverage on the fast suite holds at **~87%** with a soft 70% floor (`tool.coverage.report.fail_under`).
 
-**Suite count: 212 passing** (210 fast + 2 slow ChromaDB round-trip, excluded from the fast run). Breakdown by area:
-- **88 MCP server tests** — Pydantic I/O contract tests for all nine tools with `respx`-mocked HTTP (NVD 404 / malformed / 5xx + 429 retry, KEV ransomware-flag normalization + free-text fencing, EPSS CVE-mismatch defense, ATT&CK CWE->technique mapping, SBOM CycloneDX/SPDX/requirements, `patch_lookup` versionEndExcluding), plus the `fence_untrusted` security primitive, the `/v1/meta` contract, input-bound caps on `nmap_parse_xml` / `attack_mapping`, and the bearer-auth middleware (PR #45).
+**Suite count: 229 passing** (227 fast + 2 slow ChromaDB round-trip, excluded from the fast run). Breakdown by area:
+- **105 MCP server tests** — Pydantic I/O contract tests for all ten tools with `respx`-mocked HTTP (NVD 404 / malformed / 5xx + 429 retry, KEV ransomware-flag normalization + free-text fencing, EPSS CVE-mismatch defense, ATT&CK CWE->technique mapping, SBOM CycloneDX/SPDX/requirements, `patch_lookup` versionEndExcluding, `osv_lookup` package-version query with host-locked redirect rejection, 5xx retry, and summary fencing), plus the `fence_untrusted` security primitive, the `/v1/meta` contract, input-bound caps on `nmap_parse_xml` / `attack_mapping`, and the bearer-auth middleware (PR #45).
 - **45 property + adversarial tests** — Hypothesis invariants (`fence_untrusted`, `CveIdStr` regex, Pydantic field constraints) plus the adversarial corpus: prompt injection + marker forgery, XXE variants, malformed CVE IDs, Unicode homoglyphs, resource exhaustion.
 - **17 API tests** — opt-in auth + per-IP rate limit, model-override allowlist, SSE framing, audit integration (one event per call, success or error path).
 - **14 audit-trail tests** — hash-chain model (canonical serialization, seal determinism, link-level tamper detection) + store (genesis + forward chaining, clean-chain verify, field-mutation and forged-row tamper, SQLite trigger enforcement, tail ordering).
