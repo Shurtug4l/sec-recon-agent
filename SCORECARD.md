@@ -2,44 +2,51 @@
 
 Single reproducible measurement of the system across security posture, detection quality, retrieval, efficiency, and reliability. Regenerate with `make scorecard` (see [Reproduce](#reproduce)). Live metrics are populated from the eval / retrieval / red-team result JSONs; a _pending live run_ marker means that run has not been captured yet.
 
-- **Model**: `n/a (deterministic-only)`
+- **Model**: `sonnet`
 - **Date**: 2026-07-01
-- **Commit**: `14c11c6`
+- **Commit**: `fefbe82`
 - **Token pricing**: Anthropic published rates as of 2026-06-24
 
 ## Security posture (red-team resistance)
 
 Prompt-injection battery: **18 payloads** across 6 categories, each mapped to MITRE ATLAS techniques. Resistance = the agent held the boundary on every falsifiable check for the payload.
 
-**Resistance: _pending live run_** (run `make redteam REDTEAM_ARGS='--json-output data/scorecard/redteam.json'`)
+**Resistance: 15/18 (83%)**
 
 | ATLAS technique | Payloads | Resisted |
 |---|---:|---:|
-| AML.T0024 | 3 | _pending live run_ |
-| AML.T0029 | 2 | _pending live run_ |
-| AML.T0040 | 10 | _pending live run_ |
-| AML.T0054 | 2 | _pending live run_ |
-| AML.T0055 | 6 | _pending live run_ |
+| AML.T0024 | 3 | 2/3 (67%) |
+| AML.T0029 | 2 | 2/2 (100%) |
+| AML.T0040 | 10 | 8/10 (80%) |
+| AML.T0054 | 2 | 2/2 (100%) |
+| AML.T0055 | 6 | 5/6 (83%) |
 
 ## Detection quality (golden set)
 
 Golden set: **11 curated cases** (8 expect a CISA KEV hit, 1 expect a ransomware flag). Soft assertions: severity within +-1 step, expected CVE recall >= 50%, KEV / ransomware honored when asked.
 
-- **Pass rate / severity / recall**: _pending live run_ (run `make eval EVAL_ARGS='--json-output data/scorecard/eval.json'`)
+- **Pass rate**: 10/11 (91%)
+- **Severity within +-1 step**: 11/11
+- **Mean CVE recall**: 1.00
 
 ## Retrieval quality (cve_semantic_search)
 
 Measured by sampling the seeded ChromaDB index and querying with a truncated description; the corpus is a moving window, so numbers depend on the seed. Stock MiniLM-L6 embeddings, no reranker (yet).
 
-- **MRR / hit-rate@k**: _pending live run_ (run `make eval EVAL_ARGS='--retrieval --json-output data/scorecard/retrieval.json'`)
+- **Sampled**: 100 CVEs (top_k=10)
+- **MRR**: 0.950
+- **hit-rate@1 / @3 / @5**: 93% / 97% / 97%
 
 ## Efficiency (cost & latency)
 
-- **Latency / tokens / cost**: _pending live run_ (from the golden-set eval run above)
+- **Latency p50 / p95**: 67.0s / 94.3s
+- **Mean tokens (in / out)**: 69050 / 3908
+- **Cost**: total $2.9234, mean $0.2658/triage
 
 ## Reliability (conformance & calibration)
 
-- **Conformance / calibration**: _pending live run_ (from the golden-set eval run above)
+- **Structured-output conformance**: 11/11 well-formed reports
+- **Confidence calibration (ECE)**: 0.009 (0 = perfectly calibrated; over the scored cases)
 
 ## Prioritization (deterministic SSVC)
 
