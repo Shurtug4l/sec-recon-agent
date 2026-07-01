@@ -23,6 +23,8 @@ import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
+from pydantic_ai.exceptions import UsageLimitExceeded
+from pydantic_ai.usage import UsageLimits
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -291,7 +293,11 @@ async def triage(request: Request, req: TriageRequest) -> EventSourceResponse:
         error_class: str | None = None
         result_json: str | None = None
         try:
-            async with agent.iter(req.query) as run:
+            # Cap ReAct rounds so a stuck agent fails fast instead of thrashing
+            # to the client timeout. UsageLimitExceeded is raised before the
+            # over-budget request and handled cleanly below.
+            round_cap = UsageLimits(request_limit=settings.agent_request_limit)
+            async with agent.iter(req.query, usage_limits=round_cap) as run:
                 async for node in run:
                     yield {
                         "event": "node",
@@ -312,6 +318,28 @@ async def triage(request: Request, req: TriageRequest) -> EventSourceResponse:
             yield {"event": "final", "data": result_json}
             if usage is not None:
                 yield {"event": "usage", "data": usage}
+        except UsageLimitExceeded as exc:
+            # Expected control-flow bound, not a crash: the agent hit the round
+            # cap. Log at warning (not exception) and return a clear, safe
+            # message instead of the generic "internal error".
+            outcome = "error"
+            error_class = exc.__class__.__name__
+            log.warning(
+                "triage_round_cap_exceeded",
+                request_limit=settings.agent_request_limit,
+                error=str(exc),
+            )
+            yield {
+                "event": "error",
+                "data": _error_payload(
+                    exc,
+                    safe_message=(
+                        "Triage stopped after reaching its step budget of "
+                        f"{settings.agent_request_limit} model rounds. Narrow the "
+                        "query and retry; a tool may be failing repeatedly."
+                    ),
+                ),
+            }
         except Exception as exc:
             outcome = "error"
             error_class = exc.__class__.__name__
