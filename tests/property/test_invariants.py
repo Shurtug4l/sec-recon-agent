@@ -52,6 +52,24 @@ def test_fence_passes_empty_through(text: str | None) -> None:
     assert fence_untrusted(text) == text
 
 
+def test_cvecandidate_summary_accommodates_fenced_max_truncation() -> None:
+    """Regression: cve_semantic_search truncates the CVE description to 500
+    chars, then wraps it in UNTRUSTED_CONTENT markers (~41 chars of overhead).
+    CVECandidate.summary must accommodate the fenced result. When it did not
+    (max_length was 500), a hit whose description was long enough that the
+    fenced form exceeded 500 chars crashed the tool with a string_too_long
+    ValidationError, which surfaced to the agent as
+    'Tool cve_semantic_search exceeded max retries' and took the triage down.
+    """
+    raw = "x" * 500  # cve_search caps the raw description at 500 before fencing
+    fenced = fence_untrusted(raw)
+    assert fenced is not None
+    assert len(fenced) > 500, "the fence markers must push a 500-char payload over 500"
+    # Must not raise: a full-length fenced description has to validate.
+    candidate = CVECandidate(cve_id="CVE-2021-41773", summary=fenced, similarity=0.5)
+    assert candidate.summary == fenced
+
+
 # ----------------------------------------------------------------------------
 # CveIdStr regex: ^CVE-\d{4}-\d{4,}$. Used at every CVE-accepting boundary
 # (cve_lookup, exploit_check, kev_check when it lands). The pattern is the
