@@ -33,10 +33,17 @@ PackageVersionStr = Annotated[str, Field(min_length=1, max_length=100, examples=
 
 
 class CVECandidate(BaseModel):
-    """Lightweight CVE hit returned by semantic search."""
+    """Lightweight CVE hit returned by semantic search.
+
+    `summary` is the CVE description, truncated to 500 chars in
+    cve_search.py and then wrapped in UNTRUSTED_CONTENT markers. `max_length`
+    includes ~41 chars of marker overhead on top of that 500-char payload, so a
+    fenced full-length description validates (same convention as KevCheck /
+    OsvVuln free-text fields).
+    """
 
     cve_id: CveIdStr
-    summary: str = Field(max_length=500)
+    summary: str = Field(max_length=550)
     similarity: float = Field(ge=0.0, le=1.0)
 
 
