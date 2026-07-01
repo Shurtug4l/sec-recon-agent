@@ -14,6 +14,7 @@ import {
   Flame,
   Printer,
   Radar,
+  Share2,
   ShieldAlert,
   ShieldCheck,
   ShieldX,
@@ -33,6 +34,7 @@ import {
 } from "@/components/ui/collapsible";
 import { Separator } from "@/components/ui/separator";
 import { downloadJson, downloadMarkdown, reportToMarkdown } from "@/lib/markdown-export";
+import { buildPermalink } from "@/lib/permalink";
 import { cn } from "@/lib/utils";
 import type {
   FeedStatus,
@@ -116,6 +118,22 @@ export function TriageReportView({
   report: TriageReport;
   query?: string;
 }) {
+  const [linkState, setLinkState] = useState<"idle" | "copied" | "toolarge">("idle");
+
+  async function handleCopyLink() {
+    // Encode the whole report into a URL fragment (client-side, never sent to a
+    // server) and copy it. Oversized reports fall back to the JSON export.
+    const url = await buildPermalink(report, window.location.origin);
+    if (!url) {
+      setLinkState("toolarge");
+      window.setTimeout(() => setLinkState("idle"), 2500);
+      return;
+    }
+    await navigator.clipboard.writeText(url);
+    setLinkState("copied");
+    window.setTimeout(() => setLinkState("idle"), 1500);
+  }
+
   function handleExportMarkdown() {
     const md = reportToMarkdown(report, query);
     const stamp = new Date().toISOString().replace(/[:.]/g, "-").replace(/Z$/, "");
@@ -150,6 +168,21 @@ export function TriageReportView({
               {report.confidence} confidence
             </Badge>
             <div className="ml-auto flex items-center gap-1 print:hidden">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 gap-1 text-[11px]"
+                onClick={handleCopyLink}
+                title="Copy a shareable link; the full report is encoded in the URL fragment, never sent to a server"
+              >
+                <Share2 className="h-3.5 w-3.5" />
+                {linkState === "copied"
+                  ? "Link copied"
+                  : linkState === "toolarge"
+                    ? "Too large — use JSON"
+                    : "Copy link"}
+              </Button>
               <Button
                 type="button"
                 size="sm"
