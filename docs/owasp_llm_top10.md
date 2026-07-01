@@ -31,6 +31,7 @@ Mitigations are layered, not perfect. A "mitigated" status means the project app
 - Indexed CVE summaries (ChromaDB corpus): `src/sec_recon_agent/mcp_server/tools/cve_search.py`
 - Nmap service banners (product / version): `src/sec_recon_agent/mcp_server/tools/nmap.py`
 - CISA KEV vulnerability_name / required_action / notes: `src/sec_recon_agent/mcp_server/tools/kev.py:179-185`
+- OSV.dev advisory summary: `src/sec_recon_agent/mcp_server/tools/osv.py`
 - Untrusted-content fencing primitive: `src/sec_recon_agent/mcp_server/security.py`
 - Agent system prompt with the boundary rule: `src/sec_recon_agent/agent/prompts.py`
 
@@ -93,7 +94,7 @@ Mitigations are layered, not perfect. A "mitigated" status means the project app
 
 **Status**: mitigated.
 
-**How**: the tool surface is deliberately read-only. The 8 MCP tools (`cve_lookup`, `cve_semantic_search`, `exploit_check`, `kev_check`, `epss_score`, `sbom_ingest`, `nmap_parse_xml`, `attack_mapping`) all perform lookups or in-process parsing; none can mutate state, send messages, write files outside the disk cache directories, or invoke external commands. The agent cannot escalate to side-effecting actions because no side-effecting tool exists.
+**How**: the tool surface is deliberately read-only. The 10 MCP tools (`cve_lookup`, `cve_semantic_search`, `exploit_check`, `kev_check`, `epss_score`, `patch_lookup`, `osv_lookup`, `sbom_ingest`, `nmap_parse_xml`, `attack_mapping`) all perform lookups or in-process parsing; none can mutate state, send messages, write files outside the disk cache directories, or invoke external commands. The agent cannot escalate to side-effecting actions because no side-effecting tool exists.
 
 Per-request model override is allowlisted (`src/sec_recon_agent/agent/triage.py::ALLOWED_MODELS`); an attacker cannot probe arbitrary model identifiers through the body field.
 
