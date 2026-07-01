@@ -152,6 +152,80 @@ def test_triage_streams_started_and_final_events(
     assert payload["severity"] == "high"
 
 
+def test_triage_stamps_ssvc_on_final_report(
+    monkeypatch: MonkeyPatch,
+    fake_agent_factory: Any,
+) -> None:
+    """The server computes the SSVC verdict deterministically and stamps it onto
+    the report before emitting `final`, even when the model left `ssvc` null."""
+    monkeypatch.setattr(stream_module, "build_agent", fake_agent_factory)
+
+    client = TestClient(app)
+    with client.stream("POST", "/v1/triage", json={"query": "test"}) as response:
+        assert response.status_code == 200
+        body = "".join(response.iter_text())
+
+    final_line = next(
+        line for line in body.splitlines() if line.startswith("data: ") and "Fake summary" in line
+    )
+    payload = json.loads(final_line[len("data: ") :])
+    assert payload["ssvc"] is not None
+    # Fake report has no CVEs -> the deterministic verdict is Track.
+    assert payload["ssvc"]["decision"] == "Track"
+    assert payload["ssvc"]["rule"] == "no-cves"
+
+
+def test_triage_emits_usage_event(
+    monkeypatch: MonkeyPatch,
+    fake_report: TriageReport,
+) -> None:
+    """When the run result exposes usage, the API emits a `usage` SSE event so
+    the eval harness can capture tokens without a billing call."""
+
+    class _Usage:
+        input_tokens = 1234
+        output_tokens = 567
+        requests = 2
+
+    class _FakeResult:
+        def __init__(self, output: TriageReport) -> None:
+            self.output = output
+
+        def usage(self) -> _Usage:
+            return _Usage()
+
+    class _FakeRun:
+        def __init__(self, output: TriageReport) -> None:
+            self.result = _FakeResult(output)
+
+        def __aiter__(self) -> Any:
+            async def gen() -> Any:
+                yield object()
+
+            return gen()
+
+    class _FakeAgent:
+        @asynccontextmanager
+        async def iter(self, query: str) -> Any:
+            yield _FakeRun(fake_report)
+
+    monkeypatch.setattr(stream_module, "build_agent", lambda model_override=None: _FakeAgent())
+
+    client = TestClient(app)
+    with client.stream("POST", "/v1/triage", json={"query": "test"}) as response:
+        assert response.status_code == 200
+        body = "".join(response.iter_text())
+
+    assert "event: usage" in body
+    usage_line = next(
+        line for line in body.splitlines() if line.startswith("data: ") and "input_tokens" in line
+    )
+    payload = json.loads(usage_line[len("data: ") :])
+    assert payload["input_tokens"] == 1234
+    assert payload["output_tokens"] == 567
+    assert payload["requests"] == 2
+
+
 def test_triage_rejects_unknown_model_override(monkeypatch: MonkeyPatch) -> None:
     """A body that sets an unknown `model` must surface as an error
     event with the allowlist-violation message preserved.

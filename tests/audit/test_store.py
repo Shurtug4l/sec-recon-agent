@@ -156,6 +156,67 @@ def test_verify_detects_inserted_row_with_wrong_prev_hash(
     assert exc_info.value.event_id == "ev-FORGED"
 
 
+_PRE_V2_SCHEMA = """
+CREATE TABLE triage_events (
+    rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL UNIQUE,
+    ts TEXT NOT NULL,
+    query_sha256 TEXT NOT NULL,
+    query_length INTEGER NOT NULL,
+    query_plain TEXT,
+    report_sha256 TEXT NOT NULL,
+    severity TEXT,
+    confidence TEXT,
+    cves_count INTEGER NOT NULL DEFAULT 0,
+    attack_techniques_count INTEGER NOT NULL DEFAULT 0,
+    kev_hits INTEGER NOT NULL DEFAULT 0,
+    ransomware_hits INTEGER NOT NULL DEFAULT 0,
+    high_epss_hits INTEGER NOT NULL DEFAULT 0,
+    report_summary_plain TEXT,
+    model TEXT NOT NULL,
+    duration_ms INTEGER NOT NULL,
+    outcome TEXT NOT NULL,
+    error_class TEXT,
+    prev_event_hash TEXT NOT NULL,
+    this_event_hash TEXT NOT NULL,
+    schema_version INTEGER NOT NULL DEFAULT 1
+);
+"""
+
+
+def test_additive_migration_adds_ssvc_column_to_pre_v2_db(tmp_path: Path) -> None:
+    """A database created before the ssvc_decision column must gain it on open,
+    so appends keep working after an in-place upgrade of an existing deployment."""
+    db_path = tmp_path / "audit.db"
+    raw = sqlite3.connect(db_path)
+    raw.executescript(_PRE_V2_SCHEMA)
+    raw.commit()
+    raw.close()
+
+    cols_before = _columns(db_path)
+    assert "ssvc_decision" not in cols_before
+
+    store = AuditStore(db_path)
+    try:
+        # Opening + appending must not raise "no such column: ssvc_decision".
+        store.append(_event("ev-migrated").model_copy(update={"ssvc_decision": "Act"}))
+        assert store.count() == 1
+        assert store.verify() == 1
+        assert store.tail(1)[0].ssvc_decision == "Act"
+    finally:
+        store.close()
+
+    assert "ssvc_decision" in _columns(db_path)
+
+
+def _columns(db_path: Path) -> set[str]:
+    conn = sqlite3.connect(db_path)
+    try:
+        return {row[1] for row in conn.execute("PRAGMA table_info(triage_events)")}
+    finally:
+        conn.close()
+
+
 def test_triggers_block_in_sql_update(store: AuditStore, tmp_path: Path) -> None:
     """The append-only triggers refuse UPDATE through the normal SQL path."""
     store.append(_event("ev-0001"))

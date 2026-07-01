@@ -10,10 +10,18 @@ import sys
 from dataclasses import asdict
 from typing import Any
 
+from sec_recon_agent.eval.cost import PRICING_SOURCE_DATE, estimate_cost_usd
 from sec_recon_agent.eval.golden_set import GOLDEN_SET, GoldenCase
+from sec_recon_agent.eval.metrics import (
+    confidence_to_probability,
+    expected_calibration_error,
+    is_conformant,
+    percentile,
+)
 from sec_recon_agent.eval.runner import (
     DEFAULT_API_URL,
     DEFAULT_TIMEOUT_SECONDS,
+    CaseResult,
     health_check,
     run_case,
 )
@@ -38,6 +46,102 @@ def _format_row(case: GoldenCase, verdict: CaseVerdict, elapsed: float) -> str:
         f"rw={'ok' if verdict.ransomware_ok else 'no':>3}  "
         f"{elapsed:5.1f}s{note}"
     )
+
+
+def _fmt(value: float | None, spec: str, na: str = "n/a") -> str:
+    return format(value, spec) if value is not None else na
+
+
+def _print_efficiency_and_quality(
+    results: list[CaseResult],
+    verdicts: list[CaseVerdict | None],
+    model_label: str,
+) -> None:
+    """Print the scorecard axes the golden set alone did not measure:
+    latency p50/p95, tokens, $/triage, structured-output conformance, and
+    confidence calibration."""
+    if not results:
+        return
+
+    latencies = [r.elapsed_seconds for r in results]
+    reported = [r for r in results if r.report is not None]
+
+    in_tokens = [r.input_tokens for r in results if r.input_tokens is not None]
+    out_tokens = [r.output_tokens for r in results if r.output_tokens is not None]
+    per_case_costs = [
+        c
+        for r in results
+        if (c := estimate_cost_usd(model_label, r.input_tokens, r.output_tokens)) is not None
+    ]
+    total_cost = sum(per_case_costs) if per_case_costs else None
+
+    conformant = sum(1 for r in reported if is_conformant(r.report))
+    calib_samples = [
+        (confidence_to_probability(r.report.confidence), v.passed)
+        for r, v in zip(results, verdicts, strict=True)
+        if r.report is not None and v is not None
+    ]
+    ece = expected_calibration_error(calib_samples)
+
+    print("\n  --- efficiency & quality ---")
+    print(
+        f"  latency:      p50={_fmt(percentile(latencies, 50), '.1f')}s  "
+        f"p95={_fmt(percentile(latencies, 95), '.1f')}s",
+    )
+    if in_tokens or out_tokens:
+        mean_in = sum(in_tokens) / len(in_tokens) if in_tokens else None
+        mean_out = sum(out_tokens) / len(out_tokens) if out_tokens else None
+        print(
+            f"  tokens/case:  in={_fmt(mean_in, '.0f')}  out={_fmt(mean_out, '.0f')}  "
+            f"(usage on {len(in_tokens)}/{len(results)} cases)",
+        )
+        cost_line = f"  cost:         total=${_fmt(total_cost, '.4f')}"
+        if total_cost is not None and per_case_costs:
+            cost_line += f"  mean=${total_cost / len(per_case_costs):.4f}/triage"
+        print(f"{cost_line}  (pricing @ {PRICING_SOURCE_DATE})")
+    else:
+        print("  tokens/case:  n/a (no usage events; API did not emit token counts)")
+    print(
+        f"  conformance:  {conformant}/{len(reported)} well-formed reports"
+        if reported
+        else "  conformance:  n/a (no reports returned)",
+    )
+    print(
+        f"  calibration:  ECE={_fmt(ece, '.3f')}  "
+        f"(over {len(calib_samples)} scored cases; 0 = perfectly calibrated)",
+    )
+
+
+def _run_retrieval(args: argparse.Namespace) -> int:
+    """Evaluate cve_semantic_search retrieval quality against the local index."""
+    from sec_recon_agent.eval.retrieval import run_retrieval
+
+    print(
+        f"evaluating cve_semantic_search retrieval "
+        f"(sample<= {args.retrieval_sample}, top_k={args.retrieval_top_k}) ...",
+    )
+    report = run_retrieval(
+        sample_size=args.retrieval_sample,
+        top_k=args.retrieval_top_k,
+    )
+    if report.sampled == 0:
+        print(
+            "no documents in the ChromaDB index; run `sec-recon-seed` first.",
+            file=sys.stderr,
+        )
+        return 2
+    print(f"\n  retrieval over {report.sampled} sampled CVEs (top_k={report.top_k}):")
+    print(f"  MRR:          {_fmt(report.mrr, '.3f')}")
+    print(f"  hit-rate@1:   {_fmt(report.hit_rate_at_1, '.2%')}")
+    print(f"  hit-rate@3:   {_fmt(report.hit_rate_at_3, '.2%')}")
+    print(f"  hit-rate@5:   {_fmt(report.hit_rate_at_5, '.2%')}")
+    print(f"  p95 top-1 similarity: {_fmt(report.p95_similarity_top1, '.3f')}")
+
+    if args.json_output:
+        with open(args.json_output, "w", encoding="utf-8") as f:
+            json.dump(asdict(report), f, indent=2, default=str)
+        print(f"json report written to {args.json_output}")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -90,7 +194,31 @@ def main(argv: list[str] | None = None) -> int:
             "table. Mutually exclusive with --model."
         ),
     )
+    parser.add_argument(
+        "--retrieval",
+        action="store_true",
+        help=(
+            "evaluate cve_semantic_search retrieval quality (hit-rate@k + MRR) "
+            "against the local ChromaDB index instead of running the golden set. "
+            "Requires a seeded index (`sec-recon-seed`); no live API needed."
+        ),
+    )
+    parser.add_argument(
+        "--retrieval-sample",
+        type=int,
+        default=100,
+        help="max CVEs to sample from the index for retrieval eval (default: 100)",
+    )
+    parser.add_argument(
+        "--retrieval-top-k",
+        type=int,
+        default=10,
+        help="top_k passed to cve_semantic_search during retrieval eval (default: 10)",
+    )
     args = parser.parse_args(argv)
+
+    if args.retrieval:
+        return _run_retrieval(args)
 
     if args.model and args.models:
         print("--model and --models are mutually exclusive", file=sys.stderr)
@@ -122,6 +250,8 @@ def _run_single(
     label = model or "default"
     print(f"running {len(cases)} case(s) against {args.api_url} (model={label}) ...")
     json_payload: list[dict[str, Any]] = []
+    all_results: list[CaseResult] = []
+    all_verdicts: list[CaseVerdict | None] = []
     passed = 0
     for case in cases:
         result = run_case(
@@ -130,7 +260,14 @@ def _run_single(
             timeout_seconds=args.timeout,
             model=model,
         )
+        all_results.append(result)
+        usage = {
+            "input_tokens": result.input_tokens,
+            "output_tokens": result.output_tokens,
+            "cost_usd": estimate_cost_usd(label, result.input_tokens, result.output_tokens),
+        }
         if result.report is None:
+            all_verdicts.append(None)
             print(
                 f"  [ERR ] {case.id:<30} {result.error}  {result.elapsed_seconds:5.1f}s",
             )
@@ -140,10 +277,12 @@ def _run_single(
                     "model": label,
                     "error": result.error,
                     "elapsed_seconds": result.elapsed_seconds,
+                    "usage": usage,
                 },
             )
             continue
         verdict = score(case, result.report)
+        all_verdicts.append(verdict)
         passed += int(verdict.passed)
         print(_format_row(case, verdict, result.elapsed_seconds))
         json_payload.append(
@@ -153,12 +292,15 @@ def _run_single(
                 "verdict": asdict(verdict),
                 "report": result.report.model_dump(mode="json"),
                 "elapsed_seconds": result.elapsed_seconds,
+                "usage": usage,
+                "conformant": is_conformant(result.report),
             },
         )
 
     total = len(cases)
     rate = passed / total if total else 0.0
     print(f"\nresult: {passed}/{total} cases passed ({rate:.0%})")
+    _print_efficiency_and_quality(all_results, all_verdicts, label)
 
     if args.json_output:
         with open(args.json_output, "w", encoding="utf-8") as f:
@@ -182,6 +324,8 @@ def _run_comparison(
     for model in models:
         print(f"\n=== model: {model} ===")
         rows: list[dict[str, Any]] = []
+        model_results: list[CaseResult] = []
+        model_verdicts: list[CaseVerdict | None] = []
         passed = 0
         for case in cases:
             result = run_case(
@@ -190,19 +334,26 @@ def _run_comparison(
                 timeout_seconds=args.timeout,
                 model=model,
             )
+            model_results.append(result)
+            cost = estimate_cost_usd(model, result.input_tokens, result.output_tokens)
             if result.report is None:
+                model_verdicts.append(None)
                 rows.append(
                     {
                         "case_id": case.id,
                         "passed": False,
                         "cve_recall": 0.0,
                         "elapsed_seconds": result.elapsed_seconds,
+                        "input_tokens": result.input_tokens,
+                        "output_tokens": result.output_tokens,
+                        "cost_usd": cost,
                         "error": result.error,
                     },
                 )
                 print(f"  [ERR ] {case.id:<30} {result.error}")
                 continue
             verdict = score(case, result.report)
+            model_verdicts.append(verdict)
             passed += int(verdict.passed)
             rows.append(
                 {
@@ -211,6 +362,10 @@ def _run_comparison(
                     "cve_recall": verdict.cve_recall,
                     "severity_ok": verdict.severity_ok,
                     "elapsed_seconds": result.elapsed_seconds,
+                    "input_tokens": result.input_tokens,
+                    "output_tokens": result.output_tokens,
+                    "cost_usd": cost,
+                    "conformant": is_conformant(result.report),
                 },
             )
             print(_format_row(case, verdict, result.elapsed_seconds))
@@ -219,6 +374,7 @@ def _run_comparison(
         print(
             f"  -> {passed}/{len(cases)} passed ({passed / max(len(cases), 1):.0%})",
         )
+        _print_efficiency_and_quality(model_results, model_verdicts, model)
 
     # Side-by-side summary
     print("\n=== comparison summary ===")

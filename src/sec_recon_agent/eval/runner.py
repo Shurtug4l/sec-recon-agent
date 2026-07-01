@@ -29,12 +29,21 @@ class EvalRunError(Exception):
 
 @dataclass(frozen=True)
 class CaseResult:
-    """Raw outcome of a single triage invocation, pre-scoring."""
+    """Raw outcome of a single triage invocation, pre-scoring.
+
+    Token counts come from the `usage` SSE event the API emits after the final
+    report; they are None when the stream carried no usage event (older API, a
+    fake test agent, or a failed run). Cost is derived downstream from the model
+    + token counts in eval/cost.py, not stored here.
+    """
 
     case: GoldenCase
     report: TriageReport | None
     error: str | None
     elapsed_seconds: float
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    requests: int | None = None
 
 
 def _iter_sse_events(text_iter: httpx.Response) -> list[dict[str, str]]:
@@ -60,6 +69,25 @@ def _iter_sse_events(text_iter: httpx.Response) -> list[dict[str, str]]:
             if record:
                 events.append(record)
     return events
+
+
+def _parse_usage(events: list[dict[str, str]]) -> tuple[int | None, int | None, int | None]:
+    """Pull (input_tokens, output_tokens, requests) from the last usage event."""
+    usage_payloads = [e["data"] for e in events if e.get("event") == "usage"]
+    if not usage_payloads:
+        return None, None, None
+    try:
+        data = json.loads(usage_payloads[-1])
+    except (json.JSONDecodeError, ValueError):
+        return None, None, None
+    if not isinstance(data, dict):
+        return None, None, None
+
+    def _int_or_none(key: str) -> int | None:
+        value = data.get(key)
+        return value if isinstance(value, int) else None
+
+    return _int_or_none("input_tokens"), _int_or_none("output_tokens"), _int_or_none("requests")
 
 
 def run_case(
@@ -139,11 +167,15 @@ def run_case(
             elapsed_seconds=elapsed,
         )
 
+    input_tokens, output_tokens, requests = _parse_usage(events)
     return CaseResult(
         case=case,
         report=report,
         error=None,
         elapsed_seconds=elapsed,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        requests=requests,
     )
 
 

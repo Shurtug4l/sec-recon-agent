@@ -298,8 +298,20 @@ async def triage(request: Request, req: TriageRequest) -> EventSourceResponse:
                         "data": _node_event_payload(node),
                     }
                 result_output = run.result.output  # type: ignore[union-attr]
+                usage = _extract_usage(run)
+            # Stamp the deterministic SSVC verdict onto the report AFTER the
+            # model returns. The LLM is told to leave `ssvc` null and to echo
+            # the decision in recommended_action; this is the authoritative,
+            # reproducible form and the one the audit trail records.
+            from sec_recon_agent.agent.ssvc import assess_ssvc
+
+            result_output = result_output.model_copy(
+                update={"ssvc": assess_ssvc(result_output.cves)},
+            )
             result_json = result_output.model_dump_json()
             yield {"event": "final", "data": result_json}
+            if usage is not None:
+                yield {"event": "usage", "data": usage}
         except Exception as exc:
             outcome = "error"
             error_class = exc.__class__.__name__
@@ -377,6 +389,9 @@ def _audit_triage(
         kev_hits=int(summary["kev_hits"] or 0),
         ransomware_hits=int(summary["ransomware_hits"] or 0),
         high_epss_hits=int(summary["high_epss_hits"] or 0),
+        ssvc_decision=(
+            summary["ssvc_decision"] if isinstance(summary["ssvc_decision"], str) else None
+        ),
         report_summary_plain=(report_summary_plain if settings.audit_include_summary else None),
         model=f"{settings.llm_provider}:{settings.llm_model}",
         duration_ms=duration_ms,
@@ -407,6 +422,48 @@ def _reset_audit_store() -> None:
     if _AUDIT_STORE is not None:
         _AUDIT_STORE.close()
     _AUDIT_STORE = None
+
+
+def _extract_usage(run: object) -> str | None:
+    """Best-effort JSON usage payload for the SSE `usage` event.
+
+    Reads token counts off the Pydantic AI run result so the eval harness can
+    capture tokens / cost / p95 without a live billing call. The usage API has
+    churned across pydantic-ai versions (request_tokens/response_tokens ->
+    input_tokens/output_tokens), so we probe defensively and simply omit the
+    event if we cannot read it. Returns a JSON string or None.
+    """
+    import json
+
+    try:
+        result = getattr(run, "result", None)
+        usage_fn = getattr(result, "usage", None) or getattr(run, "usage", None)
+        usage = usage_fn() if callable(usage_fn) else None
+        if usage is None:
+            return None
+
+        def _pick(*names: str) -> int | None:
+            for name in names:
+                value = getattr(usage, name, None)
+                if isinstance(value, int):
+                    return value
+            return None
+
+        input_tokens = _pick("input_tokens", "request_tokens")
+        output_tokens = _pick("output_tokens", "response_tokens")
+        requests = _pick("requests")
+        if input_tokens is None and output_tokens is None:
+            return None
+        return json.dumps(
+            {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "requests": requests,
+            },
+        )
+    except Exception:
+        log.warning("usage_extract_failed", exc_info=True)
+        return None
 
 
 def _node_event_payload(node: object) -> str:

@@ -134,6 +134,24 @@ def test_resolve_model_rejects_injection_attempt() -> None:
             resolve_model(hostile)
 
 
+def test_system_prompt_declares_ssvc_and_signal_coverage() -> None:
+    """S1 contract: the prompt must (a) name all four SSVC outcomes, (b) tell
+    the model to leave the `ssvc` field null (the server computes it), and (c)
+    describe signal-coverage honesty. These are the two S1 report additions;
+    pin them so a prompt edit cannot silently drop them."""
+    prompt = SYSTEM_PROMPT
+    lowered = prompt.lower()
+    for outcome in ("Act", "Attend", "Track*", "Track"):
+        assert outcome in prompt, f"SSVC outcome {outcome} missing from system prompt"
+    assert "ssvc" in lowered
+    # The model must not populate the ssvc field itself.
+    assert "leave" in lowered and "null" in lowered
+    # Signal-coverage honesty vocabulary.
+    assert "signal_coverage" in prompt
+    assert "not_found" in lowered
+    assert "not queried" in lowered or "not_queried" in lowered
+
+
 def test_system_prompt_constrains_output_to_triagereport() -> None:
     """The prompt must reference the TriageReport schema by name."""
     assert "TriageReport" in SYSTEM_PROMPT

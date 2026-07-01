@@ -11,16 +11,27 @@ from pydantic import BaseModel, Field
 GENESIS_HASH = "0" * 64
 
 
+# Fields introduced after schema_version 1, keyed by the version that added
+# them. `_canonical_payload` drops fields newer than a row's own
+# schema_version when (re)computing its hash, so a v1 chain stays valid after
+# the code learns about v2 fields. See _canonical_payload for the rationale.
+_FIELD_MIN_VERSION: dict[str, int] = {
+    "ssvc_decision": 2,
+}
+
+
 class TriageEvent(BaseModel):
     """One row of the append-only triage audit log.
 
-    Field order matters: `to_canonical_str` serializes fields in
-    declaration order, and any change in either field set or order
-    breaks every existing chain. Bump `schema_version` on real
-    changes and write a migration; never reorder.
+    Field SET matters for the hash (`_canonical_payload` serializes with
+    sorted keys, so declaration order is cosmetic, but adding or removing a
+    field changes the signed byte payload). Evolve the schema additively:
+    bump `schema_version`, register the new field in `_FIELD_MIN_VERSION`,
+    and add the column via an additive migration in the store. Never remove
+    or repurpose an existing field.
     """
 
-    schema_version: int = 1
+    schema_version: int = 2
 
     # Identity / timing ----------------------------------------------------
     event_id: str = Field(min_length=4, max_length=64)
@@ -40,6 +51,9 @@ class TriageEvent(BaseModel):
     kev_hits: int = Field(default=0, ge=0)
     ransomware_hits: int = Field(default=0, ge=0)
     high_epss_hits: int = Field(default=0, ge=0)
+    # SSVC prioritization verdict (Act / Attend / Track* / Track), stamped
+    # deterministically onto the report before hashing. schema_version 2+.
+    ssvc_decision: str | None = None
     report_summary_plain: str | None = None  # opt-in via AUDIT_INCLUDE_SUMMARY
 
     # Execution context ----------------------------------------------------
@@ -67,11 +81,20 @@ def sha256_hex(payload: str | bytes) -> str:
 def _canonical_payload(event: TriageEvent) -> str:
     """Build the deterministic byte payload that this_event_hash signs.
 
-    Excludes `this_event_hash` itself (we are computing it) and uses
-    JSON with sorted keys + compact separators for byte-stability across
-    Python versions and platforms.
+    Excludes `this_event_hash` itself (we are computing it) and uses JSON
+    with sorted keys + compact separators for byte-stability across Python
+    versions and platforms.
+
+    Version-aware by design: fields introduced in a later schema_version are
+    dropped when hashing a row of an earlier version, so a chain written under
+    schema_version 1 still verifies after the code has learned about v2 fields.
+    Without this, loading an old row would populate the new field with its
+    default and the recomputed hash would diverge from the stored one, raising
+    a false tamper alarm.
     """
     data = event.model_dump(exclude={"this_event_hash"})
+    version = event.schema_version
+    data = {k: v for k, v in data.items() if _FIELD_MIN_VERSION.get(k, 1) <= version}
     return json.dumps(data, sort_keys=True, separators=(",", ":"))
 
 
@@ -126,6 +149,11 @@ def summarize_for_audit(report_dict: dict[str, Any]) -> dict[str, int | str | No
     )
     severity_val = report_dict.get("severity")
     confidence_val = report_dict.get("confidence")
+    ssvc = report_dict.get("ssvc")
+    ssvc_decision = None
+    if isinstance(ssvc, dict):
+        decision_val = ssvc.get("decision")
+        ssvc_decision = decision_val if isinstance(decision_val, str) else None
     return {
         "severity": severity_val if isinstance(severity_val, str) else None,
         "confidence": confidence_val if isinstance(confidence_val, str) else None,
@@ -134,4 +162,5 @@ def summarize_for_audit(report_dict: dict[str, Any]) -> dict[str, int | str | No
         "kev_hits": kev_hits,
         "ransomware_hits": ransomware_hits,
         "high_epss_hits": high_epss_hits,
+        "ssvc_decision": ssvc_decision,
     }

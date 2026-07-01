@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS triage_events (
     kev_hits INTEGER NOT NULL DEFAULT 0,
     ransomware_hits INTEGER NOT NULL DEFAULT 0,
     high_epss_hits INTEGER NOT NULL DEFAULT 0,
+    ssvc_decision TEXT,
     report_summary_plain TEXT,
     model TEXT NOT NULL,
     duration_ms INTEGER NOT NULL,
@@ -58,6 +59,16 @@ CREATE TABLE IF NOT EXISTS triage_events (
 
 CREATE INDEX IF NOT EXISTS idx_ts ON triage_events(ts);
 """
+
+# Additive migrations applied after the base schema, for databases created by
+# an earlier version. Each entry is (column_name, DDL). `CREATE TABLE IF NOT
+# EXISTS` never alters an existing table, so a pre-v2 db lacks these columns;
+# ADD COLUMN backfills them as NULL. Old rows keep verifying because
+# `_canonical_payload` is version-aware (it excludes v2 fields when hashing a
+# v1 row).
+_ADDITIVE_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("ssvc_decision", "ALTER TABLE triage_events ADD COLUMN ssvc_decision TEXT"),
+)
 
 # Trigger that rejects any UPDATE / DELETE on the audit table. Belt and
 # braces — the API never issues those, and a future contributor poking
@@ -120,9 +131,18 @@ class AuditStore:
         conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute("PRAGMA synchronous=NORMAL;")
         conn.executescript(_SCHEMA)
+        self._apply_additive_migrations(conn)
         conn.executescript(_APPEND_ONLY_TRIGGERS)
         self._conn = conn
         return conn
+
+    @staticmethod
+    def _apply_additive_migrations(conn: sqlite3.Connection) -> None:
+        """Add columns introduced after a db was first created. Idempotent."""
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(triage_events)")}
+        for column, ddl in _ADDITIVE_COLUMNS:
+            if column not in existing:
+                conn.execute(ddl)
 
     def close(self) -> None:
         if self._conn is not None:
@@ -151,7 +171,7 @@ class AuditStore:
                     event_id, ts, query_sha256, query_length, query_plain,
                     report_sha256, severity, confidence,
                     cves_count, attack_techniques_count,
-                    kev_hits, ransomware_hits, high_epss_hits,
+                    kev_hits, ransomware_hits, high_epss_hits, ssvc_decision,
                     report_summary_plain, model, duration_ms, outcome,
                     error_class, prev_event_hash, this_event_hash,
                     schema_version
@@ -159,7 +179,7 @@ class AuditStore:
                     :event_id, :ts, :query_sha256, :query_length, :query_plain,
                     :report_sha256, :severity, :confidence,
                     :cves_count, :attack_techniques_count,
-                    :kev_hits, :ransomware_hits, :high_epss_hits,
+                    :kev_hits, :ransomware_hits, :high_epss_hits, :ssvc_decision,
                     :report_summary_plain, :model, :duration_ms, :outcome,
                     :error_class, :prev_event_hash, :this_event_hash,
                     :schema_version
