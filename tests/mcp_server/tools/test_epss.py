@@ -8,6 +8,7 @@ from sec_recon_agent.mcp_server.errors import (
     EpssRequestError,
     MalformedEpssPayloadError,
 )
+from sec_recon_agent.mcp_server.models import EpssStatus
 from sec_recon_agent.mcp_server.tools.epss import EPSS_API_URL, epss_score
 
 
@@ -36,6 +37,7 @@ async def test_returns_score_for_known_cve() -> None:
     result = await epss_score("CVE-2021-41773")
 
     assert result.cve_id == "CVE-2021-41773"
+    assert result.status is EpssStatus.FOUND
     assert result.probability == pytest.approx(0.94521)
     assert result.percentile == pytest.approx(0.99876)
     assert result.score_date == "2026-05-18"
@@ -53,6 +55,7 @@ async def test_returns_none_for_cve_not_in_dataset() -> None:
     result = await epss_score("CVE-9999-99999")
 
     assert result.cve_id == "CVE-9999-99999"
+    assert result.status is EpssStatus.NOT_FOUND
     assert result.probability is None
     assert result.percentile is None
     assert result.score_date is None
@@ -95,8 +98,10 @@ async def test_data_entry_wrong_type_raises() -> None:
 
 
 @respx.mock
-async def test_returns_none_when_api_returns_different_cve() -> None:
-    """Defensive: never attribute a score to the wrong CVE."""
+async def test_cve_mismatch_is_upstream_error_not_not_found() -> None:
+    """Defensive: never attribute a score to the wrong CVE. A mismatch means we
+    reached the feed but the datum is unusable -> upstream_error, distinct from
+    'CVE genuinely absent from EPSS' (not_found)."""
     respx.get(EPSS_API_URL).mock(
         return_value=Response(
             200,
@@ -106,12 +111,15 @@ async def test_returns_none_when_api_returns_different_cve() -> None:
 
     result = await epss_score("CVE-2021-41773")
 
+    assert result.status is EpssStatus.UPSTREAM_ERROR
     assert result.probability is None
     assert result.percentile is None
 
 
 @respx.mock
-async def test_out_of_range_score_treated_as_missing() -> None:
+async def test_out_of_range_score_is_upstream_error() -> None:
+    """The dataset has an entry for the exact CVE but the score is unusable:
+    the feed misbehaved for a CVE it knows -> upstream_error, not not_found."""
     respx.get(EPSS_API_URL).mock(
         return_value=Response(
             200,
@@ -121,12 +129,13 @@ async def test_out_of_range_score_treated_as_missing() -> None:
 
     result = await epss_score("CVE-2021-41773")
 
+    assert result.status is EpssStatus.UPSTREAM_ERROR
     assert result.probability is None
     assert result.percentile is None
 
 
 @respx.mock
-async def test_non_numeric_score_treated_as_missing() -> None:
+async def test_non_numeric_score_is_upstream_error() -> None:
     respx.get(EPSS_API_URL).mock(
         return_value=Response(
             200,
@@ -136,5 +145,6 @@ async def test_non_numeric_score_treated_as_missing() -> None:
 
     result = await epss_score("CVE-2021-41773")
 
+    assert result.status is EpssStatus.UPSTREAM_ERROR
     assert result.probability is None
     assert result.percentile is None

@@ -352,10 +352,13 @@ async def test_epss_score_emits_span_with_only_structured_attributes(
     assert attrs["tool.success"] is True
     assert attrs["epss.in_dataset"] is True
     assert attrs["epss.probability"] == pytest.approx(0.42)
+    # Coverage status is a controlled enum, safe to record.
+    assert attrs["epss.status"] == "found"
 
     # Defensive: no string attribute should carry the raw score date string,
-    # the API response payload, or any free-text canary.
-    allowed_string_attrs = {"tool.name", "cve.id"}
+    # the API response payload, or any free-text canary. epss.status is a
+    # fixed enum (found / not_found / upstream_error), not free text.
+    allowed_string_attrs = {"tool.name", "cve.id", "epss.status"}
     for attr_name, attr_value in attrs.items():
         if isinstance(attr_value, str):
             assert attr_name in allowed_string_attrs, (

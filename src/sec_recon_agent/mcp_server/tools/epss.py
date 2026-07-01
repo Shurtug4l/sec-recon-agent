@@ -23,7 +23,7 @@ from sec_recon_agent.mcp_server.errors import (
     EpssRequestError,
     MalformedEpssPayloadError,
 )
-from sec_recon_agent.mcp_server.models import CveIdStr, EpssScore
+from sec_recon_agent.mcp_server.models import CveIdStr, EpssScore, EpssStatus
 from sec_recon_agent.mcp_server.server import mcp
 from sec_recon_agent.observability import get_tracer
 
@@ -55,8 +55,11 @@ async def epss_score(cve_id: CveIdStr) -> EpssScore:
 
     EPSS returns `probability` in [0, 1] (chance of exploitation in the
     next 30 days) and `percentile` in [0, 1] (rank relative to all scored
-    CVEs). Returns all fields None when the CVE is not in the EPSS
-    dataset (very fresh CVEs, rejected CVEs, etc.).
+    CVEs). The `status` field disambiguates a null probability:
+    NOT_FOUND when the CVE is genuinely absent from the dataset (very fresh
+    CVEs, rejected CVEs), UPSTREAM_ERROR when the feed answered but the datum
+    was unusable (CVE mismatch or unparseable score). Hard request failures
+    (transport, HTTP 5xx, non-JSON) raise a typed EpssError instead.
     """
     with _tracer.start_as_current_span("tool.epss_score") as span:
         span.set_attribute("tool.name", "epss_score")
@@ -108,10 +111,12 @@ async def epss_score(cve_id: CveIdStr) -> EpssScore:
             )
 
         if not data:
-            result = EpssScore(cve_id=cve_id)
+            # Queried successfully; the CVE is genuinely absent from the dataset.
+            result = EpssScore(cve_id=cve_id, status=EpssStatus.NOT_FOUND)
             span.set_attribute("tool.success", True)
+            span.set_attribute("epss.status", EpssStatus.NOT_FOUND.value)
             span.set_attribute("epss.in_dataset", False)
-            log.info("epss_score_done", cve_id=cve_id, in_dataset=False)
+            log.info("epss_score_done", cve_id=cve_id, status="not_found")
             return result
 
         entry = data[0]
@@ -120,9 +125,10 @@ async def epss_score(cve_id: CveIdStr) -> EpssScore:
                 "EPSS data entry was not an object",
             )
 
-        # Defensive: if the API ever returns a different CVE ID, treat as
-        # a miss rather than silently attributing the score to the wrong
-        # CVE.
+        # Defensive: if the API returns a different CVE ID, we reached the feed
+        # but the datum is not usable for the requested CVE. That is an upstream
+        # data-quality problem, NOT "CVE absent from EPSS" -- flag it honestly so
+        # the report's signal_coverage can mark EPSS as errored rather than clean.
         returned_cve = entry.get("cve")
         if isinstance(returned_cve, str) and returned_cve != cve_id:
             log.warning(
@@ -130,25 +136,43 @@ async def epss_score(cve_id: CveIdStr) -> EpssScore:
                 requested=cve_id,
                 returned=returned_cve,
             )
-            return EpssScore(cve_id=cve_id)
+            span.set_attribute("tool.success", True)
+            span.set_attribute("epss.status", EpssStatus.UPSTREAM_ERROR.value)
+            return EpssScore(cve_id=cve_id, status=EpssStatus.UPSTREAM_ERROR)
 
         probability = _coerce_score(entry.get("epss"))
         percentile = _coerce_score(entry.get("percentile"))
         score_date = entry.get("date") if isinstance(entry.get("date"), str) else None
 
+        # The dataset has an entry for this exact CVE. If the probability is
+        # nonetheless unusable (unparseable or out of [0, 1]), the feed misbehaved
+        # for a CVE it claims to know -- upstream_error, not not_found.
+        if probability is None:
+            span.set_attribute("tool.success", True)
+            span.set_attribute("epss.status", EpssStatus.UPSTREAM_ERROR.value)
+            log.warning("epss_unusable_score", cve_id=cve_id, raw=entry.get("epss"))
+            return EpssScore(
+                cve_id=cve_id,
+                status=EpssStatus.UPSTREAM_ERROR,
+                percentile=percentile,
+                score_date=score_date,
+            )
+
         result = EpssScore(
             cve_id=cve_id,
+            status=EpssStatus.FOUND,
             probability=probability,
             percentile=percentile,
             score_date=score_date,
         )
         span.set_attribute("tool.success", True)
-        span.set_attribute("epss.in_dataset", probability is not None)
-        if probability is not None:
-            span.set_attribute("epss.probability", probability)
+        span.set_attribute("epss.status", EpssStatus.FOUND.value)
+        span.set_attribute("epss.in_dataset", True)
+        span.set_attribute("epss.probability", probability)
         log.info(
             "epss_score_done",
             cve_id=cve_id,
+            status="found",
             probability=probability,
             percentile=percentile,
         )

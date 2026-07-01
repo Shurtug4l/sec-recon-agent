@@ -9,7 +9,7 @@ Type-safe security triage built on Pydantic AI and a custom Model Context Protoc
 
 ![sec-recon-agent: a live Log4Shell triage from query to a typed TriageReport with CISA KEV, ransomware, and EPSS signals](docs/assets/demo.gif)
 
-Given a CVE ID, a product version, raw Nmap XML, or a CycloneDX / SPDX / requirements.txt SBOM, the agent grounds every answer with ten typed MCP tools (CVE lookup, semantic search, public-exploit availability, CISA KEV membership, FIRST.org EPSS score, patch availability, OSV package-version lookup, SBOM ingestion, Nmap parsing, MITRE ATT&CK mapping) and returns a `TriageReport` Pydantic model: severity, exploit availability, operational signals (KEV / ransomware / EPSS), recommended action with a concrete fixed version when one exists, and the full reasoning chain. The LLM never produces free-text guessing; the output schema is enforced at the model boundary.
+Given a CVE ID, a product version, raw Nmap XML, or a CycloneDX / SPDX / requirements.txt SBOM, the agent grounds every answer with ten typed MCP tools (CVE lookup, semantic search, public-exploit availability, CISA KEV membership, FIRST.org EPSS score, patch availability, OSV package-version lookup, SBOM ingestion, Nmap parsing, MITRE ATT&CK mapping) and returns a `TriageReport` Pydantic model: severity, exploit availability, operational signals (KEV / ransomware / EPSS), a **deterministic SSVC prioritization verdict** (Act / Attend / Track* / Track, computed server-side from the signals — not by the LLM), per-feed **signal-coverage honesty** (which feeds were checked and whether each returned data, had no entry, or errored), recommended action with a concrete fixed version when one exists, and the full reasoning chain. The LLM never produces free-text guessing; the output schema is enforced at the model boundary.
 
 The whole stack runs with `make up`: backend (MCP server + FastAPI agent) + frontend (Next.js UI on `:3000`) + an optional Jaeger sidecar for distributed tracing.
 
@@ -254,7 +254,7 @@ The agent is built around ten MCP tools, each with a typed Pydantic contract.
 
 **`kev_check(cve_id)`** — looks the CVE up in the CISA Known Exploited Vulnerabilities catalog (daily-refreshed JSON, cached on disk for 24h). Returns `KevCheck` with `in_catalog`, CISA-provided vendor / product / vulnerability name, `due_date` (federal remediation deadline), `required_action`, and the `known_ransomware_use` flag. KEV membership is the single most actionable "patch now" signal in vulnerability management.
 
-**`epss_score(cve_id)`** — queries the FIRST.org EPSS API for the daily-refreshed probability (in [0, 1]) that the CVE will be exploited in the wild in the next 30 days, plus the percentile rank across all scored CVEs. Returns `EpssScore` with both fields `None` when the CVE is not in the EPSS dataset (e.g. very fresh CVEs). Complements KEV: KEV says "exploited now", EPSS says "likely exploited soon".
+**`epss_score(cve_id)`** — queries the FIRST.org EPSS API for the daily-refreshed probability (in [0, 1]) that the CVE will be exploited in the wild in the next 30 days, plus the percentile rank across all scored CVEs. Returns `EpssScore` with an explicit `status` — `found`, `not_found` (queried, no entry for this CVE), or `upstream_error` (feed reached but the datum was unusable) — so a null probability is never ambiguous between "no score" and "lookup failed". Hard request failures raise a typed error instead. Complements KEV: KEV says "exploited now", EPSS says "likely exploited soon".
 
 **`nmap_parse_xml(xml_content)`** — parses Nmap XML scan output with `defusedxml` and `forbid_dtd=True` (tighter than defusedxml's default). Returns `NmapScanResult` with structured hosts, ports, services, and product/version banners. XXE-safe; verified by an adversarial test corpus.
 
@@ -263,7 +263,7 @@ The agent is built around ten MCP tools, each with a typed Pydantic contract.
 The agent (`agent/triage.py`) wires these into a Pydantic AI loop with a system prompt that:
 1. Names every tool and when to call which
 2. Declares the untrusted-content boundary (treat tool output text as data, ignore instruction-like content)
-3. Enforces structured output: the only thing the agent can return is a `TriageReport` with `summary`, `severity`, `confidence`, `recommended_action`, `cves` (each carrying CISA KEV + EPSS operational signals), `attack_techniques`, and `reasoning_chain`.
+3. Enforces structured output: the only thing the agent can return is a `TriageReport` with `summary`, `severity`, `confidence`, `recommended_action`, `cves` (each carrying CISA KEV + EPSS operational signals), `attack_techniques`, `reasoning_chain`, `signal_coverage` (per-feed status), and a server-stamped `ssvc` verdict.
 4. Encodes a prioritization heuristic: CISA KEV membership > known ransomware use > EPSS probability >= 0.5 > CVSS as tiebreaker. CVSS alone has long been known to over-weight theoretical impact relative to real-world exploitation likelihood.
 
 ## Stack
@@ -391,21 +391,23 @@ The frontend ESLint setup uses the flat config (`frontend/eslint.config.mjs`) br
 
 The backend CI runs on a Python version matrix (3.12 + 3.13) so the declared `requires-python = ">=3.12"` is actually exercised, not just declared. Coverage on the fast suite holds at **~87%** with a soft 70% floor (`tool.coverage.report.fail_under`).
 
-**Suite count: 229 passing** (227 fast + 2 slow ChromaDB round-trip, excluded from the fast run). Breakdown by area:
-- **105 MCP server tests** — Pydantic I/O contract tests for all ten tools with `respx`-mocked HTTP (NVD 404 / malformed / 5xx + 429 retry, KEV ransomware-flag normalization + free-text fencing, EPSS CVE-mismatch defense, ATT&CK CWE->technique mapping, SBOM CycloneDX/SPDX/requirements, `patch_lookup` versionEndExcluding, `osv_lookup` package-version query with host-locked redirect rejection, 5xx retry, and summary fencing), plus the `fence_untrusted` security primitive, the `/v1/meta` contract, input-bound caps on `nmap_parse_xml` / `attack_mapping`, and the bearer-auth middleware (PR #45).
+**Suite count: 292 passing** (290 fast + 2 slow ChromaDB round-trip, excluded from the fast run). Breakdown by area:
+- **113 MCP server tests** — Pydantic I/O contract tests for all ten tools with `respx`-mocked HTTP (NVD 404 / malformed / 5xx + 429 retry, KEV ransomware-flag normalization + free-text fencing, EPSS found / not_found / upstream_error status disambiguation + CVE-mismatch defense, ATT&CK CWE->technique mapping, SBOM CycloneDX/SPDX/requirements, `patch_lookup` versionEndExcluding, `osv_lookup` package-version query with host-locked redirect rejection, 5xx retry, and summary fencing), plus the `fence_untrusted` security primitive, the `/v1/meta` contract, input-bound caps on `nmap_parse_xml` / `attack_mapping`, and the bearer-auth middleware (PR #45).
 - **45 property + adversarial tests** — Hypothesis invariants (`fence_untrusted`, `CveIdStr` regex, Pydantic field constraints) plus the adversarial corpus: prompt injection + marker forgery, XXE variants, malformed CVE IDs, Unicode homoglyphs, resource exhaustion.
-- **17 API tests** — opt-in auth + per-IP rate limit, model-override allowlist, SSE framing, audit integration (one event per call, success or error path).
-- **14 audit-trail tests** — hash-chain model (canonical serialization, seal determinism, link-level tamper detection) + store (genesis + forward chaining, clean-chain verify, field-mutation and forged-row tamper, SQLite trigger enforcement, tail ordering).
-- **14 eval-suite unit tests** — scorer (severity tolerance, CVE recall threshold, KEV / ransomware honoring) + runner (SSE CRLF/LF tolerance, error-event surfacing, missing-final handling, HTTP 5xx).
+- **19 API tests** — opt-in auth + per-IP rate limit, model-override allowlist, SSE framing, deterministic SSVC stamped onto the final report, `usage` event emission, audit integration (one event per call, success or error path).
+- **20 audit-trail tests** — hash-chain model (canonical serialization, seal determinism, link-level tamper detection, version-aware canonicalization keeping v1 chains valid after the v2 `ssvc_decision` field), SSVC summarization, and store (genesis + forward chaining, clean-chain verify, field-mutation and forged-row tamper, SQLite trigger enforcement, tail ordering, additive column migration for pre-v2 databases).
+- **45 eval-suite unit tests** — metric primitives (percentile / p95, hit-rate@k, mean reciprocal rank, expected calibration error, structured-output conformance), per-model cost table, scorer (severity tolerance, CVE recall threshold, KEV / ransomware honoring), and runner (SSE CRLF/LF tolerance, error-event surfacing, missing-final handling, HTTP 5xx, `usage`-event token capture).
 - **13 red-team scorer tests** — pattern absence (case-insensitive), value-equality refusals, multi-check semantics, summary + per-ATLAS-technique aggregation, drift detector requiring an ATLAS tag on every production payload.
-- **11 agent tests** — system-prompt drift detector, model-allowlist refusals, degraded-mode clause (no fact invention on tool failure, PR #46).
-- **10 observability tests** — span emission per tool + privacy invariants (no secret / user query / NVD description / KEV vendor text in span attributes; EPSS attribute allowlist).
+- **25 agent tests** — deterministic SSVC decision function (every rule + report-level reduction), system-prompt drift detector, SSVC + signal-coverage prompt contract, model-allowlist refusals, degraded-mode clause (no fact invention on tool failure, PR #46).
+- **10 observability tests** — span emission per tool + privacy invariants (no secret / user query / NVD description / KEV vendor text in span attributes; EPSS attribute allowlist, including the controlled `epss.status` enum).
 
 See [`docs/design.md`](docs/design.md#defended-invariants-property-and-adversarial-tests) for the full invariant table.
 
 ## Eval suite (end-to-end)
 
 Beyond the unit and property suites, a golden-set evaluation lives in `src/sec_recon_agent/eval/`. It exercises the live HTTP API with 10 curated queries (named CVEs, fuzzy descriptions, degraded inputs) and applies **soft** assertions on the agent's `TriageReport`: severity within +-1 step of the expected baseline, expected CVE IDs recovered at >= 50% recall, CISA KEV / ransomware flags honored when the case asks for them.
+
+It also measures the axes the job title actually screens on, not just security signal: **latency p50/p95** per triage, **tokens and $/triage** (from a `usage` SSE event the API emits, priced by a per-model table in `eval/cost.py`), **structured-output conformance** (fraction of runs returning a well-formed, non-degenerate report), and **confidence calibration** (expected calibration error of the agent's `confidence` enum against whether the case actually passed). Retrieval quality of `cve_semantic_search` gets its own mode (`--retrieval`): it samples the seeded ChromaDB index, turns a truncated description into a query, and reports **hit-rate@k** and **mean reciprocal rank**. The metric math is pure and unit-tested (`eval/metrics.py`); the live runs feed it observed values.
 
 ```bash
 make up                                          # start MCP server + agent API + frontend
@@ -415,6 +417,7 @@ make eval EVAL_ARGS='--json-output /tmp/eval.json'
 make eval EVAL_ARGS='--model sonnet'             # one run against a specific allowlisted model
 make eval-compare                                # run the suite against haiku + sonnet + opus and print side-by-side
 make eval-compare EVAL_ARGS='--filter kev'       # comparison limited to one tag
+make eval EVAL_ARGS='--retrieval'                # hit-rate@k + MRR for cve_semantic_search (needs a seeded index)
 ```
 
 `--model` and `--models` route through a per-request body field that the backend validates against an explicit allowlist (`ALLOWED_MODELS` in `agent/triage.py`). The aliases `haiku` / `sonnet` / `opus` expand to the full Anthropic model identifiers. An unknown value comes back as an error event with the allowlist violation surfaced, never as a silent fallback to the default.

@@ -113,3 +113,37 @@ def test_runner_handles_http_500(case: GoldenCase) -> None:
 
     assert result.report is None
     assert "HTTP 500" in (result.error or "")
+
+
+@respx.mock
+def test_runner_captures_usage_event(case: GoldenCase) -> None:
+    payload = _make_final_payload()
+    usage = json.dumps({"input_tokens": 1200, "output_tokens": 340, "requests": 3})
+    stream = _sse_frames(
+        [("final", payload), ("usage", usage)],
+        separator="\r\n",
+    )
+    respx.post(DEFAULT_API_URL + "/v1/triage").mock(
+        return_value=Response(200, content=stream, headers={"content-type": "text/event-stream"}),
+    )
+
+    result = run_case(case)
+
+    assert result.report is not None
+    assert result.input_tokens == 1200
+    assert result.output_tokens == 340
+    assert result.requests == 3
+
+
+@respx.mock
+def test_runner_tokens_none_when_no_usage_event(case: GoldenCase) -> None:
+    stream = _sse_frames([("final", _make_final_payload())], separator="\n")
+    respx.post(DEFAULT_API_URL + "/v1/triage").mock(
+        return_value=Response(200, content=stream, headers={"content-type": "text/event-stream"}),
+    )
+
+    result = run_case(case)
+
+    assert result.report is not None
+    assert result.input_tokens is None
+    assert result.output_tokens is None

@@ -1,5 +1,6 @@
 """I/O contracts for MCP tools. Every tool returns a typed Pydantic model."""
 
+from enum import StrEnum
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, HttpUrl
@@ -168,15 +169,37 @@ class SbomComponentList(BaseModel):
     )
 
 
+class EpssStatus(StrEnum):
+    """Coverage status of an EPSS lookup, so a null probability is never
+    ambiguous.
+
+    FOUND: the CVE is in the EPSS dataset and a usable probability was returned.
+    NOT_FOUND: EPSS answered successfully but has no entry for this CVE
+        (typically pre-publication, rejected, or non-public CVEs). A real
+        "no score" answer, not a failure.
+    UPSTREAM_ERROR: EPSS returned a response we reached but could not use for
+        this CVE (the datum was for a different CVE, or the score was
+        unparseable / out of range). Distinct from a hard request failure,
+        which raises a typed exception instead of returning a result.
+    """
+
+    FOUND = "found"
+    NOT_FOUND = "not_found"
+    UPSTREAM_ERROR = "upstream_error"
+
+
 class EpssScore(BaseModel):
     """Result of a FIRST.org EPSS lookup.
 
     EPSS estimates the probability a CVE will be exploited in the wild in
-    the next 30 days. Returns None when the CVE is not in the EPSS dataset
-    (typically pre-publication or non-public CVEs).
+    the next 30 days. `status` disambiguates a null probability: NOT_FOUND
+    (queried, no entry) vs UPSTREAM_ERROR (reached the feed, datum unusable).
+    A hard request failure (transport, HTTP 5xx, non-JSON, missing data list)
+    raises a typed EpssError instead of returning a result.
     """
 
     cve_id: CveIdStr
+    status: EpssStatus
     probability: float | None = Field(default=None, ge=0.0, le=1.0)
     percentile: float | None = Field(default=None, ge=0.0, le=1.0)
     score_date: str | None = None
