@@ -225,6 +225,16 @@ async def meta() -> MetaResponse:
                 ),
             ),
             ToolMeta(
+                name="osv_lookup",
+                description=(
+                    "Inverse of cve_lookup: given a package at a version "
+                    "(PyPI / npm / Go / Maven / crates.io / NuGet / "
+                    "RubyGems), return every OSV.dev advisory that applies, "
+                    "with CVE / GHSA aliases and the fixed version. Use when "
+                    "the user names a dependency and version, not a CVE."
+                ),
+            ),
+            ToolMeta(
                 name="sbom_ingest",
                 description=(
                     "Parse a CycloneDX / SPDX / requirements.txt SBOM "

@@ -39,6 +39,12 @@ exposed by the MCP server, then synthesize the result into a TriageReport.
   fix landed, optional version range start). Use when the user needs
   to know which release to move to, or when recommended_action should
   cite a concrete fixed version instead of "apply vendor updates".
+- osv_lookup(package_name, ecosystem, version): the inverse of
+  cve_lookup / patch_lookup. Given a package at a specific version,
+  returns every OSV.dev advisory that applies, each with its CVE / GHSA
+  aliases, the fixed version to upgrade to, and references. ecosystem
+  is one of PyPI, npm, Go, Maven, crates.io, NuGet, RubyGems. Use when
+  the user names a dependency and a version rather than a CVE.
 - attack_mapping(cwe_ids): maps a list of CWE IDs (e.g. ["CWE-22",
   "CWE-78"]) to MITRE ATT&CK techniques and their mitigations.
   Use to enrich the triage with adversary-side context (how an
@@ -60,10 +66,21 @@ exposed by the MCP server, then synthesize the result into a TriageReport.
 4a. When the user provides an SBOM (CycloneDX / SPDX / requirements.txt),
    call sbom_ingest first. Then, for up to 10 components most likely to
    carry known CVEs (popular ecosystem packages, framework runtimes,
-   web servers), run cve_semantic_search using the component name +
-   version as the query. Aggregate the resulting CVEs into the report.
-   If the SBOM has more than 10 components, surface that in the
-   recommended_action ("triage limited to top-N components by relevance").
+   web servers), triage each one. For a component that carries a concrete
+   version AND a recognizable ecosystem (PyPI, npm, Go, Maven, crates.io,
+   NuGet, RubyGems), prefer osv_lookup(name, ecosystem, version): it is
+   exact rather than fuzzy. Fall back to cve_semantic_search on the
+   component name + version only when the ecosystem is unknown or unsupported.
+   Aggregate the resulting CVEs into the report. If the SBOM has more than
+   10 components, surface that in the recommended_action ("triage limited
+   to top-N components by relevance").
+4b. When the user names a specific package/library and a version
+   ("is numpy 1.22.0 affected?", "should I upgrade express 4.17.1?"),
+   call osv_lookup(package_name, ecosystem, version) FIRST. It returns the
+   exact advisories for that version plus the fixed version to move to. If
+   OSV reports aliases (CVE IDs), you MAY cve_lookup / kev_check /
+   epss_score those CVEs to enrich the report with severity and
+   exploitation signals.
 5. After cve_lookup returns CWE IDs for the relevant CVEs, call
    attack_mapping(cwe_ids) ONCE with the union of CWEs across all CVEs
    in this triage. Populate TriageReport.attack_techniques with the

@@ -13,6 +13,8 @@ Where this is applied:
   hostile scan inputs)
 - KevCheck.vulnerability_name, KevCheck.required_action, KevCheck.notes
   (CISA-published but vendor- and researcher-authored upstream)
+- OsvVuln.summary (OSV.dev advisory text, authored upstream by ecosystem
+  maintainers and security researchers)
 
 Where this is NOT applied:
 - CVE IDs (regex-constrained, no free text)

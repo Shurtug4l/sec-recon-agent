@@ -71,9 +71,9 @@ export default function TriagePage() {
                 product/version (<code className="font-mono">Apache 2.4.49</code>),
                 a fuzzy symptom description, a raw Nmap XML scan, or a
                 CycloneDX / SPDX / requirements.txt SBOM. The agent grounds every
-                answer with nine typed tools (NVD, CISA KEV, FIRST EPSS,
-                Exploit-DB, GitHub, ATT&amp;CK, patch lookup, SBOM and Nmap
-                parsers) and returns a typed{" "}
+                answer with ten typed tools (NVD, CISA KEV, FIRST EPSS,
+                Exploit-DB, GitHub, ATT&amp;CK, patch lookup, OSV.dev, SBOM and
+                Nmap parsers) and returns a typed{" "}
                 <code className="font-mono">TriageReport</code>; the reasoning
                 chain is the audit log.
               </p>

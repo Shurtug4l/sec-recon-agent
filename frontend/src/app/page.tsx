@@ -36,6 +36,7 @@ const TOOLS = [
   { name: "kev_check", icon: Flame, blurb: "CISA Known Exploited Vulnerabilities. Strongest patch-now signal." },
   { name: "epss_score", icon: TrendingUp, blurb: "FIRST.org 30-day exploitation probability + percentile." },
   { name: "patch_lookup", icon: ShieldCheck, blurb: "Fixed-version extraction from NVD CPE configurations." },
+  { name: "osv_lookup", icon: ArrowLeftRight, blurb: "OSV.dev advisories for a package at a version. Inverse of cve_lookup." },
   { name: "sbom_ingest", icon: Database, blurb: "CycloneDX / SPDX / requirements.txt parser, in-process." },
   { name: "nmap_parse_xml", icon: Network, blurb: "defusedxml-safe Nmap scan parser, no DTD." },
   { name: "attack_mapping", icon: Sparkles, blurb: "CWE -> MITRE ATT&CK techniques + mitigations." },
@@ -69,7 +70,7 @@ export default function Landing() {
         <section className="border-b border-border/60">
           <div className="container max-w-5xl py-16 md:py-24">
             <Badge variant="secondary" className="mb-4 font-mono text-[10px]">
-              Pydantic AI · MCP · 9 typed tools
+              Pydantic AI · MCP · 10 typed tools
             </Badge>
             <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">
               Security triage that
@@ -134,7 +135,7 @@ export default function Landing() {
           <div className="container max-w-5xl py-12 md:py-16">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                Tool surface · 9 typed contracts
+                Tool surface · 10 typed contracts
               </h2>
               <Link
                 href="/dashboard"
@@ -311,7 +312,7 @@ function ArchitectureDiagram() {
           icon={Network}
           title="MCP Server"
           port=":8001"
-          sub="FastMCP · 9 typed tools"
+          sub="FastMCP · 10 typed tools"
           accent="emerald"
         />
       </div>
@@ -331,6 +332,7 @@ function ArchitectureDiagram() {
         <SourceChip icon={GithubLogo} name="GitHub Code Search" hint="exploit_check" />
         <SourceChip icon={Flame} name="CISA KEV" hint="kev_check" />
         <SourceChip icon={TrendingUp} name="FIRST EPSS" hint="epss_score" />
+        <SourceChip icon={ArrowLeftRight} name="OSV.dev" hint="osv_lookup" />
         <SourceChip icon={Network} name="defusedxml · Nmap" hint="nmap_parse_xml" />
         <SourceChip icon={Database} name="CycloneDX / SPDX" hint="sbom_ingest" />
         <SourceChip icon={Sparkles} name="MITRE ATT&CK JSON" hint="attack_mapping" />

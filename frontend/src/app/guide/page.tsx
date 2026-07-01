@@ -201,7 +201,7 @@ const SECTIONS: Section[] = [
     what:
       "MCP (Model Context Protocol) is Anthropic's open protocol for connecting LLMs to external tools and data sources. A MCP server exposes typed tools (name + JSON schema + handler), resources (read-only data), and prompts. Transports include stdio (local subprocess) and HTTP+SSE (remote). The protocol decouples the LLM agent from the tool implementation and gives tool I/O its own contract surface, separate from the LLM prompt.",
     whyHere:
-      "The 9 tools live in a separate MCP server process (FastMCP, HTTP+SSE on :8001). The agent connects via MCPToolset. This means the tools can be reused by any MCP-aware client (Claude Desktop, future agents), and the tool surface is auditable as a stable contract independent of the prompt.",
+      "The 10 tools live in a separate MCP server process (FastMCP, HTTP+SSE on :8001). The agent connects via MCPToolset. This means the tools can be reused by any MCP-aware client (Claude Desktop, future agents), and the tool surface is auditable as a stable contract independent of the prompt.",
     used: ["mcp-server :8001", "MCPToolset"],
     refs: [
       { label: "MCP spec", href: "https://modelcontextprotocol.io/" },

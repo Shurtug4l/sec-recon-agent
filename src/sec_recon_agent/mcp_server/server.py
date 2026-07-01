@@ -44,6 +44,7 @@ def _register_tools() -> None:
         exploits,  # noqa: F401
         kev,  # noqa: F401
         nmap,  # noqa: F401
+        osv,  # noqa: F401
         patch,  # noqa: F401
         sbom,  # noqa: F401
     )
