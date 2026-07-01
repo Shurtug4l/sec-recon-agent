@@ -68,8 +68,13 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply bg-background text-foreground antialiased font-sans;
     font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  /* Telemetry reads as data: monospace numerals align in columns (CVE IDs,
+   * ports, CVSS / EPSS scores, token counts). */
+  .font-mono {
+    font-variant-numeric: tabular-nums;
   }
 }
 
