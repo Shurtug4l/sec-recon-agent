@@ -37,6 +37,27 @@ export interface AttackTechnique {
   related_cwes: string[];
 }
 
+// Deterministic SSVC prioritization verdict, computed server-side in
+// agent/ssvc.py and stamped onto the report AFTER the model returns (the LLM
+// does not produce it). Ordered most- to least-urgent.
+export type SsvcDecision = "Act" | "Attend" | "Track*" | "Track";
+
+export interface SsvcAssessment {
+  decision: SsvcDecision;
+  rule: string;          // stable id of the rule that fired (audit / regression)
+  rationale: string;     // one-sentence human explanation
+  driving_cve: string | null; // the CVE whose signals drove the report-level call
+}
+
+// Per-feed coverage honesty: what each external signal feed actually returned.
+export type SignalStatus = "found" | "not_found" | "error" | "not_queried";
+
+export interface FeedStatus {
+  feed: string;          // nvd | kev | epss | exploit | osv | attack | semantic_search
+  status: SignalStatus;
+  detail: string | null;
+}
+
 export interface TriageReport {
   summary: string;
   severity: Severity;
@@ -45,6 +66,10 @@ export interface TriageReport {
   cves: CVEReference[];
   attack_techniques: AttackTechnique[];
   reasoning_chain: string[];
+  // Present on any report produced by the current backend; may be absent on
+  // reports restored from older localStorage history (render defensively).
+  ssvc: SsvcAssessment | null;
+  signal_coverage: FeedStatus[];
 }
 
 // SSE event payload shapes emitted by api/stream.py.
