@@ -41,7 +41,7 @@ export function Header() {
                 href={href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                  "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                   active
                     ? "bg-accent text-accent-foreground"
                     : "text-muted-foreground hover:bg-accent hover:text-foreground",
@@ -57,7 +57,7 @@ export function Header() {
             target="_blank"
             rel="noopener noreferrer"
             aria-label="GitHub repository"
-            className="ml-2 inline-flex items-center justify-center rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="ml-2 inline-flex items-center justify-center rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             <GithubLogo className="h-4 w-4" />
           </a>

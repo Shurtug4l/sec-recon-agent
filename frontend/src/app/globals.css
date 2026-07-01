@@ -114,6 +114,20 @@
   }
 }
 
+/* Respect the OS reduced-motion preference: near-instant animations and
+ * transitions, no auto scroll-smoothing. Covers the fade-in / pulse / ping /
+ * spin used across the app without touching each call site. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* Print-to-PDF. The 'Export PDF' button on the TriageReportView calls
  * window.print(); these rules hide chrome and show only the report,
  * forcing a light-on-white render regardless of the current theme. */
