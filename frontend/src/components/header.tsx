@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 
 import { GithubLogo } from "@/components/icons/github-logo";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -62,7 +61,6 @@ export function Header() {
           >
             <GithubLogo className="h-4 w-4" />
           </a>
-          <ThemeToggle />
         </nav>
       </div>
     </header>

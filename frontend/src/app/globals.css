@@ -3,63 +3,61 @@
 @tailwind utilities;
 
 /*
- * Theme tokens. Catppuccin Macchiato (dark) + Latte (light).
- * Severity colors are mapped consistently across both themes.
+ * Theme tokens. "Slate Recon": a cool blue-slate NOC/observability console
+ * with a single cyan signal. Dark-only by design (a security triage console
+ * reads dark-first); there is no light variant and no theme toggle. Values are
+ * HSL channels so Tailwind's hsl(var(--token)) and the /alpha modifier keep
+ * working. This is the ONE source of truth for color; charts.tsx mirrors the
+ * severity + chart hexes because Recharts needs literal colors on SVG fills.
  */
 @layer base {
   :root {
-    /* Catppuccin Latte */
-    --background: 220 23% 95%;       /* Base */
-    --foreground: 234 16% 35%;        /* Text */
-    --card: 220 22% 92%;              /* Surface0 */
-    --card-foreground: 234 16% 35%;
-    --popover: 220 22% 92%;
-    --popover-foreground: 234 16% 35%;
-    --primary: 266 85% 58%;           /* Mauve */
-    --primary-foreground: 220 23% 95%;
-    --secondary: 220 17% 85%;          /* Surface2 */
-    --secondary-foreground: 234 16% 35%;
-    --muted: 220 17% 85%;
-    --muted-foreground: 233 10% 47%;   /* Subtext0 */
-    --accent: 220 17% 85%;
-    --accent-foreground: 266 85% 58%;
-    --destructive: 347 87% 44%;        /* Red */
-    --destructive-foreground: 220 23% 95%;
-    --warning: 22 99% 52%;             /* Peach */
-    --warning-foreground: 220 23% 95%;
-    --success: 109 58% 40%;            /* Green */
-    --success-foreground: 220 23% 95%;
-    --border: 220 13% 72%;             /* Overlay0 */
-    --input: 220 13% 72%;
-    --ring: 266 85% 58%;
-    --radius: 0.6rem;
-  }
+    color-scheme: dark;
 
-  .dark {
-    /* Catppuccin Macchiato */
-    --background: 232 23% 18%;         /* Base #24273A */
-    --foreground: 227 68% 88%;         /* Text  #CAD3F5 */
-    --card: 230 16% 23%;               /* Surface0 #363A4F */
-    --card-foreground: 227 68% 88%;
-    --popover: 230 19% 19%;            /* Mantle */
-    --popover-foreground: 227 68% 88%;
-    --primary: 267 83% 80%;            /* Mauve #C6A0F6 */
-    --primary-foreground: 232 23% 18%;
-    --secondary: 229 12% 32%;          /* Surface1 */
-    --secondary-foreground: 227 68% 88%;
-    --muted: 229 12% 32%;
-    --muted-foreground: 228 24% 72%;   /* Subtext0 */
-    --accent: 229 12% 32%;
-    --accent-foreground: 267 83% 80%;
-    --destructive: 351 74% 73%;        /* Red #ED8796 */
-    --destructive-foreground: 232 23% 18%;
-    --warning: 40 70% 78%;             /* Yellow #EED49F */
-    --warning-foreground: 232 23% 18%;
-    --success: 105 48% 72%;            /* Green #A6DA95 */
-    --success-foreground: 232 23% 18%;
-    --border: 230 19% 26%;             /* Surface0 darker */
-    --input: 230 19% 26%;
-    --ring: 267 83% 80%;
+    --background: 212 32% 8%;          /* #0E141B */
+    --foreground: 212 32% 92%;         /* #E4EAF1 */
+    --card: 212 29% 12%;               /* #151D26 surface */
+    --card-foreground: 212 32% 92%;
+    --popover: 210 28% 15%;            /* #1C2732 surf_alt, elevated over card */
+    --popover-foreground: 212 32% 92%;
+    --primary: 188 86% 53%;            /* #22D3EE cyan — main CTA / interactive */
+    --primary-foreground: 212 32% 8%;  /* near-black text on cyan (never white) */
+    --secondary: 210 28% 15%;          /* #1C2732 */
+    --secondary-foreground: 212 32% 92%;
+    --muted: 210 28% 15%;
+    --muted-foreground: 211 16% 63%;   /* #93A1B0 */
+    --accent: 210 28% 15%;             /* subtle hover surface */
+    --accent-foreground: 188 86% 53%;  /* hover tints text to the cyan signal */
+    --destructive: 356 100% 67%;       /* #FF5964 = severity critical */
+    --destructive-foreground: 212 32% 8%;
+    --warning: 24 100% 62%;            /* #FF8A3D = severity high (kills the Peach/Yellow drift) */
+    --warning-foreground: 212 32% 8%;
+    --success: 158 64% 52%;            /* #34D399 positive / healthy signal */
+    --success-foreground: 212 32% 8%;
+    --border: 212 24% 22%;             /* #2A3644 */
+    --input: 212 24% 22%;
+    --ring: 234 89% 74%;               /* #818CF8 indigo — focus / secondary signal */
+    --radius: 0.6rem;
+
+    /* Severity ramp: diverging (red -> orange -> gold -> blue -> grey), no
+       red-vs-green dependence. Always paired with shape/label in the UI, never
+       hue-alone. */
+    --severity-critical: 356 100% 67%; /* #FF5964 */
+    --severity-high: 24 100% 62%;      /* #FF8A3D */
+    --severity-medium: 40 100% 65%;    /* #FFC24B */
+    --severity-low: 200 100% 65%;      /* #4CC3FF */
+    --severity-info: 216 16% 59%;      /* #8592A6 */
+
+    /* Categorical chart palette: perceptually balanced, colorblind-safe on the
+       dark base. Mirrored as hex in dashboard/charts.tsx — keep them in sync. */
+    --chart-1: 202 81% 65%;   /* #5CB8EE */
+    --chart-2: 34 75% 55%;    /* #E39A38 */
+    --chart-3: 266 77% 64%;   /* #9A5CEA */
+    --chart-4: 350 76% 62%;   /* #E8566E */
+    --chart-5: 58 75% 70%;    /* #ECE87A */
+    --chart-6: 325 39% 55%;   /* #B85E93 */
+    --chart-7: 225 60% 60%;   /* #5A78D6 */
+    --chart-8: 49 30% 51%;    /* #A89A5E */
   }
 }
 
@@ -78,23 +76,29 @@
   }
 }
 
-/* Severity badge accents (resolved separately to keep the design system
- * tokens clean — these are semantic to the triage domain, not generic UI). */
+/* Severity badge accents, driven by the severity ramp tokens. Critical/high
+ * carry a solid fill (urgency), the rest a translucent tint + colored text.
+ * Domain-semantic, kept off the generic UI tokens on purpose. */
 @layer utilities {
   .severity-critical {
-    @apply bg-destructive text-destructive-foreground;
+    background-color: hsl(var(--severity-critical));
+    color: hsl(var(--background));
   }
   .severity-high {
-    @apply bg-warning text-warning-foreground;
+    background-color: hsl(var(--severity-high));
+    color: hsl(var(--background));
   }
   .severity-medium {
-    @apply bg-amber-500/20 text-amber-700 dark:text-amber-300;
+    background-color: hsl(var(--severity-medium) / 0.18);
+    color: hsl(var(--severity-medium));
   }
   .severity-low {
-    @apply bg-sky-500/20 text-sky-700 dark:text-sky-300;
+    background-color: hsl(var(--severity-low) / 0.18);
+    color: hsl(var(--severity-low));
   }
   .severity-info {
-    @apply bg-muted text-muted-foreground;
+    background-color: hsl(var(--severity-info) / 0.18);
+    color: hsl(var(--severity-info));
   }
 }
 
