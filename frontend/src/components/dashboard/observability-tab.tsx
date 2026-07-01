@@ -5,9 +5,13 @@ import { Activity, AlertTriangle, Clock, ExternalLink } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatDuration, reconstructTimeline } from "@/lib/stats";
+import { buildWaterfall, formatDuration } from "@/lib/stats";
 import { cn } from "@/lib/utils";
 import type { HistoryEntry, Severity } from "@/lib/types";
+
+// Local Jaeger UI. Env-configurable; defaults to the compose sidecar port and
+// is only reachable when the stack runs with the observability profile.
+const JAEGER_URL = process.env.NEXT_PUBLIC_JAEGER_URL ?? "http://localhost:16686";
 
 const severityClass: Record<Severity, string> = {
   critical: "severity-critical",
@@ -31,7 +35,7 @@ export function ObservabilityTab({ entries }: { entries: HistoryEntry[] }) {
   }
 
   const selected = entries.find((e) => e.id === selectedId) ?? entries[0];
-  const timeline = reconstructTimeline(selected);
+  const waterfall = buildWaterfall(selected);
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_1fr]">
@@ -104,43 +108,73 @@ export function ObservabilityTab({ entries }: { entries: HistoryEntry[] }) {
           </Card>
         )}
 
-        {timeline.length > 0 && (
+        {selected.report &&
+          (waterfall.length > 0 ? (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Activity className="h-4 w-4" /> Node waterfall
+                </CardTitle>
+                <p className="text-[11px] text-muted-foreground">
+                  Measured client-side: the arrival time of each streamed{" "}
+                  <code className="font-mono">node</code> event. Segment widths are real
+                  elapsed time between events, not inferred.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="relative h-8 w-full overflow-hidden rounded-md bg-muted">
+                  {waterfall.map((seg, i) => (
+                    <div
+                      key={seg.index}
+                      className={cn(
+                        "absolute top-0 h-full border-r border-background",
+                        i % 2 === 0 ? "bg-primary/40" : "bg-primary/60",
+                      )}
+                      style={{ left: `${seg.startPct}%`, width: `${Math.max(seg.widthPct, 0.5)}%` }}
+                      title={`${seg.label} · ${formatDuration(seg.durationMs)}`}
+                    />
+                  ))}
+                </div>
+                <ol className="space-y-1.5 text-sm">
+                  {waterfall.map((seg) => (
+                    <li
+                      key={seg.index}
+                      className="flex items-center gap-3 rounded-md px-2 py-1.5 transition-colors hover:bg-accent"
+                    >
+                      <span className="select-none font-mono text-xs text-muted-foreground">
+                        {(seg.index + 1).toString().padStart(2, "0")}
+                      </span>
+                      <span className="leading-relaxed">{seg.label}</span>
+                      <span className="ml-auto font-mono text-xs tabular-nums text-muted-foreground">
+                        {formatDuration(seg.durationMs)}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="py-4 text-center text-xs text-muted-foreground">
+                Per-node timing was not captured for this run (it predates timing capture).
+                Run a new triage to see the measured waterfall.
+              </CardContent>
+            </Card>
+          ))}
+
+        {selected.usage && (
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Activity className="h-4 w-4" /> Reasoning timeline
-              </CardTitle>
+              <CardTitle className="text-base">Token usage</CardTitle>
               <p className="text-[11px] text-muted-foreground">
-                Step boundaries inferred from <code className="font-mono">reasoning_chain</code> length and total runtime; intermediate node events are not persisted in history.
+                Reported by the model provider for this run (via the{" "}
+                <code className="font-mono">usage</code> SSE event).
               </p>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="relative h-8 w-full overflow-hidden rounded-md bg-muted">
-                {timeline.map((step, i) => (
-                  <div
-                    key={step.index}
-                    className={cn(
-                      "absolute top-0 h-full border-r border-background",
-                      i % 2 === 0 ? "bg-primary/40" : "bg-primary/60",
-                    )}
-                    style={{ left: `${step.startPct}%`, width: `${step.widthPct}%` }}
-                    title={step.label}
-                  />
-                ))}
-              </div>
-              <ol className="space-y-1.5 text-sm">
-                {timeline.map((step) => (
-                  <li
-                    key={step.index}
-                    className="flex gap-3 rounded-md px-2 py-1.5 transition-colors hover:bg-accent"
-                  >
-                    <span className="select-none font-mono text-xs text-muted-foreground">
-                      {(step.index + 1).toString().padStart(2, "0")}
-                    </span>
-                    <span className="leading-relaxed">{step.label}</span>
-                  </li>
-                ))}
-              </ol>
+            <CardContent className="grid grid-cols-3 gap-3">
+              <UsageStat label="input tokens" value={selected.usage.input_tokens} />
+              <UsageStat label="output tokens" value={selected.usage.output_tokens} />
+              <UsageStat label="model requests" value={selected.usage.requests} />
             </CardContent>
           </Card>
         )}
@@ -151,25 +185,38 @@ export function ObservabilityTab({ entries }: { entries: HistoryEntry[] }) {
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <p className="text-muted-foreground">
-              Per-call latency, span attributes, and the cross-process trace tree are exported
-              via OpenTelemetry. When the stack runs with the observability profile, you can
-              inspect them in Jaeger:
+              The waterfall above is the client-side view. The full server-side picture —
+              per-call latency, span attributes, and the cross-process trace tree — is exported
+              via OpenTelemetry to Jaeger, reachable only on a local stack started with the
+              observability profile (<code className="font-mono">make obs-up</code>):
             </p>
             <a
-              href="http://localhost:16686"
+              href={JAEGER_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 font-mono text-xs text-primary hover:underline"
             >
-              http://localhost:16686
+              {JAEGER_URL}
               <ExternalLink className="h-3 w-3" />
             </a>
             <p className="text-[11px] text-muted-foreground">
-              Run <code className="font-mono">make obs-up</code> to start the Jaeger sidecar.
+              Local-only link; not available on a hosted demo. Override with{" "}
+              <code className="font-mono">NEXT_PUBLIC_JAEGER_URL</code>.
             </p>
           </CardContent>
         </Card>
       </div>
+    </div>
+  );
+}
+
+function UsageStat({ label, value }: { label: string; value: number | null }) {
+  return (
+    <div className="rounded-md border border-border p-3">
+      <p className="font-mono text-lg font-semibold tabular-nums text-primary">
+        {value !== null ? value.toLocaleString() : "n/a"}
+      </p>
+      <p className="mt-0.5 text-[11px] text-muted-foreground">{label}</p>
     </div>
   );
 }

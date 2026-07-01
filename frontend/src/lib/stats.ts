@@ -150,29 +150,55 @@ export function aggregate(entries: HistoryEntry[]): AggregateStats {
   };
 }
 
-// Reconstruct a timeline for a single run. The history entry only stores
-// the final report and duration; the intermediate node events are not
-// persisted. We synthesize a plausible timeline from the reasoning_chain
-// length and the total duration. This is intentionally approximate; the
-// observability view labels it as such.
-export interface TimelineStep {
+// A real waterfall for a single run, built from the per-node arrival times
+// captured client-side while the run streamed (HistoryEntry.nodeEvents). Each
+// segment is the measured gap between two consecutive node events; widths are
+// proportional to actual elapsed time, not synthesized. Returns [] when the
+// run predates timing capture (older history) so the UI can say so honestly
+// instead of inventing a timeline.
+export interface WaterfallSegment {
   index: number;
   label: string;
+  node: string;
+  startMs: number;
+  durationMs: number;
   startPct: number;
   widthPct: number;
 }
 
-export function reconstructTimeline(entry: HistoryEntry): TimelineStep[] {
-  if (!entry.report || entry.durationMs === null) return [];
-  const steps = entry.report.reasoning_chain;
-  if (steps.length === 0) return [];
-  const slice = 100 / steps.length;
-  return steps.map((s, i) => ({
-    index: i,
-    label: s,
-    startPct: i * slice,
-    widthPct: slice,
-  }));
+const NODE_LABELS: Record<string, string> = {
+  UserPromptNode: "prompt",
+  ModelRequestNode: "model request",
+  CallToolsNode: "tool calls",
+  End: "final output",
+};
+
+export function humanizeNode(name: string): string {
+  if (NODE_LABELS[name]) return NODE_LABELS[name];
+  // Fall back to de-camel-casing an unknown node class name.
+  return name
+    .replace(/Node$/, "")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .toLowerCase();
+}
+
+export function buildWaterfall(entry: HistoryEntry): WaterfallSegment[] {
+  const events = entry.nodeEvents;
+  if (!events || events.length === 0 || entry.durationMs === null) return [];
+  const total = entry.durationMs || 1;
+  return events.map((ev, i) => {
+    const start = i === 0 ? 0 : events[i - 1].atMs;
+    const duration = Math.max(0, ev.atMs - start);
+    return {
+      index: i,
+      label: humanizeNode(ev.name),
+      node: ev.name,
+      startMs: start,
+      durationMs: duration,
+      startPct: (start / total) * 100,
+      widthPct: (duration / total) * 100,
+    };
+  });
 }
 
 export function formatDuration(ms: number): string {

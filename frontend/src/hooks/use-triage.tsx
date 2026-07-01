@@ -10,7 +10,7 @@ import {
 
 import { useHistory } from "@/hooks/use-history";
 import { streamSse } from "@/lib/sse";
-import type { HistoryEntry, TriageReport } from "@/lib/types";
+import type { HistoryEntry, NodeEvent, TriageReport } from "@/lib/types";
 
 // Provider-backed agent run state.
 //
@@ -86,6 +86,8 @@ export function TriageProvider({ children }: { children: React.ReactNode }) {
         startedAt: new Date(startedAt).toISOString(),
         durationMs: null,
         error: null,
+        nodeEvents: null,
+        usage: null,
       };
       add(entry);
       setSelectedId(id);
@@ -96,6 +98,10 @@ export function TriageProvider({ children }: { children: React.ReactNode }) {
       void (async () => {
         let finalReport: TriageReport | null = null;
         let finalError: string | null = null;
+        // Real per-node arrival times, captured client-side as each `node`
+        // event streams in. Snapshotted onto the history entry at `final` so the
+        // observability view draws a measured waterfall, not a synthesized one.
+        const nodeEvents: NodeEvent[] = [];
         try {
           await streamSse({
             url: "/api/triage",
@@ -109,13 +115,19 @@ export function TriageProvider({ children }: { children: React.ReactNode }) {
               // happens AFTER the surrounding await chain has already moved on
               // to the `finally` block — at which point finalReport is still
               // null and we patch the history entry with the wrong values.
-              if (event.type === "final") {
+              if (event.type === "node") {
+                nodeEvents.push({ name: event.data.node, atMs: Date.now() - startedAt });
+              } else if (event.type === "final") {
                 finalReport = event.data;
                 update(id, {
                   report: event.data,
                   error: null,
                   durationMs: Date.now() - startedAt,
+                  nodeEvents: [...nodeEvents],
                 });
+              } else if (event.type === "usage") {
+                // Arrives after `final`; a partial patch merges it in.
+                update(id, { usage: event.data });
               } else if (event.type === "error") {
                 finalError = `${event.data.type}: ${event.data.message}`;
                 update(id, {
