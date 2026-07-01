@@ -10,7 +10,13 @@
  * before reaching the model).
  */
 
-import type { TriageReport, CVEReference, AttackTechnique } from "./types";
+import type {
+  TriageReport,
+  CVEReference,
+  AttackTechnique,
+  SsvcAssessment,
+  FeedStatus,
+} from "./types";
 
 const UNTRUSTED_START = "<UNTRUSTED_CONTENT>";
 const UNTRUSTED_END = "</UNTRUSTED_CONTENT>";
@@ -85,6 +91,36 @@ function renderTechnique(t: AttackTechnique): string {
   return lines.join("\n");
 }
 
+function renderSsvc(ssvc: SsvcAssessment): string {
+  const lines: string[] = [];
+  lines.push("## SSVC verdict");
+  lines.push("");
+  lines.push("_Deterministic prioritization, computed server-side from the collected signals (not the LLM)._");
+  lines.push("");
+  lines.push(`- **Decision**: ${ssvc.decision}`);
+  lines.push(`- **Rule**: \`${ssvc.rule}\``);
+  if (ssvc.driving_cve) {
+    lines.push(`- **Driving CVE**: ${ssvc.driving_cve}`);
+  }
+  lines.push("");
+  lines.push(ssvc.rationale);
+  lines.push("");
+  return lines.join("\n");
+}
+
+function renderCoverage(coverage: FeedStatus[]): string {
+  const lines: string[] = [];
+  lines.push(`## Signal coverage (${coverage.length} feeds)`);
+  lines.push("");
+  lines.push("| Feed | Status | Detail |");
+  lines.push("|---|---|---|");
+  for (const f of coverage) {
+    lines.push(`| ${f.feed} | ${f.status} | ${f.detail ?? ""} |`);
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
 export function reportToMarkdown(report: TriageReport, query?: string): string {
   const now = new Date().toISOString().replace(/T.*/, "");
   const lines: string[] = [];
@@ -100,6 +136,10 @@ export function reportToMarkdown(report: TriageReport, query?: string): string {
   }
   lines.push("");
 
+  if (report.ssvc) {
+    lines.push(renderSsvc(report.ssvc));
+  }
+
   lines.push("## Summary");
   lines.push("");
   lines.push(stripFence(report.summary));
@@ -109,6 +149,10 @@ export function reportToMarkdown(report: TriageReport, query?: string): string {
   lines.push("");
   lines.push(stripFence(report.recommended_action));
   lines.push("");
+
+  if (report.signal_coverage?.length > 0) {
+    lines.push(renderCoverage(report.signal_coverage));
+  }
 
   if (report.cves.length > 0) {
     lines.push(`## CVEs (${report.cves.length})`);
@@ -149,7 +193,19 @@ export function reportToMarkdown(report: TriageReport, query?: string): string {
  * DOM-y bits stay out of the component body.
  */
 export function downloadMarkdown(filename: string, contents: string): void {
-  const blob = new Blob([contents], { type: "text/markdown;charset=utf-8" });
+  triggerDownload(filename, contents, "text/markdown;charset=utf-8");
+}
+
+/**
+ * Trigger a browser download of the report as raw JSON — the full validated
+ * shape, including the SSVC verdict and per-feed coverage.
+ */
+export function downloadJson(filename: string, contents: string): void {
+  triggerDownload(filename, contents, "application/json;charset=utf-8");
+}
+
+function triggerDownload(filename: string, contents: string, mime: string): void {
+  const blob = new Blob([contents], { type: mime });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;

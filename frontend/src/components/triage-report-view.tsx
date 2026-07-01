@@ -2,17 +2,25 @@
 
 import { useState } from "react";
 import {
+  AlertTriangle,
+  Braces,
   ChevronDown,
+  CircleCheck,
+  CircleDashed,
+  CircleSlash,
   Crosshair,
   Download,
   ExternalLink,
   Flame,
   Printer,
+  Radar,
+  ShieldAlert,
   ShieldCheck,
   ShieldX,
   Skull,
   TrendingUp,
   Wrench,
+  Zap,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -24,9 +32,16 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Separator } from "@/components/ui/separator";
-import { downloadMarkdown, reportToMarkdown } from "@/lib/markdown-export";
+import { downloadJson, downloadMarkdown, reportToMarkdown } from "@/lib/markdown-export";
 import { cn } from "@/lib/utils";
-import type { Severity, TriageReport } from "@/lib/types";
+import type {
+  FeedStatus,
+  Severity,
+  SignalStatus,
+  SsvcAssessment,
+  SsvcDecision,
+  TriageReport,
+} from "@/lib/types";
 
 const severityClass: Record<Severity, string> = {
   critical: "severity-critical",
@@ -34,6 +49,47 @@ const severityClass: Record<Severity, string> = {
   medium: "severity-medium",
   low: "severity-low",
   info: "severity-info",
+};
+
+// SSVC ladder, most- to least-urgent. Position encodes urgency; the active
+// stop also carries an icon + fill + text, so the verdict never rests on color
+// alone (colorblind-safe, print-safe).
+const SSVC_ORDER: SsvcDecision[] = ["Act", "Attend", "Track*", "Track"];
+const SSVC_META: Record<
+  SsvcDecision,
+  { icon: typeof Zap; blurb: string; activeClass: string }
+> = {
+  Act: {
+    icon: Zap,
+    blurb: "Remediate out-of-cycle, as fast as possible.",
+    activeClass: "bg-destructive text-destructive-foreground",
+  },
+  Attend: {
+    icon: AlertTriangle,
+    blurb: "Remediate ahead of standard timelines; needs attention.",
+    activeClass: "bg-warning text-warning-foreground",
+  },
+  "Track*": {
+    icon: Radar,
+    blurb: "Standard timeline, but monitor for signals that would escalate.",
+    activeClass: "bg-[hsl(var(--severity-low))] text-background",
+  },
+  Track: {
+    icon: CircleCheck,
+    blurb: "No action beyond standard update timelines.",
+    activeClass: "bg-secondary text-foreground ring-1 ring-inset ring-primary/30",
+  },
+};
+
+// Per-feed coverage status: icon + text + hue (redundant encoding).
+const COVERAGE_META: Record<
+  SignalStatus,
+  { icon: typeof CircleCheck; label: string; className: string }
+> = {
+  found: { icon: CircleCheck, label: "found", className: "text-[hsl(var(--success))]" },
+  not_found: { icon: CircleSlash, label: "not found", className: "text-muted-foreground" },
+  error: { icon: AlertTriangle, label: "error", className: "text-warning" },
+  not_queried: { icon: CircleDashed, label: "not queried", className: "text-muted-foreground/60" },
 };
 
 const UNTRUSTED_START = "<UNTRUSTED_CONTENT>";
@@ -74,10 +130,18 @@ export function TriageReportView({
     window.print();
   }
 
+  function handleExportJson() {
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-").replace(/Z$/, "");
+    // The full validated report, verbatim — the machine-readable form that
+    // carries the deterministic SSVC verdict and per-feed coverage.
+    downloadJson(`triage-${stamp}.json`, JSON.stringify(report, null, 2));
+  }
+
   return (
     <div id="printable-report" className="printable-report animate-fade-in space-y-4">
       <Card className="border-2 border-primary/20">
         <CardHeader className="space-y-3">
+          {report.ssvc && <SsvcVerdict ssvc={report.ssvc} />}
           <div className="flex flex-wrap items-center gap-2">
             <Badge className={cn("text-xs uppercase tracking-wider", severityClass[report.severity])}>
               {report.severity}
@@ -96,6 +160,17 @@ export function TriageReportView({
               >
                 <Download className="h-3.5 w-3.5" />
                 Export .md
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 gap-1 text-[11px]"
+                onClick={handleExportJson}
+                title="Download the full report as JSON (includes the SSVC verdict + signal coverage)"
+              >
+                <Braces className="h-3.5 w-3.5" />
+                Export JSON
               </Button>
               <Button
                 type="button"
@@ -123,6 +198,10 @@ export function TriageReportView({
         </CardContent>
       </Card>
 
+      {report.signal_coverage?.length > 0 && (
+        <SignalCoverageStrip coverage={report.signal_coverage} />
+      )}
+
       {report.cves.length > 0 && (
         <div className="space-y-3">
           <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -131,7 +210,7 @@ export function TriageReportView({
           {report.cves.map((cve) => {
             const { body, fenced } = unfence(cve.summary);
             return (
-              <Card key={cve.cve_id} className="overflow-hidden">
+              <Card key={cve.cve_id} id={`cve-${cve.cve_id}`} className="scroll-mt-20 overflow-hidden">
                 <CardHeader className="space-y-2 pb-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <a
@@ -223,6 +302,98 @@ export function TriageReportView({
       )}
 
       <ReasoningChain steps={report.reasoning_chain} />
+    </div>
+  );
+}
+
+function SsvcVerdict({ ssvc }: { ssvc: SsvcAssessment }) {
+  const meta = SSVC_META[ssvc.decision];
+  const Icon = meta.icon;
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        <ShieldAlert className="h-3.5 w-3.5" />
+        SSVC verdict
+        <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] normal-case tracking-normal text-muted-foreground">
+          deterministic · server-computed
+        </span>
+      </div>
+      <div
+        className="grid grid-cols-4 gap-1"
+        role="group"
+        aria-label={`SSVC decision: ${ssvc.decision}`}
+      >
+        {SSVC_ORDER.map((decision) => {
+          const active = decision === ssvc.decision;
+          const stopMeta = SSVC_META[decision];
+          const StopIcon = stopMeta.icon;
+          return (
+            <div
+              key={decision}
+              aria-current={active ? "true" : undefined}
+              className={cn(
+                "flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold transition-colors",
+                active ? stopMeta.activeClass : "bg-muted/40 text-muted-foreground/50",
+              )}
+            >
+              <StopIcon className="h-3.5 w-3.5 shrink-0" />
+              <span>{decision}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex items-start gap-2">
+        <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+        <div className="space-y-0.5">
+          <p className="text-sm leading-relaxed">{ssvc.rationale || meta.blurb}</p>
+          <p className="text-[11px] text-muted-foreground">
+            rule <span className="font-mono">{ssvc.rule}</span>
+            {ssvc.driving_cve ? (
+              <>
+                {" · driven by "}
+                <a
+                  href={`#cve-${ssvc.driving_cve}`}
+                  className="font-mono text-primary hover:underline"
+                >
+                  {ssvc.driving_cve}
+                </a>
+              </>
+            ) : null}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SignalCoverageStrip({ coverage }: { coverage: FeedStatus[] }) {
+  if (!coverage || coverage.length === 0) return null;
+  return (
+    <div className="rounded-lg border border-border bg-card/50 p-3">
+      <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        <Radar className="h-3.5 w-3.5" />
+        Signal coverage
+        <span className="normal-case tracking-normal text-muted-foreground/70">
+          what each feed actually returned
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {coverage.map((feed) => {
+          const statusMeta = COVERAGE_META[feed.status] ?? COVERAGE_META.not_queried;
+          const StatusIcon = statusMeta.icon;
+          return (
+            <span
+              key={feed.feed}
+              title={feed.detail ?? undefined}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-[11px]"
+            >
+              <StatusIcon className={cn("h-3.5 w-3.5 shrink-0", statusMeta.className)} />
+              <span className="font-mono">{feed.feed}</span>
+              <span className="text-muted-foreground">{statusMeta.label}</span>
+            </span>
+          );
+        })}
+      </div>
     </div>
   );
 }
