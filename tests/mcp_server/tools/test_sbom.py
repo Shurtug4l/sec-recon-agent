@@ -1,14 +1,24 @@
 """Contract tests for sbom_ingest. Pure deterministic parsing, no network."""
 
 import json
+from typing import get_args
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from sec_recon_agent.mcp_server.errors import (
     MalformedSbomPayloadError,
     UnsupportedSbomFormatError,
 )
-from sec_recon_agent.mcp_server.tools.sbom import sbom_ingest
+from sec_recon_agent.mcp_server.models import OsvEcosystem
+from sec_recon_agent.mcp_server.tools.sbom import (
+    _PURL_TYPE_TO_OSV,
+    _ecosystem_from_purl,
+    sbom_ingest,
+)
+
+_OSV_ECOSYSTEMS = set(get_args(OsvEcosystem))
 
 
 def test_parses_cyclonedx_json() -> None:
@@ -37,7 +47,7 @@ def test_parses_cyclonedx_json() -> None:
     assert result.truncated is False
     names = [c.name for c in result.components]
     assert "log4j-core" in names
-    assert all(c.ecosystem == "maven" for c in result.components)
+    assert all(c.ecosystem == "Maven" for c in result.components)
 
 
 def test_parses_spdx_json() -> None:
@@ -88,7 +98,7 @@ def test_parses_requirements_txt() -> None:
     assert names == {"requests", "Django", "numpy", "cryptography"}
     requests = next(c for c in result.components if c.name == "requests")
     assert requests.version == "2.28.0"
-    assert requests.ecosystem == "pypi"
+    assert requests.ecosystem == "PyPI"
     numpy = next(c for c in result.components if c.name == "numpy")
     assert numpy.version is None
 
@@ -179,3 +189,38 @@ def test_requirements_with_extras_and_markers() -> None:
 def test_empty_payload_rejected() -> None:
     with pytest.raises(UnsupportedSbomFormatError):
         sbom_ingest("\n  \n  \n")
+
+
+# --- purl -> OSV ecosystem routing (regression for the silent-drop bug) ------
+# A purl type is lowercase (pkg:pypi/...) but osv_lookup's OsvEcosystem Literal
+# is cased (PyPI). Before the fix, ecosystem carried the raw purl type, so six
+# of seven ecosystems could never be passed to osv_lookup. These pin the map.
+
+
+@pytest.mark.parametrize("purl_type", sorted(_PURL_TYPE_TO_OSV))
+def test_supported_purl_type_maps_to_valid_osv_ecosystem(purl_type: str) -> None:
+    result = _ecosystem_from_purl(f"pkg:{purl_type}/vendor/name@1.0.0")
+    assert result in _OSV_ECOSYSTEMS, f"{purl_type} -> {result} is not an OsvEcosystem"
+
+
+def test_purl_map_covers_every_osv_ecosystem() -> None:
+    """No supported ecosystem may be unreachable from an SBOM: the map's
+    values must be exactly the OsvEcosystem Literal."""
+    assert set(_PURL_TYPE_TO_OSV.values()) == _OSV_ECOSYSTEMS
+
+
+def test_requirements_ecosystem_is_osv_valid() -> None:
+    result = sbom_ingest("requests==2.32.0")
+    assert result.components[0].ecosystem in _OSV_ECOSYSTEMS
+
+
+@given(st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=12))
+def test_ecosystem_from_purl_never_crashes_and_supported_types_are_valid(
+    purl_type: str,
+) -> None:
+    """Property: for any lowercase purl type the resolver returns None or a
+    str, and any type we claim to support resolves to a valid OsvEcosystem."""
+    result = _ecosystem_from_purl(f"pkg:{purl_type}/x/y@1")
+    assert result is None or isinstance(result, str)
+    if purl_type in _PURL_TYPE_TO_OSV:
+        assert result in _OSV_ECOSYSTEMS

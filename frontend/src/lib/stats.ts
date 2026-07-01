@@ -33,6 +33,9 @@ const KNOWN_TOOLS = [
   "exploit_check",
   "kev_check",
   "epss_score",
+  "patch_lookup",
+  "osv_lookup",
+  "sbom_ingest",
   "nmap_parse_xml",
   "attack_mapping",
 ];

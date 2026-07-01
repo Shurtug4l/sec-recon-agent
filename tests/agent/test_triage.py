@@ -34,6 +34,7 @@ def test_system_prompt_declares_all_tools() -> None:
         "attack_mapping",
         "sbom_ingest",
         "patch_lookup",
+        "osv_lookup",
     ):
         assert tool_name in SYSTEM_PROMPT, f"Tool {tool_name} missing from system prompt"
 

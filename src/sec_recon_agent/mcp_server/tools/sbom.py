@@ -48,6 +48,20 @@ _REQ_LINE = re.compile(
     r"\s*(?:;.*)?$",
 )
 _PURL_ECOSYSTEM = re.compile(r"^pkg:([a-z]+)/")
+# purl type (https://github.com/package-url/purl-spec) -> OSV ecosystem
+# spelling (https://ossf.github.io/osv-schema/#affectedpackage-field). The two
+# vocabularies diverge (purl is lowercase, OSV is cased), so a raw purl type
+# fed to osv_lookup would be rejected by its OsvEcosystem Literal for six of the
+# seven ecosystems we support. Map here so ecosystem is OSV-query-ready.
+_PURL_TYPE_TO_OSV = {
+    "pypi": "PyPI",
+    "npm": "npm",
+    "golang": "Go",
+    "cargo": "crates.io",
+    "gem": "RubyGems",
+    "nuget": "NuGet",
+    "maven": "Maven",
+}
 
 
 def _detect_format(content: str) -> str:
@@ -80,10 +94,20 @@ def _detect_format(content: str) -> str:
 
 
 def _ecosystem_from_purl(purl: str | None) -> str | None:
+    """Return the OSV ecosystem spelling for a purl, or None.
+
+    For the seven ecosystems osv_lookup supports, this yields the exact OSV
+    Literal value so the hint can be passed straight to osv_lookup. For any
+    other purl type we return the raw lowercase type (still a useful hint, but
+    not an osv_lookup ecosystem).
+    """
     if not purl:
         return None
     m = _PURL_ECOSYSTEM.match(purl)
-    return m.group(1) if m else None
+    if not m:
+        return None
+    purl_type = m.group(1)
+    return _PURL_TYPE_TO_OSV.get(purl_type, purl_type)
 
 
 def _parse_cyclonedx(payload: dict[str, Any]) -> list[SbomComponent]:
@@ -155,7 +179,7 @@ def _parse_requirements(content: str) -> list[SbomComponent]:
             SbomComponent(
                 name=name[:200],
                 version=(version[:100] if version else None),
-                ecosystem="pypi",
+                ecosystem="PyPI",
                 purl=None,
             ),
         )
