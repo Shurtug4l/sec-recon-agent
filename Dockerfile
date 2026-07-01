@@ -59,9 +59,23 @@ RUN mkdir -p /app/data && chown secrecon:secrecon /app/data
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
+    HOME=/home/secrecon \
     CHROMA_PERSIST_DIR=/app/data/cve_index
 
 USER secrecon
+
+# Bake the ONNX embedding model into the image at build time.
+# ChromaDB's DefaultEmbeddingFunction (ONNX MiniLM-L6) lazily downloads its
+# model into ~/.cache on first use. At runtime the container has a read-only
+# rootfs (see docker-compose: read_only: true), so a first-query download
+# fails with `OSError: [Errno 30] Read-only file system: '/home/secrecon/.cache'`
+# and cve_semantic_search raises — taking the agent down on any query that
+# hits semantic search. Warming the model here, as the secrecon user, writes
+# it into /home/secrecon/.cache during the build (writable) so it is baked
+# into the image and present at runtime: no network, no writable cache needed,
+# read-only rootfs preserved. Must run after `USER secrecon` so the model
+# lands in the runtime user's home, the exact path resolved at query time.
+RUN python -c "from chromadb.utils.embedding_functions import DefaultEmbeddingFunction; DefaultEmbeddingFunction()(['warmup'])"
 
 # Default to API; the compose file overrides this for the MCP service.
 # Healthcheck applies to whatever process is running; both API and MCP
