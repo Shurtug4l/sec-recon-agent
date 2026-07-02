@@ -9,7 +9,7 @@ Companion documents:
 
 ## What this is
 
-A security triage agent. Given a CVE ID, a product description, or Nmap XML output, it returns a typed `TriageReport` (severity, exploit availability, recommended action, full reasoning chain) by calling four MCP tools and synthesizing the result with an LLM.
+A security triage agent. Given a CVE ID, a product description, or Nmap XML output, it returns a typed `TriageReport` (severity, exploit availability, recommended action, full reasoning chain) by calling ten MCP tools and synthesizing the result with an LLM.
 
 Built as a portfolio piece, not a production deployment. The design choices are documented here precisely because a reviewer's first question is usually "why this way and not the obvious other way."
 
@@ -37,21 +37,19 @@ Browser
                                      v
                        +------------------------------+
                        |  MCP Server (FastMCP)        |  :8001
-                       |  7 typed tools               |
-                       +---+---+---+---+--------------+
-                           |   |   |   |
-                NVD CVE 2.0|   |   |   |defusedxml (nmap_parse_xml)
-                           |   |   |   |
-                  ChromaDB |   |   |   |Exploit-DB CSV + GitHub Search
-              (cve_search) |   |   |   |(exploit_check, parallel fan-out)
-                           |   |   |   |
-                           |   |   |   |CISA KEV catalog (kev_check, 24h disk cache)
-                           |   |   |
-                           |   |   |FIRST EPSS API (epss_score, single-shot)
-                           |   |
-                           |   |MITRE ATT&CK (attack_mapping, bundled JSON)
-                           |
-                           +-- cve_lookup (httpx, rate-limited, retry)
+                       |  10 typed tools              |
+                       +--------------+---------------+
+                                      |
+        cve_lookup ........ NVD CVE 2.0 (httpx, rate-limited, retry)
+        cve_search ........ ChromaDB semantic search (ONNX MiniLM-L6)
+        patch_lookup ...... NVD CPE versionEndExcluding (shared rate limit)
+        exploit_check ..... Exploit-DB CSV + GitHub Code Search (parallel fan-out)
+        kev_check ......... CISA KEV catalog (24h disk cache, host-locked)
+        epss_score ........ FIRST EPSS API (single-shot)
+        osv_lookup ........ OSV.dev advisories (package + version)
+        attack_mapping .... MITRE ATT&CK from CWE (bundled JSON)
+        nmap_parse_xml .... defusedxml, forbid_dtd (XXE-safe)
+        sbom_ingest ....... CycloneDX / SPDX / requirements.txt parser
 ```
 
 Four processes, deliberately. The frontend, the agent API, and the MCP server are independent containers; each restarts without taking the others down. The browser only ever sees `:3000` — the agent API has no CORS opened and stays single-tenant; the Next.js `/api/triage` route forwards the SSE stream byte-for-byte upstream. The MCP transport between agent and MCP server is HTTP+SSE, the same protocol the agent exposes to its own clients, so the dataflow is symmetric.
