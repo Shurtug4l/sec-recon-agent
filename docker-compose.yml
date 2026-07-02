@@ -83,6 +83,11 @@ services:
       AUDIT_LOG_ENABLED: "${AUDIT_LOG_ENABLED:-true}"
       AUDIT_INCLUDE_QUERY: "${AUDIT_INCLUDE_QUERY:-false}"
       AUDIT_INCLUDE_SUMMARY: "${AUDIT_INCLUDE_SUMMARY:-false}"
+      # This container runs read-only, so the config default (./data/audit.db)
+      # lands on the read-only image layer and sqlite fails with "unable to
+      # open database file". Point the append-only hash-chain audit at the
+      # dedicated writable volume below so the trail actually persists.
+      AUDIT_DB_PATH: "/app/audit/audit.db"
     ports:
       # Only bind to localhost; the demo is single-tenant and has no auth.
       # Edit to 0.0.0.0 only if you intentionally want network exposure.
@@ -100,6 +105,11 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    volumes:
+      # Writable mount for the audit SQLite; the rest of the rootfs is read-only.
+      # Dedicated volume (not the CVE-index one) keeps the tamper-evident trail
+      # isolated from the data store.
+      - sec-recon-audit:/app/audit
     security_opt:
       - no-new-privileges:true
 
@@ -165,3 +175,5 @@ services:
 volumes:
   sec-recon-data:
     name: sec-recon-data
+  sec-recon-audit:
+    name: sec-recon-audit
