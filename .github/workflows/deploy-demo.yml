@@ -1,0 +1,73 @@
+name: deploy-demo
+
+# Publishes the keyless static demo (frontend `out/`) to GitHub Pages. The demo
+# replays committed real SSE fixtures, so it needs no Anthropic key, no ChromaDB
+# seed, and no backend. Runs on frontend changes to main, or on demand.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/deploy-demo.yml"
+  workflow_dispatch:
+
+# Least privilege for the Pages deployment: read the repo, mint the OIDC token
+# deploy-pages verifies, and write the Pages site. Nothing else.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One Pages deployment at a time; a newer push supersedes an in-flight one.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    name: build + deploy demo
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund --legacy-peer-deps
+
+      - name: Build static demo export
+        # NEXT_PUBLIC_DEMO_MODE is set inside build:demo; NEXT_PUBLIC_BASE_PATH
+        # scopes routes + assets under the project Pages sub-path (/<repo>).
+        run: npm run build:demo
+        env:
+          NEXT_PUBLIC_BASE_PATH: /sec-recon-agent
+
+      - name: Disable Jekyll
+        # Belt-and-suspenders: Pages' legacy Jekyll pass would drop the _next/
+        # directory (leading underscore). The Actions deployment does not run
+        # Jekyll, but .nojekyll makes that guarantee explicit and portable.
+        run: touch out/.nojekyll
+
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/out
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
