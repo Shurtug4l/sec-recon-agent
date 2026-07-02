@@ -12,6 +12,18 @@
 
 Given a CVE ID, a product version, raw Nmap XML, or a CycloneDX / SPDX / requirements.txt SBOM, the agent grounds every answer with ten typed MCP tools (CVE lookup, semantic search, public-exploit availability, CISA KEV membership, FIRST.org EPSS score, patch availability, OSV package-version lookup, SBOM ingestion, Nmap parsing, MITRE ATT&CK mapping) and returns a `TriageReport` Pydantic model: severity, exploit availability, operational signals (KEV / ransomware / EPSS), a **deterministic SSVC prioritization verdict** (Act / Attend / Track* / Track, computed server-side from the signals — not by the LLM), per-feed **signal-coverage honesty** (which feeds were checked and whether each returned data, had no entry, or errored), recommended action with a concrete fixed version when one exists, and the full reasoning chain. The LLM never produces free-text guessing; the output schema is enforced at the model boundary.
 
+## Why it matters, and who it's for
+
+**Ten browser tabs and an educated guess, or one grounded verdict.** Deciding whether a CVE deserves an all-hands response or a slot in next sprint is judgment work, and today it is done by hand: NVD for the CVSS, CISA KEV to see whether it is already being exploited, FIRST EPSS for the probability, Exploit-DB and GitHub for public PoCs, then reconcile it all into one call, per CVE. Reach for a general-purpose LLM to go faster and it will confidently hand you a CVSS that does not exist. This agent runs that entire fusion across live authoritative feeds in under two minutes and returns a **deterministic SSVC verdict** (Act / Attend / Track* / Track), never an invented one, with a hash-chained audit of exactly how it got there.
+
+It is not another scanner: Trivy and Grype tell you *which* packages are vulnerable; sec-recon-agent is the reasoning layer that comes next, deciding which of those actually demand your morning and proving why in a [reproducible scorecard](SCORECARD.md). The full positioning is in the table below.
+
+That makes it useful to three audiences:
+
+- **Vulnerability & AppSec engineers** turn a CVE backlog into a defensible, prioritized queue: feed a CVE, a package + version, or a whole SBOM and get one grounded verdict, not ten open browser tabs across NVD, KEV, EPSS, Exploit-DB and ATT&CK.
+- **SOC & detection engineers** get every report pivoted from CWE weakness classes into MITRE ATT&CK techniques and mitigations, the language detections and purple-team exercises are actually written in.
+- **Teams building or vetting LLM agents** get a working reference for a grounded, type-safe, adversary-aware agent: schema-bounded output, a verdict computed outside the model, MCP tools as auditable contracts, and a falsifiable prompt-injection battery, all measured in a [reproducible scorecard](SCORECARD.md).
+
 ## What it is, and what it is not
 
 It is a **reasoning and prioritization layer** for vulnerability triage: give it a CVE, a package + version, an SBOM, or raw Nmap XML, and it fuses CISA KEV + FIRST EPSS + public-exploit availability + ransomware association + MITRE ATT&CK into one grounded, schema-bounded verdict — with a deterministic SSVC decision and honest per-feed coverage. It is deliberately **not**:
