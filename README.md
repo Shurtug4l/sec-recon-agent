@@ -5,10 +5,13 @@
 [![python](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/)
 [![license](https://img.shields.io/badge/license-MIT-green)](#license)
 [![scorecard](https://img.shields.io/badge/scorecard-reproducible-blue)](SCORECARD.md)
+[![live demo](https://img.shields.io/badge/demo-live-22d3ee)](https://shurtug4l.github.io/sec-recon-agent/)
 
 **An LLM vulnerability-triage agent designed the way an AI Solutions Architect would build it and an AI Security Engineer would attack it:** every answer is grounded in live authoritative feeds, the output is a schema-bounded `TriageReport`, the prioritization verdict is deterministic (not LLM-guessed), and the untrusted-data trust boundary is a first-class design concern with a falsifiable red-team battery. Built on Pydantic AI + a custom Model Context Protocol server, behind a Next.js + React frontend.
 
 ![sec-recon-agent: a live Log4Shell triage from query to a typed TriageReport with CISA KEV, ransomware, and EPSS signals](docs/assets/demo.gif)
+
+**[Try the live demo](https://shurtug4l.github.io/sec-recon-agent/)** — it replays real captured triages across the full SSVC ladder (Act / Attend / Track* / Track) right in the browser, with a reproducible [scorecard](https://shurtug4l.github.io/sec-recon-agent/scorecard). No API key, no setup: the runs are genuine captures, not mock data.
 
 Given a CVE ID, a product version, raw Nmap XML, or a CycloneDX / SPDX / requirements.txt SBOM, the agent grounds every answer with ten typed MCP tools (CVE lookup, semantic search, public-exploit availability, CISA KEV membership, FIRST.org EPSS score, patch availability, OSV package-version lookup, SBOM ingestion, Nmap parsing, MITRE ATT&CK mapping) and returns a `TriageReport` Pydantic model: severity, exploit availability, operational signals (KEV / ransomware / EPSS), a **deterministic SSVC prioritization verdict** (Act / Attend / Track* / Track, computed server-side from the signals — not by the LLM), per-feed **signal-coverage honesty** (which feeds were checked and whether each returned data, had no entry, or errored), recommended action with a concrete fixed version when one exists, and the full reasoning chain. The LLM never produces free-text guessing; the output schema is enforced at the model boundary.
 
