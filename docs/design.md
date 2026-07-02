@@ -94,6 +94,8 @@ One named-CVE query, every code boundary it touches, and where untrusted content
    |                                                |                                             |   - LLM call (Anthropic Haiku)
    |                                                |                                             |   - chooses tools per system prompt
    |                                                |                                             |   - MCPToolset over HTTP+SSE
+   |                                                |                                             |   - each node -> yield 'node' SSE (streamed live;
+   |                                                |                                             |     feeds the frontend waterfall)
    |                                                |                                             |---------------------------------------------->|
    |                                                |                                             |                                                | tool dispatch (FastMCP)
    |                                                |                                             |                                                |   v
@@ -119,16 +121,26 @@ One named-CVE query, every code boundary it touches, and where untrusted content
    |                                                |                                             |                                                |   bundled MITRE ATT&CK JSON (in-process)
    |                                                |                                             |                                                |
    |                                                |                                             | <-------- aggregated tool results ------------|
-   |                                                |                                             | LLM synthesizes:
-   |                                                |                                             |   - severity (KEV > ransomware > EPSS > CVSS)
-   |                                                |                                             |   - recommended_action (cites KEV due date)
+   |                                                |                                             | LLM synthesizes (leaves ssvc = null):
+   |                                                |                                             |   - severity, confidence
+   |                                                |                                             |   - recommended_action (echoes the SSVC verdict)
+   |                                                |                                             |   - signal_coverage (per-feed found/not_found)
    |                                                |                                             |   - reasoning_chain (audit log of calls)
    |                                                |                                             | Pydantic validates -> TriageReport
-   |                                                |                                             | yield 'final' SSE event with model_dump_json()
+   |                                                |                                             | server stamps ssvc = assess_ssvc(cves):
+   |                                                |                                             |   deterministic Act/Attend/Track*/Track over
+   |                                                |                                             |   KEV/EPSS/exploit/ransomware (agent/ssvc.py),
+   |                                                |                                             |   model_copy -> the authoritative, audited form
+   |                                                |                                             | yield 'final' SSE (model_dump_json, ssvc stamped)
    |                                                | <-- 'final' SSE ----------------------------|
    | <-- 'final' SSE (byte-for-byte proxy) ---------|                                             |
+   |                                                |                                             | yield 'usage' SSE (input/output tokens, requests)
+   |                                                | <-- 'usage' SSE ----------------------------|
+   | <-- 'usage' SSE -------------------------------|                                             |
+   |                                                |                                             | finally: audit hook appends a hash-chained row
    |                                                |                                             |                                                |
-   render: CVE card with KEV+ransomware+EPSS badges, ATT&CK techniques, reasoning_chain
+   render: SSVC verdict card (Act/Attend/Track*/Track) + severity/KEV/ransomware/EPSS
+           badges + signal_coverage strip + ATT&CK techniques + node waterfall + tokens
 ```
 
 Every span emitted on the path carries a stable attribute set (no free text, no secrets). W3C `traceparent` flows through httpx auto-instrumentation, so a single trace ID covers the full path.
