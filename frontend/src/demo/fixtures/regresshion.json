@@ -1,0 +1,179 @@
+{
+  "slug": "regresshion",
+  "cve": "CVE-2024-6387",
+  "title": "regreSSHion",
+  "subtitle": "OpenSSH unauthenticated RCE",
+  "query": "Triage CVE-2024-6387 (regreSSHion) in OpenSSH and tell me the remediation urgency.",
+  "model": "sonnet",
+  "capturedAt": "2026-07-02",
+  "decision": "Act",
+  "durationMs": 51613,
+  "frames": [
+    {
+      "event": "started",
+      "data": {
+        "query": "Triage CVE-2024-6387 (regreSSHion) in OpenSSH and tell me the remediation urgency.",
+        "model": "sonnet"
+      },
+      "at_ms": 32
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "UserPromptNode"
+      },
+      "at_ms": 55
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "ModelRequestNode"
+      },
+      "at_ms": 55
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "CallToolsNode"
+      },
+      "at_ms": 3433
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "ModelRequestNode"
+      },
+      "at_ms": 4029
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "CallToolsNode"
+      },
+      "at_ms": 6134
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "ModelRequestNode"
+      },
+      "at_ms": 6741
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "CallToolsNode"
+      },
+      "at_ms": 35186
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "ModelRequestNode"
+      },
+      "at_ms": 35188
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "CallToolsNode"
+      },
+      "at_ms": 51608
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "End"
+      },
+      "at_ms": 51609
+    },
+    {
+      "event": "final",
+      "data": {
+        "summary": "CVE-2024-6387 (\"regreSSHion\") is a race condition in OpenSSH sshd enabling unauthenticated RCE as root on glibc Linux \u2014 a regression of CVE-2006-5051. EPSS is 99.5% (99.94th percentile), a public exploit exists on Exploit-DB, and CVSS v3 is 8.1 HIGH. Not yet in CISA KEV, but exploitation risk is among the highest ever recorded.",
+        "severity": "high",
+        "confidence": "high",
+        "recommended_action": "SSVC: Attend (treat as Act). Public exploit (Exploit-DB #52269) + EPSS 99.5% demands out-of-cycle patching. Upgrade OpenSSH to 9.8p1+; macOS users: patch to 12.7.6 / 13.6.8 / 14.6. Interim: set LoginGraceTime 0 in sshd_config and restrict SSH to trusted IPs via firewall. Apply OS-vendor patches (RHEL, Ubuntu, AlmaLinux) immediately.",
+        "cves": [
+          {
+            "cve_id": "CVE-2024-6387",
+            "summary": "Race condition in OpenSSH sshd SIGALRM handler allows unauthenticated remote RCE as root on glibc-based Linux. Regression of CVE-2006-5051, dubbed regreSSHion. Discovered by Qualys.",
+            "cvss_v3_score": 8.1,
+            "severity": "high",
+            "exploits_public": true,
+            "affected_products": [
+              "OpenSSH < 9.8p1 on glibc Linux",
+              "Apple macOS 12.x < 12.7.6",
+              "Apple macOS 13.x < 13.6.8",
+              "Apple macOS 14.x < 14.6",
+              "Ubuntu 23.10 / 24.04 LTS",
+              "AlmaLinux 9.0",
+              "Arista EOS",
+              "SonicWall SMA/SRA appliances",
+              "NetApp A/C/8x00/500f storage"
+            ],
+            "nvd_url": "https://nvd.nist.gov/vuln/detail/CVE-2024-6387",
+            "in_kev_catalog": false,
+            "kev_due_date": null,
+            "known_ransomware_use": null,
+            "epss_probability": 0.99506,
+            "epss_percentile": 0.99939
+          }
+        ],
+        "attack_techniques": [],
+        "reasoning_chain": [
+          "cve_lookup(CVE-2024-6387) -> CVSS 8.1 HIGH; CWE-362 (race condition), CWE-364 (signal handler race); unauthenticated RCE in sshd",
+          "exploit_check(CVE-2024-6387) -> has_public_exploit=true; Exploit-DB #52269",
+          "kev_check(CVE-2024-6387) -> in_catalog=false",
+          "epss_score(CVE-2024-6387) -> probability=0.99506, percentile=0.99939 \u2014 top 0.06% globally",
+          "patch_lookup(CVE-2024-6387) -> OpenSSH fixed in 9.8p1; macOS fixed in 12.7.6/13.6.8/14.6",
+          "attack_mapping([CWE-362, CWE-364]) -> no curated ATT&CK mappings returned",
+          "Decision: SSVC Attend/Act \u2014 public exploit + EPSS>=0.995; out-of-cycle patching required"
+        ],
+        "ssvc": {
+          "decision": "Act",
+          "rule": "public-exploit+high-epss",
+          "rationale": "SSVC decision Act: CVE-2024-6387 a public exploit is available and EPSS predicts high near-term exploitation.",
+          "driving_cve": "CVE-2024-6387"
+        },
+        "signal_coverage": [
+          {
+            "feed": "nvd",
+            "status": "found",
+            "detail": null
+          },
+          {
+            "feed": "exploit",
+            "status": "found",
+            "detail": "Exploit-DB #52269 confirmed"
+          },
+          {
+            "feed": "kev",
+            "status": "not_found",
+            "detail": "Not in CISA KEV catalog"
+          },
+          {
+            "feed": "epss",
+            "status": "found",
+            "detail": "probability=0.99506, percentile=0.99939"
+          },
+          {
+            "feed": "attack",
+            "status": "not_found",
+            "detail": "CWE-362/CWE-364 not in curated mapping table"
+          }
+        ]
+      },
+      "at_ms": 51613
+    },
+    {
+      "event": "usage",
+      "data": {
+        "input_tokens": 45474,
+        "output_tokens": 2922,
+        "requests": 4
+      },
+      "at_ms": 51613
+    }
+  ]
+}

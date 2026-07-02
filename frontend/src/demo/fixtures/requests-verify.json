@@ -1,0 +1,171 @@
+{
+  "slug": "requests-verify",
+  "cve": "CVE-2024-35195",
+  "title": "requests TLS bypass",
+  "subtitle": "Session verify=False stickiness",
+  "query": "Assess CVE-2024-35195 in the Python requests library and how urgently to patch.",
+  "model": "sonnet",
+  "capturedAt": "2026-07-02",
+  "decision": "Track",
+  "durationMs": 37537,
+  "frames": [
+    {
+      "event": "started",
+      "data": {
+        "query": "Assess CVE-2024-35195 in the Python requests library and how urgently to patch.",
+        "model": "sonnet"
+      },
+      "at_ms": 233
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "UserPromptNode"
+      },
+      "at_ms": 245
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "ModelRequestNode"
+      },
+      "at_ms": 245
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "CallToolsNode"
+      },
+      "at_ms": 3264
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "ModelRequestNode"
+      },
+      "at_ms": 4158
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "CallToolsNode"
+      },
+      "at_ms": 6349
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "ModelRequestNode"
+      },
+      "at_ms": 6918
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "CallToolsNode"
+      },
+      "at_ms": 26564
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "ModelRequestNode"
+      },
+      "at_ms": 26565
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "CallToolsNode"
+      },
+      "at_ms": 37513
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "End"
+      },
+      "at_ms": 37515
+    },
+    {
+      "event": "final",
+      "data": {
+        "summary": "CVE-2024-35195 is a MEDIUM-severity (CVSS 5.6) flaw in Python `requests` &lt; 2.32.0. A Session that first calls a host with verify=False silently disables TLS cert verification for all subsequent connections to that host in the pool, enabling potential MitM attacks even if later requests set verify=True.",
+        "severity": "medium",
+        "confidence": "high",
+        "recommended_action": "SSVC: Track* \u2014 No public exploits, not in CISA KEV, EPSS very low (0.34%, 26th percentile). Patch within standard update timelines: upgrade to requests>=2.32.0 (`pip install --upgrade requests`). Interim: audit Session usage for mixed verify= settings; never set verify=False on an early request in a shared session. Ref: GHSA-9wx4-h78v-vm56.",
+        "cves": [
+          {
+            "cve_id": "CVE-2024-35195",
+            "summary": "In Python `requests` < 2.32.0, a Session that first calls a host with verify=False disables TLS certificate verification for all subsequent connections to that host in the connection pool, silently overriding any later verify=True \u2014 enabling man-in-the-middle attacks.",
+            "cvss_v3_score": 5.6,
+            "severity": "medium",
+            "exploits_public": false,
+            "affected_products": [
+              "psf/requests < 2.32.0"
+            ],
+            "nvd_url": "https://nvd.nist.gov/vuln/detail/CVE-2024-35195",
+            "in_kev_catalog": false,
+            "kev_due_date": null,
+            "known_ransomware_use": null,
+            "epss_probability": 0.0034,
+            "epss_percentile": 0.25971
+          }
+        ],
+        "attack_techniques": [],
+        "reasoning_chain": [
+          "cve_lookup(CVE-2024-35195) -> CVSS 5.6 MEDIUM, CWE-670 (Always-Incorrect Control Flow), affects requests < 2.32.0",
+          "exploit_check(CVE-2024-35195) -> no public exploits on Exploit-DB or GitHub",
+          "kev_check(CVE-2024-35195) -> not in CISA KEV catalog",
+          "epss_score(CVE-2024-35195) -> probability=0.0034 (0.34%), percentile=0.26 \u2014 very low exploitation likelihood",
+          "patch_lookup(CVE-2024-35195) -> NVD CPE entries absent, but CVE text and references confirm fix in requests 2.32.0",
+          "attack_mapping([CWE-670]) -> no matching ATT&CK technique in curated table",
+          "Decision: no KEV, no public exploit, low EPSS -> SSVC Track* (standard timelines); recommend upgrade to requests>=2.32.0"
+        ],
+        "ssvc": {
+          "decision": "Track",
+          "rule": "baseline",
+          "rationale": "SSVC decision Track: CVE-2024-35195 no active-exploitation, public-exploit, or high-EPSS signal observed.",
+          "driving_cve": "CVE-2024-35195"
+        },
+        "signal_coverage": [
+          {
+            "feed": "nvd",
+            "status": "found",
+            "detail": null
+          },
+          {
+            "feed": "kev",
+            "status": "not_found",
+            "detail": null
+          },
+          {
+            "feed": "epss",
+            "status": "found",
+            "detail": null
+          },
+          {
+            "feed": "exploit",
+            "status": "not_found",
+            "detail": null
+          },
+          {
+            "feed": "attack",
+            "status": "not_found",
+            "detail": null
+          }
+        ]
+      },
+      "at_ms": 37537
+    },
+    {
+      "event": "usage",
+      "data": {
+        "input_tokens": 38159,
+        "output_tokens": 2244,
+        "requests": 4
+      },
+      "at_ms": 37537
+    }
+  ]
+}

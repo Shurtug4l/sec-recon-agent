@@ -1,0 +1,272 @@
+{
+  "slug": "log4shell",
+  "cve": "CVE-2021-44228",
+  "title": "Log4Shell",
+  "subtitle": "Apache Log4j JNDI lookup RCE",
+  "query": "How urgently should I patch CVE-2021-44228 (Log4Shell) in Apache Log4j? Give me the remediation priority.",
+  "model": "sonnet",
+  "capturedAt": "2026-07-02",
+  "decision": "Act",
+  "durationMs": 134353,
+  "frames": [
+    {
+      "event": "started",
+      "data": {
+        "query": "How urgently should I patch CVE-2021-44228 (Log4Shell) in Apache Log4j? Give me the remediation priority.",
+        "model": "sonnet"
+      },
+      "at_ms": 240
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "UserPromptNode"
+      },
+      "at_ms": 254
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "ModelRequestNode"
+      },
+      "at_ms": 254
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "CallToolsNode"
+      },
+      "at_ms": 3245
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "ModelRequestNode"
+      },
+      "at_ms": 4061
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "CallToolsNode"
+      },
+      "at_ms": 6480
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "ModelRequestNode"
+      },
+      "at_ms": 82640
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "CallToolsNode"
+      },
+      "at_ms": 113535
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "ModelRequestNode"
+      },
+      "at_ms": 113536
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "CallToolsNode"
+      },
+      "at_ms": 134333
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "End"
+      },
+      "at_ms": 134334
+    },
+    {
+      "event": "final",
+      "data": {
+        "summary": "CVE-2021-44228 (Log4Shell) is a maximum-severity (CVSS 10.0 CRITICAL) remote code execution vulnerability in Apache Log4j2. It is on the CISA KEV catalog, linked to ransomware campaigns, has an EPSS probability of ~100% (100th percentile), and multiple public exploits \u2014 the highest possible remediation priority.",
+        "severity": "critical",
+        "confidence": "high",
+        "recommended_action": "SSVC: Act \u2014 Patch out-of-cycle immediately. KEV-listed (due 2021-12-24), ransomware-associated, EPSS 99.999% (100th percentile), public exploits on Exploit-DB. Upgrade Log4j2 to 2.17.0+ (Java 8+), 2.12.3 (Java 7), or 2.3.1 (Java 6). Interim: set -Dlog4j2.formatMsgNoLookups=true or remove JndiLookup from classpath. Block outbound LDAP/RMI. Audit transitive Log4j dependencies across all products.",
+        "cves": [
+          {
+            "cve_id": "CVE-2021-44228",
+            "summary": "Apache Log4j2 JNDI injection vulnerability allowing unauthenticated remote code execution via attacker-controlled log message parameters. Affects versions 2.0-beta9 through 2.14.1 (excluding 2.12.2, 2.12.3, 2.3.1). Fully resolved in 2.17.0+.",
+            "cvss_v3_score": 10.0,
+            "severity": "critical",
+            "exploits_public": true,
+            "affected_products": [
+              "Apache Log4j2 2.0-beta9 through 2.14.1",
+              "Siemens multiple products",
+              "Cisco multiple products",
+              "VMware multiple products",
+              "SonicWall Email Security",
+              "Intel Datacenter Manager"
+            ],
+            "nvd_url": "https://nvd.nist.gov/vuln/detail/CVE-2021-44228",
+            "in_kev_catalog": true,
+            "kev_due_date": "2021-12-24",
+            "known_ransomware_use": true,
+            "epss_probability": 0.99999,
+            "epss_percentile": 1.0
+          }
+        ],
+        "attack_techniques": [
+          {
+            "id": "T1190",
+            "name": "Exploit Public-Facing Application",
+            "tactics": [
+              "Initial Access"
+            ],
+            "url": "https://attack.mitre.org/techniques/T1190/",
+            "mitigations": [
+              {
+                "id": "M1016",
+                "name": "Vulnerability Scanning",
+                "url": "https://attack.mitre.org/mitigations/M1016/"
+              },
+              {
+                "id": "M1030",
+                "name": "Network Segmentation",
+                "url": "https://attack.mitre.org/mitigations/M1030/"
+              },
+              {
+                "id": "M1048",
+                "name": "Application Isolation and Sandboxing",
+                "url": "https://attack.mitre.org/mitigations/M1048/"
+              },
+              {
+                "id": "M1050",
+                "name": "Exploit Protection",
+                "url": "https://attack.mitre.org/mitigations/M1050/"
+              },
+              {
+                "id": "M1051",
+                "name": "Update Software",
+                "url": "https://attack.mitre.org/mitigations/M1051/"
+              }
+            ],
+            "related_cwes": [
+              "CWE-20",
+              "CWE-502"
+            ]
+          },
+          {
+            "id": "T1059",
+            "name": "Command and Scripting Interpreter",
+            "tactics": [
+              "Execution"
+            ],
+            "url": "https://attack.mitre.org/techniques/T1059/",
+            "mitigations": [
+              {
+                "id": "M1038",
+                "name": "Execution Prevention",
+                "url": "https://attack.mitre.org/mitigations/M1038/"
+              },
+              {
+                "id": "M1042",
+                "name": "Disable or Remove Feature or Program",
+                "url": "https://attack.mitre.org/mitigations/M1042/"
+              },
+              {
+                "id": "M1049",
+                "name": "Antivirus / Antimalware",
+                "url": "https://attack.mitre.org/mitigations/M1049/"
+              },
+              {
+                "id": "M1054",
+                "name": "Software Configuration",
+                "url": "https://attack.mitre.org/mitigations/M1054/"
+              }
+            ],
+            "related_cwes": [
+              "CWE-502"
+            ]
+          },
+          {
+            "id": "T1499",
+            "name": "Endpoint Denial of Service",
+            "tactics": [
+              "Impact"
+            ],
+            "url": "https://attack.mitre.org/techniques/T1499/",
+            "mitigations": [
+              {
+                "id": "M1037",
+                "name": "Filter Network Traffic",
+                "url": "https://attack.mitre.org/mitigations/M1037/"
+              },
+              {
+                "id": "M1051",
+                "name": "Update Software",
+                "url": "https://attack.mitre.org/mitigations/M1051/"
+              }
+            ],
+            "related_cwes": [
+              "CWE-400"
+            ]
+          }
+        ],
+        "reasoning_chain": [
+          "cve_lookup(CVE-2021-44228) -> CVSS 10.0 CRITICAL, CWEs: CWE-20, CWE-400, CWE-502, CWE-917; JNDI RCE in Log4j2 2.0-beta9 through 2.14.1",
+          "exploit_check(CVE-2021-44228) -> has_public_exploit=true; Exploit-DB IDs: 51183, 50592, 50590",
+          "kev_check(CVE-2021-44228) -> in_catalog=true; added 2021-12-10; due 2021-12-24; known_ransomware_use=true",
+          "epss_score(CVE-2021-44228) -> probability=0.99999, percentile=1.0 (100th percentile \u2014 highest possible exploitation likelihood)",
+          "patch_lookup(CVE-2021-44228) -> fixed in Log4j 2.3.1 (Java 6), 2.12.2/2.12.3 (Java 7), 2.15.0+ (Java 8+); recommend 2.17.0+ for full remediation",
+          "attack_mapping([CWE-20, CWE-400, CWE-502, CWE-917]) -> T1190 (Initial Access), T1059 (Execution), T1499 (Impact)",
+          "Decision: All SSVC Act triggers satisfied \u2014 KEV + ransomware + public exploit + maximum EPSS. Highest possible remediation urgency."
+        ],
+        "ssvc": {
+          "decision": "Act",
+          "rule": "ransomware",
+          "rationale": "SSVC decision Act: CVE-2021-44228 on the CISA KEV catalog and associated with known ransomware campaigns.",
+          "driving_cve": "CVE-2021-44228"
+        },
+        "signal_coverage": [
+          {
+            "feed": "nvd",
+            "status": "found",
+            "detail": null
+          },
+          {
+            "feed": "kev",
+            "status": "found",
+            "detail": null
+          },
+          {
+            "feed": "epss",
+            "status": "found",
+            "detail": null
+          },
+          {
+            "feed": "exploit",
+            "status": "found",
+            "detail": null
+          },
+          {
+            "feed": "attack",
+            "status": "found",
+            "detail": null
+          }
+        ]
+      },
+      "at_ms": 134353
+    },
+    {
+      "event": "usage",
+      "data": {
+        "input_tokens": 55569,
+        "output_tokens": 4231,
+        "requests": 4
+      },
+      "at_ms": 134353
+    }
+  ]
+}

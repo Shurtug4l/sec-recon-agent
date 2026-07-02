@@ -1,0 +1,10 @@
+{
+  "sampled": 100,
+  "top_k": 10,
+  "query_chars": 160,
+  "mrr": 0.9495833333333333,
+  "hit_rate_at_1": 0.93,
+  "hit_rate_at_3": 0.97,
+  "hit_rate_at_5": 0.97,
+  "p95_similarity_top1": 0.9847938299179076
+}

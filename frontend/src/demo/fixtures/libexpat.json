@@ -1,0 +1,228 @@
+{
+  "slug": "libexpat",
+  "cve": "CVE-2024-45491",
+  "title": "libexpat overflow",
+  "subtitle": "XML parser integer overflow",
+  "query": "Assess CVE-2024-45491 in libexpat and the remediation urgency.",
+  "model": "sonnet",
+  "capturedAt": "2026-07-02",
+  "decision": "Track*",
+  "durationMs": 45472,
+  "frames": [
+    {
+      "event": "started",
+      "data": {
+        "query": "Assess CVE-2024-45491 in libexpat and the remediation urgency.",
+        "model": "sonnet"
+      },
+      "at_ms": 31
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "UserPromptNode"
+      },
+      "at_ms": 49
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "ModelRequestNode"
+      },
+      "at_ms": 50
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "CallToolsNode"
+      },
+      "at_ms": 3007
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "ModelRequestNode"
+      },
+      "at_ms": 4020
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "CallToolsNode"
+      },
+      "at_ms": 6100
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "ModelRequestNode"
+      },
+      "at_ms": 6686
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "CallToolsNode"
+      },
+      "at_ms": 29830
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "ModelRequestNode"
+      },
+      "at_ms": 29831
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "CallToolsNode"
+      },
+      "at_ms": 45467
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "End"
+      },
+      "at_ms": 45468
+    },
+    {
+      "event": "final",
+      "data": {
+        "summary": "CVE-2024-45491 is a CRITICAL integer overflow (CWE-190) in libexpat before 2.6.3. The flaw in dtdCopy() within xmlparse.c allows an integer overflow for nDefaultAtts on 32-bit platforms, potentially enabling memory corruption or remote code execution. The fix is available in libexpat 2.6.3.",
+        "severity": "critical",
+        "confidence": "high",
+        "recommended_action": "Upgrade libexpat to 2.6.3+. Not in CISA KEV; no public exploit confirmed. CVSS 9.8 Critical, EPSS 62nd percentile (1.13%). SSVC: Track* \u2014 patch within standard timelines, especially on 32-bit systems. Apply exploit protections (ASLR, stack canaries) and sandbox XML-parsing components as interim measures. Check downstream embedders (Python, PHP, Apache httpd) for their own updates.",
+        "cves": [
+          {
+            "cve_id": "CVE-2024-45491",
+            "summary": "Integer overflow in dtdCopy() in libexpat < 2.6.3 for nDefaultAtts on 32-bit platforms (where UINT_MAX == SIZE_MAX), potentially enabling memory corruption or code execution.",
+            "cvss_v3_score": 9.8,
+            "severity": "critical",
+            "exploits_public": false,
+            "affected_products": [
+              "libexpat < 2.6.3"
+            ],
+            "nvd_url": "https://nvd.nist.gov/vuln/detail/CVE-2024-45491",
+            "in_kev_catalog": false,
+            "kev_due_date": null,
+            "known_ransomware_use": null,
+            "epss_probability": 0.0113,
+            "epss_percentile": 0.62449
+          }
+        ],
+        "attack_techniques": [
+          {
+            "id": "T1068",
+            "name": "Exploitation for Privilege Escalation",
+            "tactics": [
+              "Privilege Escalation"
+            ],
+            "url": "https://attack.mitre.org/techniques/T1068/",
+            "mitigations": [
+              {
+                "id": "M1048",
+                "name": "Application Isolation and Sandboxing",
+                "url": "https://attack.mitre.org/mitigations/M1048/"
+              },
+              {
+                "id": "M1050",
+                "name": "Exploit Protection",
+                "url": "https://attack.mitre.org/mitigations/M1050/"
+              },
+              {
+                "id": "M1051",
+                "name": "Update Software",
+                "url": "https://attack.mitre.org/mitigations/M1051/"
+              }
+            ],
+            "related_cwes": [
+              "CWE-190"
+            ]
+          },
+          {
+            "id": "T1203",
+            "name": "Exploitation for Client Execution",
+            "tactics": [
+              "Execution"
+            ],
+            "url": "https://attack.mitre.org/techniques/T1203/",
+            "mitigations": [
+              {
+                "id": "M1048",
+                "name": "Application Isolation and Sandboxing",
+                "url": "https://attack.mitre.org/mitigations/M1048/"
+              },
+              {
+                "id": "M1050",
+                "name": "Exploit Protection",
+                "url": "https://attack.mitre.org/mitigations/M1050/"
+              },
+              {
+                "id": "M1051",
+                "name": "Update Software",
+                "url": "https://attack.mitre.org/mitigations/M1051/"
+              }
+            ],
+            "related_cwes": [
+              "CWE-190"
+            ]
+          }
+        ],
+        "reasoning_chain": [
+          "cve_lookup(CVE-2024-45491) -> CVSS 9.8 Critical, CWE-190 integer overflow in dtdCopy(), affects libexpat < 2.6.3 on 32-bit platforms",
+          "exploit_check(CVE-2024-45491) -> no public exploits found in Exploit-DB or GitHub",
+          "kev_check(CVE-2024-45491) -> not in CISA KEV catalog, no ransomware association recorded",
+          "epss_score(CVE-2024-45491) -> probability 1.13% (30-day), percentile 62.4%",
+          "patch_lookup(CVE-2024-45491) -> fixed in libexpat 2.6.3",
+          "attack_mapping([CWE-190]) -> T1068 (Privilege Escalation) and T1203 (Client Execution)",
+          "Decision: SSVC Track* - Critical CVSS but no KEV, no public exploit, moderate EPSS; patch within standard timelines"
+        ],
+        "ssvc": {
+          "decision": "Track*",
+          "rule": "high-severity-no-exploitation",
+          "rationale": "SSVC decision Track*: CVE-2024-45491 high CVSS severity with no observed exploitation signal yet.",
+          "driving_cve": "CVE-2024-45491"
+        },
+        "signal_coverage": [
+          {
+            "feed": "nvd",
+            "status": "found",
+            "detail": null
+          },
+          {
+            "feed": "kev",
+            "status": "not_found",
+            "detail": null
+          },
+          {
+            "feed": "epss",
+            "status": "found",
+            "detail": null
+          },
+          {
+            "feed": "exploit",
+            "status": "not_found",
+            "detail": null
+          },
+          {
+            "feed": "attack",
+            "status": "found",
+            "detail": null
+          }
+        ]
+      },
+      "at_ms": 45472
+    },
+    {
+      "event": "usage",
+      "data": {
+        "input_tokens": 38956,
+        "output_tokens": 3030,
+        "requests": 4
+      },
+      "at_ms": 45472
+    }
+  ]
+}

@@ -1,0 +1,245 @@
+{
+  "slug": "apache-mina",
+  "cve": "CVE-2024-52046",
+  "title": "Apache MINA",
+  "subtitle": "Java deserialization RCE",
+  "query": "Assess CVE-2024-52046 in Apache MINA and how urgently to patch it.",
+  "model": "sonnet",
+  "capturedAt": "2026-07-02",
+  "decision": "Attend",
+  "durationMs": 53678,
+  "frames": [
+    {
+      "event": "started",
+      "data": {
+        "query": "Assess CVE-2024-52046 in Apache MINA and how urgently to patch it.",
+        "model": "sonnet"
+      },
+      "at_ms": 37
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "UserPromptNode"
+      },
+      "at_ms": 54
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "ModelRequestNode"
+      },
+      "at_ms": 54
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "CallToolsNode"
+      },
+      "at_ms": 2952
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "ModelRequestNode"
+      },
+      "at_ms": 3529
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "CallToolsNode"
+      },
+      "at_ms": 5998
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "ModelRequestNode"
+      },
+      "at_ms": 6532
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "CallToolsNode"
+      },
+      "at_ms": 34294
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "ModelRequestNode"
+      },
+      "at_ms": 34296
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "CallToolsNode"
+      },
+      "at_ms": 53670
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "End"
+      },
+      "at_ms": 53672
+    },
+    {
+      "event": "final",
+      "data": {
+        "summary": "CVE-2024-52046 is a Critical (CVSS 9.8) unsafe deserialization vulnerability in Apache MINA's ObjectSerializationDecoder that enables unauthenticated Remote Code Execution (RCE). All MINA core 2.0.x, 2.1.x, and 2.2.x releases are affected. No public exploit has been published yet, but the EPSS score places it in the 97.6th percentile for exploitation likelihood \u2014 making it a very high-priority remediation target even without KEV listing.",
+        "severity": "critical",
+        "confidence": "high",
+        "recommended_action": "SSVC: Attend \u2014 EPSS 23.9% (97.6th percentile) demands accelerated patching. Upgrade to MINA core 2.0.27, 2.1.10, or 2.2.4. WARNING: upgrading alone is insufficient \u2014 you must also allowlist accepted deserialization classes in ObjectSerializationDecoder via the new accept() methods; the patched decoder rejects ALL classes by default. Apply network segmentation to MINA ports as interim control. FtpServer, SSHd, and Vysper sub-projects are NOT affected.",
+        "cves": [
+          {
+            "cve_id": "CVE-2024-52046",
+            "summary": "Unsafe Java native deserialization in Apache MINA's ObjectSerializationDecoder allows unauthenticated attackers to achieve Remote Code Execution by sending crafted serialized payloads. Affects MINA core 2.0.x, 2.1.x, 2.2.x; fixed in 2.0.27, 2.1.10, 2.2.4. Upgrading requires additional allowlist configuration.",
+            "cvss_v3_score": 9.8,
+            "severity": "critical",
+            "exploits_public": false,
+            "affected_products": [
+              "Apache MINA core 2.0.x",
+              "Apache MINA core 2.1.x",
+              "Apache MINA core 2.2.x"
+            ],
+            "nvd_url": "https://nvd.nist.gov/vuln/detail/CVE-2024-52046",
+            "in_kev_catalog": false,
+            "kev_due_date": null,
+            "known_ransomware_use": null,
+            "epss_probability": 0.23932,
+            "epss_percentile": 0.97558
+          }
+        ],
+        "attack_techniques": [
+          {
+            "id": "T1059",
+            "name": "Command and Scripting Interpreter",
+            "tactics": [
+              "Execution"
+            ],
+            "url": "https://attack.mitre.org/techniques/T1059/",
+            "mitigations": [
+              {
+                "id": "M1038",
+                "name": "Execution Prevention",
+                "url": "https://attack.mitre.org/mitigations/M1038/"
+              },
+              {
+                "id": "M1042",
+                "name": "Disable or Remove Feature or Program",
+                "url": "https://attack.mitre.org/mitigations/M1042/"
+              },
+              {
+                "id": "M1049",
+                "name": "Antivirus / Antimalware",
+                "url": "https://attack.mitre.org/mitigations/M1049/"
+              },
+              {
+                "id": "M1054",
+                "name": "Software Configuration",
+                "url": "https://attack.mitre.org/mitigations/M1054/"
+              }
+            ],
+            "related_cwes": [
+              "CWE-502"
+            ]
+          },
+          {
+            "id": "T1190",
+            "name": "Exploit Public-Facing Application",
+            "tactics": [
+              "Initial Access"
+            ],
+            "url": "https://attack.mitre.org/techniques/T1190/",
+            "mitigations": [
+              {
+                "id": "M1016",
+                "name": "Vulnerability Scanning",
+                "url": "https://attack.mitre.org/mitigations/M1016/"
+              },
+              {
+                "id": "M1030",
+                "name": "Network Segmentation",
+                "url": "https://attack.mitre.org/mitigations/M1030/"
+              },
+              {
+                "id": "M1048",
+                "name": "Application Isolation and Sandboxing",
+                "url": "https://attack.mitre.org/mitigations/M1048/"
+              },
+              {
+                "id": "M1050",
+                "name": "Exploit Protection",
+                "url": "https://attack.mitre.org/mitigations/M1050/"
+              },
+              {
+                "id": "M1051",
+                "name": "Update Software",
+                "url": "https://attack.mitre.org/mitigations/M1051/"
+              }
+            ],
+            "related_cwes": [
+              "CWE-502"
+            ]
+          }
+        ],
+        "reasoning_chain": [
+          "cve_lookup(CVE-2024-52046) -> CVSS 9.8 CRITICAL, CWE-502 unsafe deserialization, RCE via ObjectSerializationDecoder, affects MINA core 2.0.x/2.1.x/2.2.x",
+          "exploit_check(CVE-2024-52046) -> no public exploits found on Exploit-DB or GitHub",
+          "kev_check(CVE-2024-52046) -> not in CISA KEV catalog",
+          "epss_score(CVE-2024-52046) -> probability 23.9%, percentile 97.6th \u2014 extremely high relative exploitation risk",
+          "patch_lookup(CVE-2024-52046) -> fixed in 2.0.27 (from 2.0.0), 2.1.10 (from 2.1.0), 2.2.4 (from 2.2.0); post-upgrade allowlist config also required",
+          "attack_mapping([CWE-502]) -> T1059 (Execution via Command/Scripting Interpreter), T1190 (Initial Access via Public-Facing App Exploitation)",
+          "SSVC decision: Attend \u2014 public exploit absent and not in KEV, but 97.6th percentile EPSS is a strong real-world risk signal warranting accelerated patching"
+        ],
+        "ssvc": {
+          "decision": "Attend",
+          "rule": "high-epss",
+          "rationale": "SSVC decision Attend: CVE-2024-52046 EPSS predicts high near-term exploitation likelihood.",
+          "driving_cve": "CVE-2024-52046"
+        },
+        "signal_coverage": [
+          {
+            "feed": "nvd",
+            "status": "found",
+            "detail": null
+          },
+          {
+            "feed": "exploit",
+            "status": "not_found",
+            "detail": null
+          },
+          {
+            "feed": "kev",
+            "status": "not_found",
+            "detail": null
+          },
+          {
+            "feed": "epss",
+            "status": "found",
+            "detail": null
+          },
+          {
+            "feed": "attack",
+            "status": "found",
+            "detail": null
+          }
+        ]
+      },
+      "at_ms": 53677
+    },
+    {
+      "event": "usage",
+      "data": {
+        "input_tokens": 41494,
+        "output_tokens": 3710,
+        "requests": 4
+      },
+      "at_ms": 53677
+    }
+  ]
+}
