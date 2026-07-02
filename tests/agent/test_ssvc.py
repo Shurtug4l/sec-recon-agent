@@ -123,6 +123,22 @@ def test_assess_empty_report_is_track_no_cves() -> None:
     assert assessment.driving_cve is None
 
 
+def test_assess_all_track_report_records_driver() -> None:
+    # A report whose CVEs all score Track must still name a driving CVE and
+    # the rule that fired: reporting "no CVEs were grounded" when CVEs are
+    # present (they merely scored Track) is a false rationale.
+    cves = [
+        _cve("CVE-2024-35195", severity=Severity.MEDIUM),  # baseline / Track
+        _cve("CVE-2024-47081", severity=Severity.LOW),  # baseline / Track
+    ]
+    assessment = assess_ssvc(cves)
+    assert assessment.decision is SsvcDecision.TRACK
+    assert assessment.rule == "baseline"
+    assert assessment.driving_cve == "CVE-2024-35195"
+    assert "no CVEs were grounded" not in assessment.rationale
+    assert "CVE-2024-35195" in assessment.rationale
+
+
 def test_assess_picks_most_urgent_cve_and_records_driver() -> None:
     cves = [
         _cve("CVE-2020-0001", severity=Severity.LOW),  # baseline / Track
