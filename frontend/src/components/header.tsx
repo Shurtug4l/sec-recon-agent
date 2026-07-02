@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   BarChart3,
   BookOpen,
+  ClipboardCheck,
   Home,
   MessageSquare,
   ShieldAlert,
@@ -17,6 +18,7 @@ const TABS = [
   { href: "/", label: "Home", icon: Home, match: (p: string) => p === "/" },
   { href: "/triage", label: "Triage", icon: MessageSquare, match: (p: string) => p.startsWith("/triage") },
   { href: "/dashboard", label: "Dashboard", icon: BarChart3, match: (p: string) => p.startsWith("/dashboard") },
+  { href: "/scorecard", label: "Scorecard", icon: ClipboardCheck, match: (p: string) => p.startsWith("/scorecard") },
   { href: "/guide", label: "Guide", icon: BookOpen, match: (p: string) => p.startsWith("/guide") },
 ];
 

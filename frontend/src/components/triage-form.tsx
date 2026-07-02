@@ -5,6 +5,9 @@ import { Send, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useTriage } from "@/hooks/use-triage";
+import { DEMO_MODE } from "@/demo/config";
+import { DEMO_FIXTURES } from "@/demo/fixtures";
+import { cn } from "@/lib/utils";
 
 interface Props {
   isRunning: boolean;
@@ -44,6 +47,14 @@ const EXAMPLES: { label: string; value: string }[] = [
   },
 ];
 
+// SSVC decision -> chip tint, so the demo gallery reads as a ladder at a glance.
+const DECISION_CLASS: Record<string, string> = {
+  Act: "border-destructive/50 text-destructive",
+  Attend: "border-warning/50 text-warning",
+  "Track*": "border-[hsl(var(--severity-low))]/50 text-[hsl(var(--severity-low))]",
+  Track: "border-border text-muted-foreground",
+};
+
 export function TriageForm({ isRunning, onSubmit, onCancel }: Props) {
   const { draftQuery, setDraftQuery } = useTriage();
 
@@ -54,8 +65,49 @@ export function TriageForm({ isRunning, onSubmit, onCancel }: Props) {
     onSubmit(trimmed);
   }
 
+  function runFixture(query: string) {
+    if (isRunning) return;
+    setDraftQuery(query);
+    onSubmit(query);
+  }
+
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
+      {DEMO_MODE && (
+        <div className="rounded-lg border border-border bg-card/50 p-3">
+          <p className="mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">
+            Example triages · click to replay a real captured run
+          </p>
+          <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+            {DEMO_FIXTURES.map((f) => (
+              <button
+                key={f.slug}
+                type="button"
+                onClick={() => runFixture(f.query)}
+                disabled={isRunning}
+                className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-xs font-medium text-foreground">
+                    {f.title}
+                  </span>
+                  <span className="block truncate text-[10px] text-muted-foreground">
+                    {f.cve} · {f.subtitle}
+                  </span>
+                </span>
+                <span
+                  className={cn(
+                    "shrink-0 rounded-full border px-2 py-0.5 font-mono text-[10px]",
+                    DECISION_CLASS[f.decision],
+                  )}
+                >
+                  {f.decision}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <Textarea
         value={draftQuery}
         onChange={(e) => setDraftQuery(e.target.value)}
@@ -67,19 +119,20 @@ export function TriageForm({ isRunning, onSubmit, onCancel }: Props) {
       />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1">
-          {EXAMPLES.map((ex) => (
-            <Button
-              key={ex.label}
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-7 text-[11px] text-muted-foreground"
-              onClick={() => setDraftQuery(ex.value)}
-              disabled={isRunning}
-            >
-              {ex.label}
-            </Button>
-          ))}
+          {!DEMO_MODE &&
+            EXAMPLES.map((ex) => (
+              <Button
+                key={ex.label}
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 text-[11px] text-muted-foreground"
+                onClick={() => setDraftQuery(ex.value)}
+                disabled={isRunning}
+              >
+                {ex.label}
+              </Button>
+            ))}
         </div>
         <div className="flex items-center gap-2">
           <span className="text-[10px] text-muted-foreground">{draftQuery.length.toLocaleString()}/100,000</span>

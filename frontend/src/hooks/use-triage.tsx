@@ -4,13 +4,21 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useRef,
   useState,
 } from "react";
 
 import { useHistory } from "@/hooks/use-history";
 import { streamSse } from "@/lib/sse";
-import type { HistoryEntry, NodeEvent, TriageReport } from "@/lib/types";
+import { DEMO_MODE } from "@/demo/config";
+import {
+  demoHistorySeed,
+  historyEntryFromFixture,
+  matchFixture,
+} from "@/demo/fixtures";
+import { replayFixture } from "@/demo/replay";
+import type { HistoryEntry, NodeEvent, SseEvent, TriageReport } from "@/lib/types";
 
 // Provider-backed agent run state.
 //
@@ -64,7 +72,17 @@ export function TriageProvider({ children }: { children: React.ReactNode }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draftQuery, setDraftQuery] = useState<string>("");
   const abortRef = useRef<AbortController | null>(null);
-  const { entries, hydrated, add, update, clear } = useHistory();
+  const { entries, hydrated, add, update, clear, seed } = useHistory();
+
+  // Demo cold-open: once localStorage has hydrated and the history is empty,
+  // seed the whole real-capture gallery so a first-time visitor lands on a
+  // populated console instead of an empty form. No-op outside demo builds and
+  // no-op when the visitor already has runs (seed guards on emptiness).
+  useEffect(() => {
+    if (DEMO_MODE && hydrated && entries.length === 0) {
+      seed(demoHistorySeed());
+    }
+  }, [hydrated, entries.length, seed]);
 
   const cancel = useCallback(() => {
     abortRef.current?.abort();
@@ -102,68 +120,99 @@ export function TriageProvider({ children }: { children: React.ReactNode }) {
         // event streams in. Snapshotted onto the history entry at `final` so the
         // observability view draws a measured waterfall, not a synthesized one.
         const nodeEvents: NodeEvent[] = [];
+        // In a demo build there is no backend: replay the matching real capture
+        // instead of streaming from the agent API. An unmatched query gets a
+        // nudge toward the example gallery rather than a network error.
+        const demoFixture = DEMO_MODE ? matchFixture(query) : null;
         try {
-          await streamSse({
-            url: "/api/triage",
-            body: { query },
-            signal: ctrl.signal,
-            onEvent: (event) => {
-              // CRITICAL: capture outer-scope variables and persist to history
-              // BEFORE dispatching setState. React 18+ defers setState updater
-              // execution to the render phase (asynchronous w.r.t. dispatch);
-              // doing the capture inside the updater means the assignment
-              // happens AFTER the surrounding await chain has already moved on
-              // to the `finally` block — at which point finalReport is still
-              // null and we patch the history entry with the wrong values.
-              if (event.type === "node") {
-                nodeEvents.push({ name: event.data.node, atMs: Date.now() - startedAt });
-              } else if (event.type === "final") {
-                finalReport = event.data;
-                update(id, {
-                  report: event.data,
-                  error: null,
-                  durationMs: Date.now() - startedAt,
-                  nodeEvents: [...nodeEvents],
-                });
-              } else if (event.type === "usage") {
-                // Arrives after `final`; a partial patch merges it in.
-                update(id, { usage: event.data });
-              } else if (event.type === "error") {
-                finalError = `${event.data.type}: ${event.data.message}`;
-                update(id, {
-                  report: null,
-                  error: finalError,
-                  durationMs: Date.now() - startedAt,
-                });
-              }
+          if (DEMO_MODE && !demoFixture) {
+            finalError =
+              "Demo build: choose one of the example vulnerabilities below (the live agent is not reachable in the hosted demo).";
+            setState((prev) => ({
+              ...prev,
+              error: finalError,
+              isRunning: false,
+              durationMs: Date.now() - startedAt,
+            }));
+            return;
+          }
 
-              // Pure setState updater — no side effects. State machine only.
-              setState((prev) => {
-                switch (event.type) {
-                  case "started":
-                    return prev;
-                  case "node":
-                    return { ...prev, nodes: [...prev.nodes, event.data.node] };
-                  case "final":
-                    return {
-                      ...prev,
-                      report: event.data,
-                      isRunning: false,
-                      durationMs: Date.now() - startedAt,
-                    };
-                  case "error":
-                    return {
-                      ...prev,
-                      error: `${event.data.type}: ${event.data.message}`,
-                      isRunning: false,
-                      durationMs: Date.now() - startedAt,
-                    };
-                  default:
-                    return prev;
-                }
+          const onEvent = (event: SseEvent) => {
+            // CRITICAL: capture outer-scope variables and persist to history
+            // BEFORE dispatching setState. React 18+ defers setState updater
+            // execution to the render phase (asynchronous w.r.t. dispatch);
+            // doing the capture inside the updater means the assignment
+            // happens AFTER the surrounding await chain has already moved on
+            // to the `finally` block — at which point finalReport is still
+            // null and we patch the history entry with the wrong values.
+            if (event.type === "node") {
+              nodeEvents.push({ name: event.data.node, atMs: Date.now() - startedAt });
+            } else if (event.type === "final") {
+              finalReport = event.data;
+              update(id, {
+                report: event.data,
+                error: null,
+                durationMs: Date.now() - startedAt,
+                nodeEvents: [...nodeEvents],
               });
-            },
-          });
+            } else if (event.type === "usage") {
+              // Arrives after `final`; a partial patch merges it in.
+              update(id, { usage: event.data });
+            } else if (event.type === "error") {
+              finalError = `${event.data.type}: ${event.data.message}`;
+              update(id, {
+                report: null,
+                error: finalError,
+                durationMs: Date.now() - startedAt,
+              });
+            }
+
+            // Pure setState updater — no side effects. State machine only.
+            setState((prev) => {
+              switch (event.type) {
+                case "started":
+                  return prev;
+                case "node":
+                  return { ...prev, nodes: [...prev.nodes, event.data.node] };
+                case "final":
+                  return {
+                    ...prev,
+                    report: event.data,
+                    isRunning: false,
+                    durationMs: Date.now() - startedAt,
+                  };
+                case "error":
+                  return {
+                    ...prev,
+                    error: `${event.data.type}: ${event.data.message}`,
+                    isRunning: false,
+                    durationMs: Date.now() - startedAt,
+                  };
+                default:
+                  return prev;
+              }
+            });
+          };
+
+          await (demoFixture
+            ? replayFixture(demoFixture, { signal: ctrl.signal, onEvent })
+            : streamSse({ url: "/api/triage", body: { query }, signal: ctrl.signal, onEvent }));
+
+          if (demoFixture) {
+            // Overwrite with the fixture's REAL measured timing; the replay
+            // cadence is compressed and cosmetic, so the persisted waterfall and
+            // the completion time stay honest to the original capture.
+            const captured = historyEntryFromFixture(demoFixture);
+            finalReport = captured.report;
+            update(id, {
+              report: captured.report,
+              error: null,
+              nodeEvents: captured.nodeEvents,
+              usage: captured.usage,
+              durationMs: captured.durationMs,
+            });
+            setState((prev) => ({ ...prev, durationMs: captured.durationMs }));
+          }
         } catch (err) {
           finalError = ctrl.signal.aborted
             ? "Cancelled"

@@ -1,0 +1,172 @@
+{
+  "slug": "xz-backdoor",
+  "cve": "CVE-2024-3094",
+  "title": "xz-utils backdoor",
+  "subtitle": "liblzma supply-chain implant",
+  "query": "Assess CVE-2024-3094 in xz-utils / liblzma and tell me how urgently to act.",
+  "model": "sonnet",
+  "capturedAt": "2026-07-02",
+  "decision": "Attend",
+  "durationMs": 46711,
+  "frames": [
+    {
+      "event": "started",
+      "data": {
+        "query": "Assess CVE-2024-3094 in xz-utils / liblzma and tell me how urgently to act.",
+        "model": "sonnet"
+      },
+      "at_ms": 40
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "UserPromptNode"
+      },
+      "at_ms": 52
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "ModelRequestNode"
+      },
+      "at_ms": 52
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "CallToolsNode"
+      },
+      "at_ms": 2964
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "ModelRequestNode"
+      },
+      "at_ms": 3650
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "CallToolsNode"
+      },
+      "at_ms": 5816
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "ModelRequestNode"
+      },
+      "at_ms": 6391
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "CallToolsNode"
+      },
+      "at_ms": 31591
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "ModelRequestNode"
+      },
+      "at_ms": 31593
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "CallToolsNode"
+      },
+      "at_ms": 46698
+    },
+    {
+      "event": "node",
+      "data": {
+        "node": "End"
+      },
+      "at_ms": 46707
+    },
+    {
+      "event": "final",
+      "data": {
+        "summary": "CVE-2024-3094 is a CVSS 10.0 supply-chain backdoor planted in xz-utils / liblzma 5.6.0\u20135.6.1. The malicious build-process injection can intercept liblzma calls for any linked software, enabling potential unauthenticated RCE via OpenSSH on glibc Linux. EPSS probability is 86% (99.7th percentile) \u2014 top 0.3% of all scored CVEs.",
+        "severity": "critical",
+        "confidence": "high",
+        "recommended_action": "SSVC: Act \u2014 downgrade xz-utils/liblzma to 5.4.x immediately (last clean release); do not wait for a maintenance window. Audit all Linux systems for xz 5.6.0/5.6.1 (Fedora 41, Debian testing/sid, Arch, openSUSE Tumbleweed were affected). Restart sshd after downgrade; rotate SSH host keys. Treat impacted systems as potentially compromised and initiate incident response.",
+        "cves": [
+          {
+            "cve_id": "CVE-2024-3094",
+            "summary": "Deliberate supply-chain backdoor in xz-utils/liblzma 5.6.0\u20135.6.1. A prebuilt malicious object injected at build time intercepts liblzma calls for all linked software, enabling potential unauthenticated RCE via OpenSSH on glibc Linux systems.",
+            "cvss_v3_score": 10.0,
+            "severity": "critical",
+            "exploits_public": false,
+            "affected_products": [
+              "tukaani xz 5.6.0",
+              "tukaani xz 5.6.1"
+            ],
+            "nvd_url": "https://nvd.nist.gov/vuln/detail/CVE-2024-3094",
+            "in_kev_catalog": false,
+            "kev_due_date": null,
+            "known_ransomware_use": null,
+            "epss_probability": 0.85974,
+            "epss_percentile": 0.99702
+          }
+        ],
+        "attack_techniques": [],
+        "reasoning_chain": [
+          "cve_lookup(CVE-2024-3094) -> CVSS 10.0 CRITICAL, CWE-506 (Embedded Malicious Code), xz 5.6.0 and 5.6.1 affected, deliberate supply-chain backdoor targeting liblzma",
+          "exploit_check(CVE-2024-3094) -> has_public_exploit=false (no Exploit-DB or GitHub PoC; backdoor requires specific triggering conditions)",
+          "kev_check(CVE-2024-3094) -> in_catalog=false (not in CISA KEV at query time)",
+          "epss_score(CVE-2024-3094) -> probability=0.860, percentile=0.997 \u2014 top 0.3% of all scored CVEs",
+          "patch_lookup(CVE-2024-3094) -> no NVD CPE fix entries; remediation is downgrade to xz 5.4.x per vendor advisories",
+          "attack_mapping([CWE-506]) -> no curated ATT&CK mapping returned for Embedded Malicious Code",
+          "Decision: CVSS 10.0 + 86% EPSS + purposeful backdoor = Act urgency despite absence from CISA KEV"
+        ],
+        "ssvc": {
+          "decision": "Attend",
+          "rule": "high-epss",
+          "rationale": "SSVC decision Attend: CVE-2024-3094 EPSS predicts high near-term exploitation likelihood.",
+          "driving_cve": "CVE-2024-3094"
+        },
+        "signal_coverage": [
+          {
+            "feed": "nvd",
+            "status": "found",
+            "detail": null
+          },
+          {
+            "feed": "kev",
+            "status": "not_found",
+            "detail": null
+          },
+          {
+            "feed": "epss",
+            "status": "found",
+            "detail": null
+          },
+          {
+            "feed": "exploit",
+            "status": "not_found",
+            "detail": null
+          },
+          {
+            "feed": "attack",
+            "status": "not_found",
+            "detail": null
+          }
+        ]
+      },
+      "at_ms": 46711
+    },
+    {
+      "event": "usage",
+      "data": {
+        "input_tokens": 40764,
+        "output_tokens": 2664,
+        "requests": 4
+      },
+      "at_ms": 46711
+    }
+  ]
+}

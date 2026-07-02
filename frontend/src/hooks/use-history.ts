@@ -65,5 +65,17 @@ export function useHistory() {
     }
   }, []);
 
-  return { entries, hydrated, add, update, clear };
+  // Seed an EMPTY history in one shot (demo cold-open). No-op if the user
+  // already has history, so a returning visitor's real runs are never
+  // clobbered by the demo gallery.
+  const seed = useCallback((seedEntries: HistoryEntry[]) => {
+    setEntries((prev) => {
+      if (prev.length > 0) return prev;
+      const next = seedEntries.slice(0, MAX_ENTRIES);
+      writeToStorage(next);
+      return next;
+    });
+  }, []);
+
+  return { entries, hydrated, add, update, clear, seed };
 }

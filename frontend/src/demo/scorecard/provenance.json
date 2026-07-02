@@ -1,0 +1,7 @@
+{
+  "model": "sonnet",
+  "date": "2026-07-01",
+  "commit": "fefbe82",
+  "pricing_note": "Anthropic published rates as of 2026-06-24",
+  "source": "make scorecard on the live stack (PR #76 baseline)"
+}
