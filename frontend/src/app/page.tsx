@@ -6,9 +6,10 @@ import {
   ArrowLeftRight,
   ArrowRight,
   BookOpen,
-  BarChart3,
+  Boxes,
+  Check,
+  Crosshair,
   Database,
-  Eye,
   FileSearch,
   Flame,
   Globe,
@@ -20,6 +21,7 @@ import {
   Sparkles,
   TrendingUp,
   Wrench,
+  X,
 } from "lucide-react";
 
 import { Header } from "@/components/header";
@@ -58,6 +60,38 @@ const PILLARS = [
   {
     title: "Privacy-by-default",
     body: "Query bodies hashed (SHA-256) in audit. Plain-text retention opt-in via env. Append-only SQLite WAL with hash chain.",
+  },
+];
+
+const MANUAL_WAY = [
+  "Five-plus sources opened per CVE: NVD, CISA KEV, EPSS, Exploit-DB, ATT&CK",
+  "CVSS measures capability, not urgency, and gets reconciled by hand",
+  "General-purpose LLMs invent scores, patches, and exploit claims",
+  "No record of how the call was made when someone asks three months later",
+];
+
+const AGENT_WAY = [
+  "One query returns one grounded, schema-bound TriageReport",
+  "Deterministic SSVC verdict: Act / Attend / Track* / Track",
+  "Every number sourced from a typed tool call, or flagged as missing",
+  "Hash-chained, tamper-evident audit of the whole reasoning chain",
+];
+
+const AUDIENCES = [
+  {
+    role: "Vulnerability & AppSec engineers",
+    icon: ShieldAlert,
+    body: "Turn a CVE backlog into a defensible, prioritized queue. Feed a CVE, a package + version, or a whole SBOM and get one grounded verdict, not ten open browser tabs across NVD, KEV, EPSS, Exploit-DB and ATT&CK.",
+  },
+  {
+    role: "SOC & detection engineers",
+    icon: Crosshair,
+    body: "Every report pivots the underlying CWE weakness classes into MITRE ATT&CK techniques and mitigations: the language detections and purple-team exercises are actually written in.",
+  },
+  {
+    role: "Teams building or vetting LLM agents",
+    icon: Boxes,
+    body: "A working reference for a grounded, type-safe, adversary-aware agent: schema-bounded output, a verdict computed outside the model, MCP tools as auditable contracts, and a falsifiable prompt-injection battery, all measured in a reproducible scorecard.",
   },
 ];
 
@@ -126,6 +160,102 @@ export default function Landing() {
           </div>
         </section>
 
+        {/* Why it matters + who it's for */}
+        <section className="border-b border-border/60">
+          <div className="container max-w-5xl py-12 md:py-16">
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              Why it matters
+            </h2>
+            <p className="mt-4 max-w-3xl text-2xl font-semibold leading-snug tracking-tight text-foreground md:text-3xl">
+              Ten browser tabs and an educated guess, or one grounded verdict in
+              under two minutes.
+            </p>
+            <p className="mt-5 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+              Deciding whether a CVE deserves an all-hands response or a slot in
+              next sprint is judgment work, and today it is done by hand: NVD for
+              the CVSS, CISA KEV to see whether it is already being exploited,
+              FIRST EPSS for the probability, Exploit-DB and GitHub for public
+              PoCs, then reconcile it all into one call. Per CVE. Reach for a
+              general-purpose LLM to go faster and it will confidently hand you a
+              CVSS that does not exist. This agent runs that entire fusion across
+              live authoritative feeds and returns a{" "}
+              <span className="text-foreground">deterministic SSVC verdict</span>,
+              never an invented one.
+            </p>
+
+            <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="rounded-lg border border-dashed border-border bg-card/40 p-5">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  The manual way
+                </p>
+                <ul className="mt-3 space-y-2.5">
+                  {MANUAL_WAY.map((t) => (
+                    <li
+                      key={t}
+                      className="flex gap-2.5 text-sm leading-relaxed text-muted-foreground"
+                    >
+                      <X className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/70" />
+                      <span>{t}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="rounded-lg border border-primary/40 bg-primary/[0.04] p-5">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">
+                  With sec-recon-agent
+                </p>
+                <ul className="mt-3 space-y-2.5">
+                  {AGENT_WAY.map((t) => (
+                    <li
+                      key={t}
+                      className="flex gap-2.5 text-sm leading-relaxed text-foreground/90"
+                    >
+                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                      <span>{t}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            <p className="mt-6 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+              It is not another scanner. Trivy and Grype tell you{" "}
+              <span className="text-foreground">which</span> packages are
+              vulnerable; sec-recon-agent is the reasoning layer that comes next,
+              deciding which of those actually demand your morning and proving why
+              in a{" "}
+              <a
+                href="https://github.com/Shurtug4l/sec-recon-agent/blob/main/SCORECARD.md"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                reproducible scorecard
+              </a>
+              .
+            </p>
+
+            <h2 className="mt-12 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              Who it&apos;s for
+            </h2>
+            <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+              {AUDIENCES.map(({ role, body, icon: Icon }) => (
+                <Card key={role}>
+                  <CardContent className="space-y-3 p-5">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary/10 text-primary">
+                      <Icon className="h-4 w-4" />
+                    </div>
+                    <h3 className="text-sm font-semibold">{role}</h3>
+                    <p className="text-sm leading-relaxed text-muted-foreground">
+                      {body}
+                    </p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* Pillars */}
         <section className="border-b border-border/60">
           <div className="container max-w-5xl py-12 md:py-16">
@@ -180,45 +310,6 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* Quick nav to sections */}
-        <section>
-          <div className="container max-w-5xl py-12 md:py-16">
-            <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              Where to go next
-            </h2>
-            <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <NavCard
-                href="/triage"
-                icon={ShieldAlert}
-                title="Triage"
-                blurb="Run a query against the live agent. CVE, version, SBOM, Nmap."
-              />
-              <NavCard
-                href="/dashboard"
-                icon={BarChart3}
-                title="Dashboard"
-                blurb="Statistics, observability timeline, transparency on tools and prompt."
-              />
-              <NavCard
-                href="/guide"
-                icon={BookOpen}
-                title="Guide"
-                blurb="What is MITRE ATT&CK, ATLAS, CISA KEV, EPSS, CVSS, SBOM. Glossary + references."
-              />
-            </div>
-            <div className="mt-8 flex flex-wrap items-center gap-3 rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
-              <Eye className="h-4 w-4 shrink-0 text-primary" />
-              <span>
-                Transparency lives at{" "}
-                <Link href="/dashboard" className="text-primary hover:underline">
-                  /dashboard
-                </Link>
-                : system prompt, tool inventory, and the architectural guarantees
-                that bound what the agent can do.
-              </span>
-            </div>
-          </div>
-        </section>
       </main>
     </div>
   );
@@ -248,34 +339,6 @@ function HeroStats() {
         </div>
       ))}
     </dl>
-  );
-}
-
-function NavCard({
-  href,
-  icon: Icon,
-  title,
-  blurb,
-}: {
-  href: string;
-  icon: React.ElementType;
-  title: string;
-  blurb: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className="group rounded-md border border-border bg-card p-5 transition-all hover:border-primary/60 hover:shadow-sm"
-    >
-      <div className="flex items-center gap-2">
-        <Icon className="h-4 w-4 text-primary" />
-        <span className="text-sm font-semibold">{title}</span>
-        <ArrowRight className="ml-auto h-3.5 w-3.5 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-      </div>
-      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-        {blurb}
-      </p>
-    </Link>
   );
 }
 

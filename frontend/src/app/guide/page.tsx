@@ -6,10 +6,14 @@ import {
   Crosshair,
   ExternalLink,
   Flame,
+  Gauge,
   Gavel,
+  Layers,
   Library,
+  MessageSquare,
   Network,
   Package,
+  Share2,
   ShieldAlert,
   ShieldCheck,
   TrendingUp,
@@ -210,6 +214,72 @@ const SECTIONS: Section[] = [
   },
 ];
 
+const INPUT_TYPES: { label: string; example: string; desc: string }[] = [
+  {
+    label: "A CVE ID",
+    example: "CVE-2021-44228",
+    desc: "The full NVD record plus every operational signal (KEV, EPSS, exploits, patch) fan out in parallel.",
+  },
+  {
+    label: "A package at a version",
+    example: "log4j-core 2.14.1",
+    desc: "OSV.dev advisories for that exact package and version — the inverse lookup.",
+  },
+  {
+    label: "A natural-language question",
+    example: "Is my Spring app exposed to Spring4Shell?",
+    desc: "Semantic search over ~20k recent high-severity CVEs when there is no explicit ID.",
+  },
+  {
+    label: "An SBOM",
+    example: "CycloneDX / SPDX / requirements.txt",
+    desc: "Paste it to bulk-triage the most-likely-vulnerable components in one pass.",
+  },
+  {
+    label: "Nmap XML",
+    example: "nmap -oX scan.xml",
+    desc: "Service banners become CVE queries; parsing is XXE-safe (defusedxml, no DTD).",
+  },
+];
+
+const SSVC_LADDER: { decision: string; when: string }[] = [
+  {
+    decision: "Act",
+    when: "Remediate now. The CVE is on CISA KEV, or associated with ransomware, or has a public exploit paired with a high EPSS probability.",
+  },
+  {
+    decision: "Attend",
+    when: "Prioritize in the fast lane of the normal cycle. A public exploit already exists, or EPSS is elevated.",
+  },
+  {
+    decision: "Track*",
+    when: "Watch closely. High severity but no confirmed exploitation yet; a pre-mortem signal, not an emergency.",
+  },
+  {
+    decision: "Track",
+    when: "Routine handling. No KEV listing, no known exploit, low exploitation probability.",
+  },
+];
+
+const REPORT_PARTS: { label: string; desc: string }[] = [
+  {
+    label: "Signal coverage",
+    desc: "A per-feed strip: found / no entry / error / not queried. Honesty about what the agent actually reached; a feed that was down is shown, never silently skipped.",
+  },
+  {
+    label: "CVE cards",
+    desc: "CVSS score and vector, CISA KEV membership and due date, EPSS probability and percentile, ransomware association, and the concrete fixed version when one exists.",
+  },
+  {
+    label: "ATT&CK techniques",
+    desc: "The underlying weakness classes (CWE) mapped to MITRE ATT&CK techniques and mitigations, so the report speaks the language of detection engineering.",
+  },
+  {
+    label: "Reasoning waterfall",
+    desc: "Every Pydantic AI node with its measured duration, plus token usage and cost for the run. The reasoning chain is the audit log, not a black box.",
+  },
+];
+
 export default function GuidePage() {
   const [activeId, setActiveId] = useState<string>(SECTIONS[0].id);
 
@@ -235,16 +305,163 @@ export default function GuidePage() {
         <div className="container max-w-6xl py-8">
           <div className="mb-8">
             <Badge variant="secondary" className="mb-3 font-mono text-[10px]">
-              Glossary &amp; references
+              How to use it &amp; glossary
             </Badge>
-            <h1 className="text-3xl font-semibold tracking-tight">Frameworks under the hood</h1>
+            <h1 className="text-3xl font-semibold tracking-tight">Guide</h1>
             <p className="mt-3 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-              The agent grounds answers in a stack of public security standards and
-              data sources. This page is a working glossary: what each framework is,
-              why it appears in the triage output, and where to read the primary
-              source. Useful both for picking up the project and for explaining the
-              report to a stakeholder who has not seen MITRE before.
+              Two parts. First, how to drive the agent: what to type, and how to
+              read the verdict it streams back. Then a working glossary of the
+              security frameworks and data sources under the hood: what each one
+              is, why it appears in the triage output, and where to read the
+              primary source. Useful both for running a triage and for explaining
+              the report to a stakeholder who has not seen MITRE before.
             </p>
+          </div>
+
+          {/* Part 1 — how to use the agent */}
+          <section className="mb-14 space-y-5">
+            <div className="flex items-baseline gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                Part 1
+              </span>
+              <h2 className="text-xl font-semibold tracking-tight">Driving the agent</h2>
+            </div>
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4 text-primary" />
+                    <CardTitle className="text-base">1 &middot; Start a triage</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4 text-sm leading-relaxed">
+                  <p className="text-foreground/90">
+                    Open the{" "}
+                    <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[12px]">
+                      Triage
+                    </code>{" "}
+                    tab and describe what to assess. The agent selects the tools
+                    from the shape of the input; you never wire them by hand.
+                    Five accepted inputs:
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {INPUT_TYPES.map((it) => (
+                      <div
+                        key={it.label}
+                        className="rounded-md border border-border bg-card p-3"
+                      >
+                        <div className="flex flex-wrap items-baseline gap-2">
+                          <span className="text-sm font-semibold">{it.label}</span>
+                          <code className="font-mono text-[11px] text-muted-foreground">
+                            {it.example}
+                          </code>
+                        </div>
+                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                          {it.desc}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    The report streams in node by node as the agent reasons; a
+                    single-CVE triage typically settles in under two minutes.
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <Gauge className="h-4 w-4 text-primary" />
+                    <CardTitle className="text-base">
+                      2 &middot; Read the SSVC verdict
+                    </CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4 text-sm leading-relaxed">
+                  <p className="text-foreground/90">
+                    The verdict is the headline of the report. It is computed
+                    server-side from the operational signals, not guessed by the
+                    model, and answers a single question: how urgently does this
+                    need action? Four rungs, most urgent first:
+                  </p>
+                  <ul className="space-y-2">
+                    {SSVC_LADDER.map((s) => (
+                      <li key={s.decision} className="flex gap-3">
+                        <code className="mt-0.5 shrink-0 rounded bg-primary/10 px-2 py-0.5 font-mono text-[12px] font-semibold text-primary">
+                          {s.decision}
+                        </code>
+                        <span className="text-sm leading-relaxed text-muted-foreground">
+                          {s.when}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-xs text-muted-foreground">
+                    The rationale names the driving CVE and the rule that fired,
+                    and links straight to that CVE&apos;s card.
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <Layers className="h-4 w-4 text-primary" />
+                    <CardTitle className="text-base">
+                      3 &middot; Read the rest of the report
+                    </CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm leading-relaxed">
+                  {REPORT_PARTS.map((p) => (
+                    <div key={p.label}>
+                      <p className="text-sm font-semibold">{p.label}</p>
+                      <p className="text-sm leading-relaxed text-muted-foreground">
+                        {p.desc}
+                      </p>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <Share2 className="h-4 w-4 text-primary" />
+                    <CardTitle className="text-base">4 &middot; Export &amp; share</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm leading-relaxed text-foreground/90">
+                  <p>
+                    Every report exports to{" "}
+                    <span className="font-semibold">Markdown</span> (for a ticket
+                    or a wiki) or raw <span className="font-semibold">JSON</span>{" "}
+                    (the exact TriageReport, for downstream tooling).
+                  </p>
+                  <p>
+                    <span className="font-semibold">Copy link</span> encodes the
+                    whole report into a URL fragment, compressed client-side. The
+                    fragment never leaves the browser for the server, so a shared
+                    link round-trips the report through the read-only{" "}
+                    <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[12px]">
+                      /r
+                    </code>{" "}
+                    route with zero backend storage.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </section>
+
+          {/* Part 2 — glossary */}
+          <div className="mb-6 flex items-baseline gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+              Part 2
+            </span>
+            <h2 className="text-xl font-semibold tracking-tight">
+              Frameworks under the hood
+            </h2>
           </div>
 
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-[220px_1fr]">
