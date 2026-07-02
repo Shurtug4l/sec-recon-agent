@@ -53,8 +53,12 @@ COPY --from=builder --chown=secrecon:secrecon /app/.venv /app/.venv
 COPY --chown=secrecon:secrecon src/ /app/src/
 COPY --chown=secrecon:secrecon pyproject.toml /app/
 
-# The only writable path inside the container.
-RUN mkdir -p /app/data && chown secrecon:secrecon /app/data
+# Writable mount points. Both dirs are pre-created owned by secrecon so the
+# named volumes mounted over them (sec-recon-data, sec-recon-audit) inherit
+# that ownership; a volume over a missing or root-owned dir is unwritable by
+# the non-root runtime user, which silently breaks the audit trail on the
+# read-only rootfs.
+RUN mkdir -p /app/data /app/audit && chown secrecon:secrecon /app/data /app/audit
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
