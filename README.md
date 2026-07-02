@@ -287,7 +287,7 @@ The agent (`agent/triage.py`) wires these into a Pydantic AI loop with a system 
 
 **Backend** — Python 3.12+, `uv` for env mgmt, `pydantic-ai` for the agent, `mcp` (Anthropic SDK + FastMCP), `fastapi` + `sse-starlette` + `slowapi` (opt-in per-IP rate limit) for the agent API, `chromadb` with the ONNX MiniLM embedder, `httpx` + `tenacity` for outbound calls, `defusedxml` for XML, `pydantic-settings` with `SecretStr` for secrets, `structlog` for logs, `opentelemetry-{api,sdk,instrumentation-{fastapi,httpx},exporter-otlp-proto-http}` for tracing.
 
-**Frontend** — Next.js 15.5 (App Router) on React 19, TypeScript 5.9, Tailwind CSS 3.4 with shadcn-style primitives (`@radix-ui/*` + `class-variance-authority`), `lucide-react` icons, Recharts 3, Catppuccin Macchiato / Latte themes via CSS variables.
+**Frontend** — Next.js 15.5 (App Router) on React 19, TypeScript 5.9, Tailwind CSS 3.4 with shadcn-style primitives (`@radix-ui/*` + `class-variance-authority`), `lucide-react` icons, Recharts 3, Inter + JetBrains Mono via `next/font`. Dark-only "Slate Recon" design system on a single CSS-variable token source.
 
 **Containerization** — Multi-stage Dockerfiles (`python:3.14-slim` backend, `node:22-alpine` frontend), non-root users, `read_only: true` on backend containers, `no-new-privileges`, ports bound to `127.0.0.1` only. Docker Compose orchestrates everything; `--profile observability` adds a Jaeger sidecar. A weekly Trivy scan workflow gates merges on CRITICAL CVEs in either image.
 
@@ -350,22 +350,24 @@ Every TriageReport carries two export buttons on the report card.
 
 ## The frontend
 
-The browser is the primary interface. The header is a macro-tab nav with four entries: **Home** (`/`), **Triage** (`/triage`), **Dashboard** (`/dashboard`), **Guide** (`/guide`). Theme toggle and a GitHub link sit at the end of the bar.
+The browser is the primary interface, in a dark-only "Slate Recon" design system. The header is a macro-tab nav with four entries: **Home** (`/`), **Triage** (`/triage`), **Dashboard** (`/dashboard`), **Guide** (`/guide`), with a GitHub link at the end of the bar. A fifth route, **`/r`**, is a self-contained viewer for shared-report permalinks (not in the nav).
 
 ### Pages
 
-- **Home (`/`)** — Landing: hero, design pillars (type-safety, grounded answers, adversary-aware, privacy-by-default), a 10-tool surface grid, a composed architecture diagram (vertical pipeline of `Browser -> Next.js proxy -> Agent API -> MCP Server` plus a data-source fan-out grid), and quick-nav cards into the other pages.
+- **Home (`/`)** — Landing: a split hero that promotes the composed architecture diagram (vertical pipeline of `Browser -> Next.js proxy -> Agent API -> MCP Server` plus a data-source fan-out grid) above the fold next to the copy, a system-status stat strip, design pillars (type-safety, grounded answers, adversary-aware, privacy-by-default), a 10-tool surface grid, and quick-nav cards into the other pages.
 - **Triage (`/triage`)** — Form + history sidebar + live report. Textarea with four example chips (named CVE, product version, service list, CycloneDX SBOM), resize-y up to 180px min-height, 100,000-char counter, Triage / Stop buttons. Draft text persists across navigation via the `TriageProvider` context, and selecting an entry from the sidebar seeds the textarea with that entry's query.
 - **Dashboard (`/dashboard`)** — three tabs; see below.
 - **Guide (`/guide`)** — Framework explainer with a sticky TOC. One card per framework / standard the agent grounds answers in: CVE / NVD / CVSS / CWE, CISA KEV, FIRST EPSS, MITRE ATT&CK, MITRE ATLAS, SBOM (CycloneDX 1.x JSON / SPDX 2.x JSON / requirements.txt strict subset of PEP 508), Nmap XML + defusedxml, OWASP LLM Top 10 (2025), ISO/IEC 42001:2023 (38 Annex A controls), Pydantic AI, MCP. Each card has "What it is" / "Why it appears here" / "Used by" tool chips / primary references.
 
 ### Triage report
 
-- **Live SSE** — each agent step (`UserPromptNode`, `ModelRequestNode`, `CallToolsNode`, `End`) renders as a row as it streams in, with a spinner on the in-flight step.
+- **Live SSE** — each agent step (`UserPromptNode`, `ModelRequestNode`, `CallToolsNode`, `End`) renders as a row as it streams in, with a spinner on the in-flight step; a trailing `usage` event carries token counts.
+- **SSVC verdict + coverage** — the report leads with the deterministic SSVC verdict as a 4-stop urgency ladder (Act / Attend / Track* / Track; position + icon + text, never color alone) with the driving CVE as a jump-link, plus a per-feed signal-coverage strip (found / not_found / error / not_queried).
 - **Structured report** — severity and confidence badges, per-CVE cards with NVD link, CVSS score, exploit-public badge, KEV / ransomware / EPSS badges, affected products list. Free-text vendor fields wrapped with `<UNTRUSTED_CONTENT>` markers are stripped and re-rendered inside a quote-style block with a "NVD description (untrusted vendor text)" label, so the operator sees the fence semantically.
 - **Reasoning chain** — collapsible audit log at the bottom of every report.
+- **Export + share** — Markdown, raw JSON (verdict + coverage included), print-to-PDF, and a zero-infra "Copy link" permalink that gzip-encodes the whole report into the URL fragment (decoded locally on `/r`, never sent to a server; falls back to JSON past a size cap).
 - **History sidebar** — last 30 runs in `localStorage`, severity badge per entry, click to recall. Visible on `lg+` viewports.
-- **Theme** — Catppuccin Macchiato (dark) + Latte (light), toggle persisted in `localStorage`.
+- **Theme** — dark-only "Slate Recon" (cyan signal + indigo focus accent) on a single CSS-variable token source; no toggle.
 - **No CORS opened on the backend** — the browser talks only to the same-origin `/api/triage` route, which proxies the SSE stream byte-for-byte to FastAPI. The agent API stays single-tenant and unauthenticated by design (see [residual risks](docs/design.md#residual-risks-and-accepted-limits)).
 
 See [`docs/frontend.md`](docs/frontend.md) for the component map and the SSE wire protocol.
@@ -374,8 +376,8 @@ See [`docs/frontend.md`](docs/frontend.md) for the component map and the SSE wir
 
 A separate page with three tabs:
 
-- **Statistics** — KPI cards (total runs, average time, critical count, success rate), severity histogram, tool-call pie chart, top-CVEs table. All computed client-side from the local history. Recharts tooltips are themed against `--popover` / `--popover-foreground` so they read correctly in both Macchiato and Latte.
-- **Observability** — per-run timeline reconstructed from the `reasoning_chain`, with a link to the Jaeger UI for the cross-process span tree.
+- **Statistics** — KPI cards (total runs, average time, critical count, success rate), severity histogram, tool-call pie chart, top-CVEs table. All computed client-side from the local history. Recharts tooltips are themed against the `--popover` tokens; charts enable the accessibility layer.
+- **Observability** — a **measured** node waterfall built from each streamed `node` event's client-side arrival time (real per-segment durations, not synthesized), a token-usage panel, and an env-configurable link to the local Jaeger UI for the cross-process span tree. Tabs are a keyboard-navigable ARIA tablist, deep-linkable via `?tab=`.
 - **Transparency** — the literal system prompt the LLM sees (copyable), the ten-tool inventory with descriptions (count rendered from `meta.tools.length`, never hardcoded), runtime metadata (model, output schema, content boundary), and the explicit list of what the agent CANNOT do (no shell, no out-of-band fetch, no key visibility, no PII in spans).
 
 The transparency tab fetches `GET /v1/meta` via the Next.js proxy; the endpoint exposes the system prompt and tool list so the UI can render them without coupling to file paths or live MCP connectivity.
@@ -632,13 +634,13 @@ sec-recon-agent/
 ├── frontend/
 │   ├── src/
 │   │   ├── app/            # Next.js App Router: layout, page, /api/triage proxy, globals.css
-│   │   ├── components/     # header, triage-form, progress-stream, report view, sidebar, theme-toggle
+│   │   ├── components/     # header, triage-form, progress-stream, report view, sidebar, dashboard/, ui/
 │   │   ├── components/ui/  # shadcn primitives (button, badge, card, ...)
 │   │   ├── hooks/          # use-triage (agent run state), use-history (localStorage)
 │   │   └── lib/            # types (mirror Pydantic), sse client, utils
 │   ├── Dockerfile          # multi-stage node:22-alpine, Next.js standalone output
 │   ├── package.json
-│   └── tailwind.config.ts  # Catppuccin tokens, animations
+│   └── tailwind.config.ts  # maps Slate Recon CSS-variable tokens, animations
 │
 ├── tests/
 │   ├── agent/              # agent factory smoke + system-prompt drift detector
