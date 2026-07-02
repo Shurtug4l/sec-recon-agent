@@ -37,7 +37,13 @@ async function gzip(text: string): Promise<Uint8Array> {
 }
 
 async function gunzip(bytes: Uint8Array): Promise<string> {
-  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+  // Copy into a fresh ArrayBuffer so the Blob part is unambiguously a BlobPart
+  // across TS lib versions: TS 5.7+ made TypedArrays generic over their backing
+  // buffer, and a bare Uint8Array (Uint8Array<ArrayBufferLike>) is not a
+  // BlobPart, whereas a plain ArrayBuffer always is.
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  const stream = new Blob([buffer]).stream().pipeThrough(new DecompressionStream("gzip"));
   return new Response(stream).text();
 }
 
