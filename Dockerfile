@@ -20,8 +20,13 @@ WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
 COPY src/ ./src/
 
+# `--reinstall-package` forces the first-party package to be rebuilt from the
+# current source on every image build. Without it, uv's build cache keys the
+# non-editable wheel by version, so a source change that does not bump the
+# version (the norm during development on 0.1.0) is silently served stale from
+# the cache mount and the image ships old code. Third-party deps stay cached.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-editable
+    uv sync --frozen --no-dev --no-editable --reinstall-package sec-recon-agent
 
 # ============================================================================
 # Runtime stage: minimal Python image, non-root user, only the venv and src.

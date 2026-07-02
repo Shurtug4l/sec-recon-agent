@@ -161,8 +161,13 @@ def assess_ssvc(cves: Iterable[CVEReference]) -> SsvcAssessment:
     CVE and rule are recorded so the verdict is explainable and auditable. With
     no CVEs (not-affected or degraded triage) the decision is TRACK.
     """
+    # Sentinel below Track's rank (0) so the FIRST CVE always registers, even
+    # when the whole report is Track. Initializing at Track's rank would make
+    # an all-Track report keep the "no-cves" sentinel rule and a null driver,
+    # producing a "no CVEs were grounded" rationale that is simply false when
+    # CVEs were present and merely scored Track.
     best_decision = SsvcDecision.TRACK
-    best_rank = _DECISION_RANK[SsvcDecision.TRACK]
+    best_rank = -1
     best_rule = "no-cves"
     driving_cve: str | None = None
 
@@ -175,15 +180,16 @@ def assess_ssvc(cves: Iterable[CVEReference]) -> SsvcAssessment:
             best_rule = rule
             driving_cve = cve.cve_id
 
-    if best_rule == "no-cves":
+    # driving_cve is None only when the loop never ran (no CVEs at all); any
+    # CVE, including a Track one, sets it via the sentinel above.
+    if driving_cve is None:
         rationale = (
             f"SSVC decision {best_decision.value}: no CVEs were grounded in this "
             "triage, so no active remediation signal is present."
         )
     else:
         reason = _RULE_RATIONALE.get(best_rule, best_rule)
-        subject = f"{driving_cve} " if driving_cve else ""
-        rationale = f"SSVC decision {best_decision.value}: {subject}{reason}."
+        rationale = f"SSVC decision {best_decision.value}: {driving_cve} {reason}."
 
     return SsvcAssessment(
         decision=best_decision,
