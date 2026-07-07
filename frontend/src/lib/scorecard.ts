@@ -1,7 +1,7 @@
 // Aggregations for the static /scorecard route. Pure functions over the
 // committed sonnet-baseline snapshot in src/demo/scorecard/*.json (the same
 // eval / retrieval / red-team result JSONs `make scorecard` consumes, slimmed
-// to the fields the page renders — the numbers are unchanged). No network, no
+// to the fields the page renders - the numbers are unchanged). No network, no
 // key: the page is statically exportable.
 //
 // The confidence -> probability mapping mirrors eval/metrics.py
@@ -61,6 +61,7 @@ interface RedteamSnapshot {
 interface RetrievalSnapshot {
   sampled: number;
   top_k: number;
+  query_chars: number;
   mrr: number;
   hit_rate_at_1: number;
   hit_rate_at_3: number;
@@ -76,10 +77,15 @@ export const provenance = provenanceRaw as Provenance;
 // Mirrors eval/metrics.py::confidence_to_probability.
 const CONFIDENCE_PROB: Record<string, number> = { high: 0.9, medium: 0.6, low: 0.3 };
 
+// Mirrors eval/metrics.py::percentile (linear interpolation, numpy's default
+// method), so p50/p95 here match SCORECARD.md exactly. `p` is in [0, 1].
 function percentile(sorted: number[], p: number): number {
   if (sorted.length === 0) return 0;
-  const idx = Math.min(sorted.length - 1, Math.ceil(p * sorted.length) - 1);
-  return sorted[Math.max(0, idx)];
+  const rank = (sorted.length - 1) * p;
+  const low = Math.floor(rank);
+  const high = Math.ceil(rank);
+  if (low === high) return sorted[low];
+  return sorted[low] + (sorted[high] - sorted[low]) * (rank - low);
 }
 
 export interface GoldenMetrics {
@@ -98,6 +104,7 @@ export interface GoldenMetrics {
     cveRecall: number;
     kevOk: boolean;
     confidence: string;
+    notes: string[];
   }>;
 }
 
@@ -144,6 +151,7 @@ export function goldenMetrics(): GoldenMetrics {
       cveRecall: c.verdict.cve_recall,
       kevOk: c.verdict.kev_ok,
       confidence: c.confidence,
+      notes: c.verdict.notes,
     })),
   };
 }
