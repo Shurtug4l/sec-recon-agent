@@ -117,3 +117,142 @@ async def test_top_k_is_capped() -> None:
     await _seed_index_async(lookback_days=30)
     results = await cve_semantic_search("test", top_k=1000)
     assert len(results) <= 25
+
+
+@pytest.mark.slow
+@respx.mock
+async def test_bm25_arm_rescues_identifier_only_query() -> None:
+    """A query that is a bare product identifier must surface the right CVE
+    through the lexical arm even when the prose around it gives the dense
+    embedding little to work with."""
+    payload = {
+        "totalResults": 2,
+        "vulnerabilities": [
+            _make_vuln(
+                "CVE-2026-3001",
+                "Deserialization flaw in libfoozle 3.2.1 daemon allows crafted "
+                "payloads to run code",
+            ),
+            _make_vuln(
+                "CVE-2026-3002",
+                "Improper certificate validation in barzap client permits "
+                "man-in-the-middle interception",
+            ),
+        ],
+    }
+    empty = {"totalResults": 0, "vulnerabilities": []}
+    respx.get(url__startswith=NVD_BASE_URL).mock(
+        side_effect=[Response(200, json=payload), Response(200, json=empty)],
+    )
+
+    await _seed_index_async(lookback_days=30)
+    results = await cve_semantic_search("libfoozle 3.2.1")
+    assert results
+    assert results[0].cve_id == "CVE-2026-3001"
+    assert all(0.0 <= r.similarity <= 1.0 for r in results)
+
+
+# ----------------------------------------------------------------------------
+# Hybrid plumbing, fast (mocked collection + embedder, no ONNX, no chroma).
+# ----------------------------------------------------------------------------
+
+
+def _fake_hybrid_setup(
+    monkeypatch: MonkeyPatch,
+    dense_ids: list[str],
+    corpus: dict[str, str],
+    embeddings: dict[str, list[float]],
+    query_vector: list[float],
+) -> Any:
+    """Wire module-level fakes: dense ranking, corpus for BM25, stored embeddings."""
+    from unittest.mock import MagicMock
+
+    fake_collection = MagicMock()
+    fake_collection.query.return_value = {
+        "ids": [dense_ids],
+        "documents": [[corpus[i] for i in dense_ids]],
+        "distances": [[0.1 * (rank + 1) for rank in range(len(dense_ids))]],
+    }
+
+    def _fake_get(**kwargs: Any) -> dict[str, Any]:
+        ids = kwargs.get("ids")
+        if ids is None:  # BM25 build path
+            return {"ids": list(corpus.keys()), "documents": list(corpus.values())}
+        return {
+            "ids": ids,
+            "documents": [corpus[i] for i in ids],
+            "embeddings": [embeddings[i] for i in ids],
+        }
+
+    fake_collection.get.side_effect = _fake_get
+    monkeypatch.setattr(cve_search, "_collection", fake_collection)
+    monkeypatch.setattr(cve_search, "_embedding_fn", lambda texts: [query_vector])
+    return fake_collection
+
+
+async def test_hybrid_bm25_only_candidate_carries_true_cosine(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """A document surfaced only by BM25 must enter the fused results with its
+    real cosine similarity against the stored embedding, not a placeholder."""
+    corpus = {
+        "CVE-2026-4001": "generic memory corruption in a network service",
+        "CVE-2026-4002": "flaw in libfoozle daemon",
+    }
+    # Query vector aligned with CVE-LEX's stored embedding at ~cos 0.6.
+    embeddings = {"CVE-2026-4001": [1.0, 0.0], "CVE-2026-4002": [0.6, 0.8]}
+    _fake_hybrid_setup(
+        monkeypatch,
+        dense_ids=["CVE-2026-4001"],
+        corpus=corpus,
+        embeddings=embeddings,
+        query_vector=[1.0, 0.0],
+    )
+    monkeypatch.setattr(settings, "retrieval_hybrid_enabled", True)
+
+    results = await cve_search.cve_semantic_search("libfoozle daemon", top_k=5)
+
+    by_id = {r.cve_id: r for r in results}
+    assert "CVE-2026-4002" in by_id, "BM25-only candidate missing from fused results"
+    assert by_id["CVE-2026-4002"].similarity == pytest.approx(0.6)
+    # The dense hit keeps its HNSW-derived similarity (1 - 0.1 distance).
+    assert by_id["CVE-2026-4001"].similarity == pytest.approx(0.9)
+    # Summaries stay fenced like any untrusted feed text.
+    assert "libfoozle" in by_id["CVE-2026-4002"].summary
+
+
+async def test_hybrid_disabled_uses_dense_path_only(monkeypatch: MonkeyPatch) -> None:
+    """RETRIEVAL_HYBRID_ENABLED=false must restore the pre-hybrid call shape:
+    one text query at top_k depth, no BM25 build."""
+    from unittest.mock import MagicMock
+
+    fake_collection = MagicMock()
+    fake_collection.query.return_value = {
+        "ids": [["CVE-2026-4003"]],
+        "documents": [["some description"]],
+        "distances": [[0.2]],
+    }
+    monkeypatch.setattr(cve_search, "_collection", fake_collection)
+    monkeypatch.setattr(cve_search, "_bm25", None)
+    monkeypatch.setattr(settings, "retrieval_hybrid_enabled", False)
+
+    results = await cve_search.cve_semantic_search("anything", top_k=3)
+
+    assert [r.cve_id for r in results] == ["CVE-2026-4003"]
+    assert results[0].similarity == pytest.approx(0.8)
+    fake_collection.query.assert_called_once_with(query_texts=["anything"], n_results=3)
+    fake_collection.get.assert_not_called()
+    assert cve_search._bm25 is None
+
+
+async def test_hybrid_empty_corpus_returns_empty(monkeypatch: MonkeyPatch) -> None:
+    from unittest.mock import MagicMock
+
+    fake_collection = MagicMock()
+    fake_collection.get.return_value = {"ids": [], "documents": []}
+    monkeypatch.setattr(cve_search, "_collection", fake_collection)
+    monkeypatch.setattr(cve_search, "_embedding_fn", lambda texts: [[0.0]])
+    monkeypatch.setattr(settings, "retrieval_hybrid_enabled", True)
+
+    assert await cve_search.cve_semantic_search("anything") == []
+    fake_collection.query.assert_not_called()
