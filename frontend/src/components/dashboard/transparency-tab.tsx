@@ -7,8 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DEMO_MODE } from "@/demo/config";
-import demoMeta from "@/demo/meta.json";
+import { loadAgentMeta } from "@/lib/agent-meta";
 import type { AgentMeta } from "@/lib/types";
 
 export function TransparencyTab() {
@@ -17,25 +16,16 @@ export function TransparencyTab() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    // Demo build has no backend: serve the committed /v1/meta snapshot so the
-    // real system prompt + tool inventory still render, keyless.
-    if (DEMO_MODE) {
-      setMeta(demoMeta as AgentMeta);
-      return;
-    }
     let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/meta");
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = (await res.json()) as AgentMeta;
+    loadAgentMeta()
+      .then((data) => {
         if (!cancelled) setMeta(data);
-      } catch (err) {
+      })
+      .catch((err: unknown) => {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Failed to load /v1/meta");
         }
-      }
-    })();
+      });
     return () => {
       cancelled = true;
     };

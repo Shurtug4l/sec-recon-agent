@@ -8,6 +8,7 @@ import { ObservabilityTab } from "@/components/dashboard/observability-tab";
 import { StatisticsTab } from "@/components/dashboard/statistics-tab";
 import { TransparencyTab } from "@/components/dashboard/transparency-tab";
 import { useTriage } from "@/hooks/use-triage";
+import { DASHBOARD_TAB_EVENT } from "@/lib/nav-events";
 import { cn } from "@/lib/utils";
 
 type Tab = "statistics" | "observability" | "transparency";
@@ -32,9 +33,16 @@ export default function DashboardPage() {
   // Deep-link: hydrate the active tab from ?tab= on mount. Reading the query
   // directly (not useSearchParams) keeps the page statically prerenderable
   // (no Suspense boundary required) while ?tab=observability stays shareable.
+  // The command palette rewrites ?tab= in place when already on this page and
+  // fires DASHBOARD_TAB_EVENT, so the same sync path covers both entries.
   useEffect(() => {
-    const fromUrl = new URLSearchParams(window.location.search).get("tab");
-    if (isTab(fromUrl)) setTab(fromUrl);
+    const sync = () => {
+      const fromUrl = new URLSearchParams(window.location.search).get("tab");
+      if (isTab(fromUrl)) setTab(fromUrl);
+    };
+    sync();
+    window.addEventListener(DASHBOARD_TAB_EVENT, sync);
+    return () => window.removeEventListener(DASHBOARD_TAB_EVENT, sync);
   }, []);
 
   const selectTab = useCallback((next: Tab) => {

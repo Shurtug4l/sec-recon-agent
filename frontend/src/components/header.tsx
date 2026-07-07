@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -8,9 +9,11 @@ import {
   ClipboardCheck,
   Home,
   MessageSquare,
+  Search,
   ShieldAlert,
 } from "lucide-react";
 
+import { useCommandPalette } from "@/components/command-palette";
 import { GithubLogo } from "@/components/icons/github-logo";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +27,13 @@ const TABS = [
 
 export function Header() {
   const pathname = usePathname();
+  const { openPalette } = useCommandPalette();
+  // Set after mount so the prerendered HTML (no kbd) matches the first
+  // client render; the platform is only knowable client-side.
+  const [modKey, setModKey] = useState<string | null>(null);
+  useEffect(() => {
+    setModKey(/Mac|iP(hone|ad|od)/.test(navigator.platform) ? "⌘" : "Ctrl");
+  }, []);
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-14 items-center justify-between gap-4">
@@ -54,6 +64,20 @@ export function Header() {
               </Link>
             );
           })}
+          <button
+            type="button"
+            onClick={openPalette}
+            aria-label="Open command palette"
+            className="ml-1 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            <Search className="h-3.5 w-3.5" />
+            <span className="hidden md:inline">Search...</span>
+            {modKey && (
+              <kbd className="hidden rounded border border-border bg-muted px-1.5 font-mono text-[10px] text-muted-foreground md:inline">
+                {modKey}K
+              </kbd>
+            )}
+          </button>
           <a
             href="https://github.com/Shurtug4l/sec-recon-agent"
             target="_blank"
