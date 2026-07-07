@@ -144,7 +144,7 @@ Every report card carries three exports plus a share link, all client-side with 
 - **Export .md** builds a Markdown document (severity / confidence header, summary, recommended action, per-CVE details with KEV / ransomware / EPSS, ATT&CK techniques with mitigations, the full reasoning chain) and triggers a browser download (`lib/markdown-export.ts`). No backend route.
 - **Raw JSON** downloads the `TriageReport` as returned, verdict and coverage included.
 - **Export PDF** calls `window.print()` with an `@media print` stylesheet in `globals.css` that scopes visibility to the report block, hides the chrome, and forces an A4 light-on-white layout; the user picks "Save as PDF" in the system dialog. Native multi-page.
-- **Copy link** gzip-encodes the whole report into the URL fragment (`lib/permalink.ts`); `/r` decodes it locally. The fragment never reaches a server; past a size cap it falls back to suggesting the JSON export.
+- **Copy link** gzip-encodes the whole report into the URL fragment (`lib/permalink.ts`); `/r` decodes it locally. The fragment never reaches a server; past a size cap it falls back to suggesting the JSON export. The minted URL is basePath-aware (`NEXT_PUBLIC_BASE_PATH`), so links copied on the Pages demo point inside the project sub-path.
 
 ## Command palette
 
@@ -184,7 +184,7 @@ Dockerfile (frontend/)
 
 ### Demo build (GitHub Pages)
 
-`NEXT_PUBLIC_DEMO_MODE=1` flips the build to `output: "export"`: a fully static, keyless bundle that replays the committed real SSE captures in `src/demo/` instead of calling the backend - no Anthropic key, no seed, no server. `scripts/build-demo.mjs` stashes the `/api` route handlers for the duration of the build (route handlers are incompatible with static export) and restores them even if the build fails. `NEXT_PUBLIC_BASE_PATH` serves the export under `/sec-recon-agent` for the GitHub Pages project site; it stays empty on root-served hosts. `.github/workflows/deploy-demo.yml` rebuilds and redeploys on every `frontend/**` push to main.
+`NEXT_PUBLIC_DEMO_MODE=1` flips the build to `output: "export"`: a fully static, keyless bundle that replays the committed real SSE captures in `src/demo/` instead of calling the backend - no Anthropic key, no seed, no server. `scripts/build-demo.mjs` stashes the `/api` route handlers for the duration of the build (route handlers are incompatible with static export) and restores them even if the build fails. `NEXT_PUBLIC_BASE_PATH` serves the export under `/sec-recon-agent` for the GitHub Pages project site; it stays empty on root-served hosts. The demo build also sets `trailingSlash` (directory-style export): without it, the client router asks for the root route's RSC payload at `${basePath}.txt`, which sits outside the project sub-path on Pages and 404s on every Home prefetch. `.github/workflows/deploy-demo.yml` rebuilds and redeploys on every `frontend/**` push to main.
 
 The demo banner names the capture model (sonnet) so the replayed runs are honestly attributed. Replay pacing is compressed for the visitor, but history entries keep the real measured timings, so the observability waterfall stays honest.
 

@@ -22,6 +22,13 @@ const nextConfig = {
     ? {
         // next/image has no optimization server in a static export.
         images: { unoptimized: true },
+        // Directory-style export (/triage/index.html). Load-bearing under a
+        // basePath: without it the client router requests the root route's
+        // RSC payload at `${basePath}.txt` — OUTSIDE the project sub-path on
+        // GitHub Pages — so every Home prefetch/navigation 404s and falls
+        // back to a full page load. With trailing slashes the request is
+        // `${basePath}/index.txt`, which the export actually ships.
+        trailingSlash: true,
       }
     : {
         experimental: {

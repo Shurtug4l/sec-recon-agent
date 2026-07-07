@@ -36,7 +36,10 @@ const CommandPaletteContext = createContext<CommandPaletteValue | null>(null);
 export function CommandPaletteProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
-  const pathname = usePathname();
+  // Demo exports build with trailingSlash, so usePathname reports "/triage/";
+  // normalize so the registry's exact-path checks hold in both build modes.
+  const rawPathname = usePathname();
+  const pathname = rawPathname !== "/" ? rawPathname.replace(/\/$/, "") : "/";
   const { state, entries, selectedId, run } = useTriage();
 
   useEffect(() => {
