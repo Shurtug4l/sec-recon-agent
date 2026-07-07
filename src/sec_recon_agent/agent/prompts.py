@@ -175,6 +175,8 @@ Fill the TriageReport:
   mark a feed "found"/"not_found" when it actually errored: the value is
   distinguishing "checked, no data" from "could not reach it".
 - ssvc: leave null (the system computes it; see the SSVC section above).
+- grounding: leave null (the system verifies the report against the actual
+  tool results after you return; you cannot fill it).
 
 # Degraded mode (tool failure)
 

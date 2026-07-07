@@ -107,6 +107,79 @@ class FeedStatus(BaseModel):
     )
 
 
+class GroundingStatus(StrEnum):
+    """Report-level outcome of the post-run grounding verification.
+
+    GROUNDED: every checked claim is supported by an actual tool result
+        (vacuously true when the report makes no checkable claims).
+    SUSPECT: at least one claim is unbacked or contradicts a tool result.
+    NOT_EVALUATED: the run's message history was unavailable, so no
+        verification could be performed (an honest skip, not a pass).
+    """
+
+    GROUNDED = "grounded"
+    SUSPECT = "suspect"
+    NOT_EVALUATED = "not_evaluated"
+
+
+class GroundingClaimStatus(StrEnum):
+    """Outcome of verifying one tool-derived claim in the report.
+
+    SUPPORTED: a successful tool return backs the claim.
+    UNBACKED: a positive claim with no backing tool output (fabrication signal).
+    MISMATCH: the claim contradicts what a tool actually returned.
+    UNVERIFIABLE: relevant tool output existed but could not be parsed back
+        into its typed model, so the claim cannot be judged either way.
+    """
+
+    SUPPORTED = "supported"
+    UNBACKED = "unbacked"
+    MISMATCH = "mismatch"
+    UNVERIFIABLE = "unverifiable"
+
+
+class GroundingClaim(BaseModel):
+    """One non-supported claim surfaced by the grounding verifier."""
+
+    subject: str = Field(
+        max_length=40,
+        description='What the claim is about: a CVE id, an ATT&CK technique id, or "report".',
+    )
+    field: str = Field(
+        max_length=40,
+        description="The report field the claim lives in (e.g. in_kev_catalog, cvss_v3_score).",
+    )
+    status: GroundingClaimStatus
+    detail: str | None = Field(
+        default=None,
+        max_length=200,
+        description='Short evidence note (e.g. "kev_check returned in_catalog=false").',
+    )
+
+
+class GroundingAssessment(BaseModel):
+    """Deterministic post-hoc verification of the report's tool-derived claims.
+
+    NOT produced by the LLM: computed by agent/grounding.py against the tool
+    returns captured from the run's message history, then stamped onto the
+    report server-side (same authority pattern as `ssvc`). `findings` carries
+    only non-supported claims so the payload stays bounded; the counts are
+    always complete.
+    """
+
+    status: GroundingStatus
+    claims_checked: int = Field(default=0, ge=0)
+    supported: int = Field(default=0, ge=0)
+    unbacked: int = Field(default=0, ge=0)
+    mismatched: int = Field(default=0, ge=0)
+    unverifiable: int = Field(default=0, ge=0)
+    findings: list[GroundingClaim] = Field(default_factory=list, max_length=40)
+    truncated: bool = Field(
+        default=False,
+        description="True when findings hit the cap; the counts remain complete.",
+    )
+
+
 class CVEReference(BaseModel):
     """A single CVE included in the triage report."""
 
@@ -192,5 +265,13 @@ class TriageReport(BaseModel):
             "it returned data (found), was queried but had no entry (not_found), "
             "or could not be reached (error). Never imply a signal was checked "
             "clean when the feed errored or was not queried."
+        ),
+    )
+    grounding: GroundingAssessment | None = Field(
+        default=None,
+        description=(
+            "Deterministic grounding verification computed server-side AFTER "
+            "the model returns, by checking tool-derived claims against actual "
+            "tool results; leave this null."
         ),
     )

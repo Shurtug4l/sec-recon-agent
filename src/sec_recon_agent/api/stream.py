@@ -305,14 +305,18 @@ async def triage(request: Request, req: TriageRequest) -> EventSourceResponse:
                     }
                 result_output = run.result.output  # type: ignore[union-attr]
                 usage = _extract_usage(run)
-            # Stamp the deterministic SSVC verdict onto the report AFTER the
-            # model returns. The LLM is told to leave `ssvc` null and to echo
-            # the decision in recommended_action; this is the authoritative,
-            # reproducible form and the one the audit trail records.
+                messages = _extract_messages(run)
+            # Stamp the deterministic verdicts onto the report AFTER the model
+            # returns. The LLM is told to leave `ssvc` and `grounding` null;
+            # these are the authoritative, reproducible forms and the ones the
+            # audit trail records.
             from sec_recon_agent.agent.ssvc import assess_ssvc
 
             result_output = result_output.model_copy(
-                update={"ssvc": assess_ssvc(result_output.cves)},
+                update={
+                    "ssvc": assess_ssvc(result_output.cves),
+                    "grounding": _grounding_for(result_output, messages),
+                },
             )
             result_json = result_output.model_dump_json()
             yield {"event": "final", "data": result_json}
@@ -420,6 +424,9 @@ def _audit_triage(
         ssvc_decision=(
             summary["ssvc_decision"] if isinstance(summary["ssvc_decision"], str) else None
         ),
+        grounding_status=(
+            summary["grounding_status"] if isinstance(summary["grounding_status"], str) else None
+        ),
         report_summary_plain=(report_summary_plain if settings.audit_include_summary else None),
         model=f"{settings.llm_provider}:{settings.llm_model}",
         duration_ms=duration_ms,
@@ -492,6 +499,45 @@ def _extract_usage(run: object) -> str | None:
     except Exception:
         log.warning("usage_extract_failed", exc_info=True)
         return None
+
+
+def _extract_messages(run: object) -> list[Any] | None:
+    """Best-effort message history off the run, for the grounding verifier.
+
+    Mirrors `_extract_usage`: the pydantic-ai run API churns across versions
+    and test fakes may not model it, so we probe defensively and return None
+    (grounding becomes `not_evaluated`) rather than fail the triage.
+    """
+    try:
+        result = getattr(run, "result", None)
+        messages_fn = getattr(result, "all_messages", None)
+        if not callable(messages_fn):
+            return None
+        messages = messages_fn()
+        return list(messages) if isinstance(messages, list) else None
+    except Exception:
+        log.warning("messages_extract_failed", exc_info=True)
+        return None
+
+
+def _grounding_for(report: Any, messages: list[Any] | None) -> Any:
+    """Grounding assessment for the final report; never raises.
+
+    Any unexpected failure downgrades to an honest NOT_EVALUATED stamp: the
+    verifier must never take a successful triage down with it.
+    """
+    from sec_recon_agent.agent.schema import GroundingAssessment, GroundingStatus
+
+    try:
+        if messages is None:
+            return GroundingAssessment(status=GroundingStatus.NOT_EVALUATED)
+        from sec_recon_agent.agent.grounding import verify_grounding
+        from sec_recon_agent.agent.trajectory import extract_tool_invocations
+
+        return verify_grounding(report, extract_tool_invocations(messages))
+    except Exception:
+        log.warning("grounding_verify_failed", exc_info=True)
+        return GroundingAssessment(status=GroundingStatus.NOT_EVALUATED)
 
 
 def _node_event_payload(node: object) -> str:

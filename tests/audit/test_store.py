@@ -209,6 +209,39 @@ def test_additive_migration_adds_ssvc_column_to_pre_v2_db(tmp_path: Path) -> Non
     assert "ssvc_decision" in _columns(db_path)
 
 
+_PRE_V3_SCHEMA = _PRE_V2_SCHEMA.replace(
+    "    report_summary_plain TEXT,",
+    "    ssvc_decision TEXT,\n    report_summary_plain TEXT,",
+)
+
+
+def test_additive_migration_adds_grounding_column_to_pre_v3_db(tmp_path: Path) -> None:
+    """A database created before the grounding_status column (v2 era: it
+    already has ssvc_decision) must gain it on open."""
+    db_path = tmp_path / "audit.db"
+    raw = sqlite3.connect(db_path)
+    raw.executescript(_PRE_V3_SCHEMA)
+    raw.commit()
+    raw.close()
+
+    cols_before = _columns(db_path)
+    assert "ssvc_decision" in cols_before
+    assert "grounding_status" not in cols_before
+
+    store = AuditStore(db_path)
+    try:
+        store.append(
+            _event("ev-migrated-v3").model_copy(update={"grounding_status": "grounded"}),
+        )
+        assert store.count() == 1
+        assert store.verify() == 1
+        assert store.tail(1)[0].grounding_status == "grounded"
+    finally:
+        store.close()
+
+    assert "grounding_status" in _columns(db_path)
+
+
 def _columns(db_path: Path) -> set[str]:
     conn = sqlite3.connect(db_path)
     try:

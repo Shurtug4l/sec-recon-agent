@@ -102,8 +102,8 @@ def test_summarize_counts_kev_and_ransomware() -> None:
     assert out["severity"] == "critical"
 
 
-def test_default_schema_version_is_2() -> None:
-    assert _make_event().schema_version == 2
+def test_default_schema_version_is_3() -> None:
+    assert _make_event().schema_version == 3
 
 
 def test_summarize_extracts_ssvc_decision() -> None:
@@ -130,3 +130,32 @@ def test_v1_event_hash_ignores_ssvc_decision() -> None:
     v1 = _make_event().model_copy(update={"schema_version": 1})
     v1_with_ssvc = v1.model_copy(update={"ssvc_decision": "Act"})
     assert compute_event_hash(v1) == compute_event_hash(v1_with_ssvc)
+
+
+def test_summarize_extracts_grounding_status() -> None:
+    report = {"grounding": {"status": "suspect", "unbacked": 2}}
+    assert summarize_for_audit(report)["grounding_status"] == "suspect"
+
+
+def test_summarize_grounding_status_absent_or_malformed_is_none() -> None:
+    assert summarize_for_audit({})["grounding_status"] is None
+    assert summarize_for_audit({"grounding": "not-a-dict"})["grounding_status"] is None
+    assert summarize_for_audit({"grounding": {"status": 42}})["grounding_status"] is None
+
+
+def test_v3_event_hash_covers_grounding_status() -> None:
+    base = _make_event()  # schema_version=3, grounding_status=None
+    with_grounding = base.model_copy(update={"grounding_status": "grounded"})
+    assert compute_event_hash(base) != compute_event_hash(with_grounding)
+
+
+def test_v2_event_hash_ignores_grounding_status() -> None:
+    """Backward-compat: a schema_version=2 row is hashed without the v3
+    grounding_status field, so a chain written before this release stays
+    valid after the code learns the new field."""
+    v2 = _make_event().model_copy(update={"schema_version": 2})
+    v2_with_grounding = v2.model_copy(update={"grounding_status": "grounded"})
+    assert compute_event_hash(v2) == compute_event_hash(v2_with_grounding)
+    # And a v2 row still covers ITS OWN newest field.
+    v2_with_ssvc = v2.model_copy(update={"ssvc_decision": "Act"})
+    assert compute_event_hash(v2) != compute_event_hash(v2_with_ssvc)
