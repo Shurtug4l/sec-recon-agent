@@ -139,7 +139,7 @@ Every claim above has a test whose job is to prove the claim false:
   fence, payload preserved, with no escape.
 - 4 XXE variants (file read, external DTD, parameter entity, billion laughs) are
   asserted to be rejected at parse time.
-- A red-team battery of 20 payloads runs against the live stack, each tagged with
+- A red-team battery of 18 payloads runs against the live stack, each tagged with
   the MITRE ATLAS technique it exercises, producing a per-technique resistance
   rate rather than a single green checkmark.
 

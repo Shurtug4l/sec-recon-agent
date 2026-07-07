@@ -6,8 +6,10 @@ server and the agent API are running locally; queries hit
 tool calls and emits the final `TriageReport`.
 
 - Model: `anthropic:claude-sonnet-4-6` via Pydantic AI
-- Corpus: 19,003 CRITICAL+HIGH CVEs from NVD, 30-day lookback at indexing time
+- Corpus: 19,003 CRITICAL+HIGH CVEs from NVD, 30-day lookback at indexing time (an NVD bulk re-analysis inflated that window; a typical 30-day seed lands at ~5-8k)
 - Outputs are real, captured with `curl -N -X POST .../v1/triage`. No edits except removing curl progress lines and pretty-printing the final JSON for readability.
+
+Captured 2026-05-18, before the current schema additions: these reports predate the server-stamped `ssvc` verdict, the per-feed `signal_coverage` list, the per-CVE KEV / EPSS fields, and the trailing `usage` SSE event. A current run returns all of them - the [live demo](https://shurtug4l.github.io/sec-recon-agent/) replays 2026-07 captures with the full shape. The tool-calling behavior shown below is unchanged.
 
 ## How the SSE protocol looks on the wire
 
@@ -34,9 +36,12 @@ data: {"node": "End"}
 
 event: final
 data: {"summary": "...", "severity": "...", ...}    # TriageReport JSON
+
+event: usage
+data: {"input_tokens": N, "output_tokens": N, "requests": N}   # after final (added post-capture)
 ```
 
-The `node` events surface only the agent's internal node class name on purpose — see `docs/design.md` for the rationale.
+The `node` events surface only the agent's internal node class name, on purpose: the Pydantic AI node API churns across versions, and raw node state could leak instruction-like tool output into the SSE stream. The class name is a stable, content-free progress signal (rationale in `api/stream.py::_node_event_payload`). The full wire protocol, including the `error` event, is documented in [docs/frontend.md](../docs/frontend.md).
 
 ---
 
@@ -214,7 +219,7 @@ Six rounds of `CallToolsNode`. The agent first parses, then searches per service
 
 **What the agent did well**
 
-- All four MCP tools exercised in a single triage: `nmap_parse_xml`, `cve_semantic_search`, `cve_lookup`, `exploit_check`.
+- Four of the ten MCP tools exercised in a single session: `nmap_parse_xml`, `cve_semantic_search`, `cve_lookup`, `exploit_check`.
 - Did not stop at the Apache findings. It continued through every parsed service, gave MySQL its own assessment (EOL + network exposure, even without a high-CVSS CVE), and gave OpenSSH a baseline check.
 - Surfaced a tool error (`description too long`) in the `reasoning_chain` rather than hiding it. The agent then offered the best model-knowledge inference for OpenSSH 8.0 and flagged the lower confidence in the action plan.
 - The recommended action is operational, not generic. Numbered steps in priority order, including the "audit for compromise *before* patching" guidance, which is what a real responder would say.

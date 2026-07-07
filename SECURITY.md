@@ -8,8 +8,8 @@ production.
 
 ## Supported versions
 
-Only `main` is supported. The `0.1.x` development versions tagged in
-the past do not receive backported fixes.
+Only `main` is supported; there are no release tags. Fixes land on
+`main` through pull requests.
 
 ## Reporting a vulnerability
 
@@ -56,10 +56,10 @@ Findings that are interesting to receive:
 - Data exfiltration via tool output (especially via spans / audit log).
 - Authentication bypass when API key auth is enabled.
 - Resource exhaustion that the existing caps fail to prevent
-  (ExploitDB CSV cap, KEV catalog cap, EPSS payload cap, Nmap port cap,
+  (Exploit-DB CSV cap, KEV catalog cap, EPSS payload cap, Nmap port cap,
   semantic-search query truncation, audit-log growth).
 - Container escape, privilege escalation, or capability escape against
-  the published `python:3.13-slim` + `node:22-alpine` images.
+  the published `python:3.14-slim` + `node:22-alpine` images.
 - Supply-chain risk in the project's declared dependencies (pinned in
   `uv.lock`, `frontend/package-lock.json`).
 - Audit-trail integrity issues (hash chain bypass, append-only trigger
@@ -73,8 +73,9 @@ Findings that are interesting to receive:
   inside the container's user namespace (those are post-compromise
   scenarios; the project does not claim to defend against them).
 - Findings derived from running the agent against a real LLM with no
-  rate limit configured and observing token-cost amplification — this
-  is a known limitation and `slowapi` rate limiting is on the roadmap.
+  rate limit configured and observing token-cost amplification.
+  Per-IP rate limiting exists but is opt-in (`RATE_LIMIT_PER_MINUTE`);
+  a deployment that leaves it off has made that call explicitly.
 - Reports that consist solely of a vulnerability scanner output with
   no triage. Please add context.
 
