@@ -73,6 +73,12 @@ class Settings(BaseSettings):
     agent_api_port: int = Field(default=8000, ge=1024, le=65535)
 
     chroma_persist_dir: Path = Path("./data/cve_index")
+    # Hybrid retrieval switch for cve_semantic_search: dense MiniLM cosine
+    # fused (reciprocal-rank fusion) with an in-process BM25 over the same
+    # corpus. CVE text is identifier-heavy (product names, version strings),
+    # which dense embeddings blur and BM25 matches exactly. False restores
+    # the dense-only path.
+    retrieval_hybrid_enabled: bool = True
     audit_db_path: Path = Path("./data/audit.db")
     # Master switch. When False the API does not even open the audit
     # database; useful for ephemeral demos and for tests that don't want
