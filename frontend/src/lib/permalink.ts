@@ -4,11 +4,21 @@
 // sent to the server: decoding happens entirely client-side on the /r route.
 // No backend, no storage, no leak.
 
+import { DEMO_MODE } from "@/demo/config";
 import type { TriageReport } from "./types";
 
 // Scheme markers so a payload is self-describing (compressed vs plain).
 const GZIP = "1";
 const PLAIN = "0";
+
+// Same env var that drives basePath in next.config.mjs, inlined at build time.
+// Without it, share links minted on a sub-path host (GitHub Pages) would point
+// at the domain root and 404.
+const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH || "";
+
+// Demo exports build with trailingSlash (next.config.mjs), so /r is served as
+// a directory; emit the canonical /r/ form there and skip the host's redirect.
+const R_PATH = `${BASE_PATH}/r${DEMO_MODE ? "/" : ""}`;
 
 // Soft ceiling on the encoded payload. Beyond this the URL gets unwieldy and
 // some clients truncate; the caller falls back to the JSON export instead.
@@ -81,6 +91,6 @@ export async function decodeReport(encoded: string): Promise<TriageReport | null
 /** Build the full shareable URL for a report, or null if it exceeds the cap. */
 export async function buildPermalink(report: TriageReport, origin: string): Promise<string | null> {
   const encoded = await encodeReport(report);
-  const url = `${origin}/r#r=${encoded}`;
+  const url = `${origin}${R_PATH}#r=${encoded}`;
   return url.length - origin.length > PERMALINK_MAX ? null : url;
 }
