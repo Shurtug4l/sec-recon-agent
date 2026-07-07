@@ -16,11 +16,11 @@
       "ransomware_ok": true,
       "notes": []
     },
-    "elapsed_seconds": 81.34995058400091,
+    "elapsed_seconds": 78.97467695898376,
     "usage": {
-      "input_tokens": 82847,
-      "output_tokens": 5000,
-      "cost_usd": 0.323541
+      "input_tokens": 63768,
+      "output_tokens": 4969,
+      "cost_usd": 0.26583900000000005
     },
     "conformant": true
   },
@@ -29,25 +29,23 @@
     "query": "CVE-2024-3094",
     "model": "sonnet",
     "expected_severity": "critical",
-    "expected_in_kev": true,
+    "expected_in_kev": false,
     "severity": "critical",
     "confidence": "high",
     "verdict": {
       "case_id": "xz-utils-backdoor",
-      "passed": false,
+      "passed": true,
       "severity_ok": true,
       "cve_recall": 1.0,
-      "kev_ok": false,
+      "kev_ok": true,
       "ransomware_ok": true,
-      "notes": [
-        "no CVE in report carried in_kev_catalog=True"
-      ]
+      "notes": []
     },
-    "elapsed_seconds": 41.74361487501301,
+    "elapsed_seconds": 41.963452665979275,
     "usage": {
-      "input_tokens": 41857,
-      "output_tokens": 2473,
-      "cost_usd": 0.16266599999999998
+      "input_tokens": 42002,
+      "output_tokens": 2465,
+      "cost_usd": 0.16298100000000001
     },
     "conformant": true
   },
@@ -68,11 +66,11 @@
       "ransomware_ok": true,
       "notes": []
     },
-    "elapsed_seconds": 70.09277991700219,
+    "elapsed_seconds": 93.80733354197582,
     "usage": {
-      "input_tokens": 67063,
-      "output_tokens": 4157,
-      "cost_usd": 0.263544
+      "input_tokens": 90716,
+      "output_tokens": 6643,
+      "cost_usd": 0.371793
     },
     "conformant": true
   },
@@ -93,11 +91,11 @@
       "ransomware_ok": true,
       "notes": []
     },
-    "elapsed_seconds": 67.00740966701414,
+    "elapsed_seconds": 94.52624274999835,
     "usage": {
-      "input_tokens": 81408,
-      "output_tokens": 4348,
-      "cost_usd": 0.309444
+      "input_tokens": 113864,
+      "output_tokens": 6686,
+      "cost_usd": 0.441882
     },
     "conformant": true
   },
@@ -118,11 +116,11 @@
       "ransomware_ok": true,
       "notes": []
     },
-    "elapsed_seconds": 65.163604166999,
+    "elapsed_seconds": 63.93576300001587,
     "usage": {
-      "input_tokens": 71361,
-      "output_tokens": 3878,
-      "cost_usd": 0.27225299999999997
+      "input_tokens": 60703,
+      "output_tokens": 4143,
+      "cost_usd": 0.244254
     },
     "conformant": true
   },
@@ -143,11 +141,11 @@
       "ransomware_ok": true,
       "notes": []
     },
-    "elapsed_seconds": 44.213728667004034,
+    "elapsed_seconds": 43.77735533300438,
     "usage": {
-      "input_tokens": 45506,
-      "output_tokens": 2631,
-      "cost_usd": 0.175983
+      "input_tokens": 45528,
+      "output_tokens": 2612,
+      "cost_usd": 0.17576399999999998
     },
     "conformant": true
   },
@@ -156,7 +154,7 @@
     "query": "OpenSSL Heartbleed memory disclosure",
     "model": "sonnet",
     "expected_severity": "high",
-    "expected_in_kev": false,
+    "expected_in_kev": null,
     "severity": "high",
     "confidence": "high",
     "verdict": {
@@ -168,11 +166,11 @@
       "ransomware_ok": true,
       "notes": []
     },
-    "elapsed_seconds": 43.193192875012755,
+    "elapsed_seconds": 60.31263366699568,
     "usage": {
-      "input_tokens": 54436,
-      "output_tokens": 1960,
-      "cost_usd": 0.19270800000000002
+      "input_tokens": 60083,
+      "output_tokens": 3549,
+      "cost_usd": 0.233484
     },
     "conformant": true
   },
@@ -193,11 +191,11 @@
       "ransomware_ok": true,
       "notes": []
     },
-    "elapsed_seconds": 81.56853941699956,
+    "elapsed_seconds": 83.66128595898044,
     "usage": {
-      "input_tokens": 74846,
-      "output_tokens": 5244,
-      "cost_usd": 0.30319799999999997
+      "input_tokens": 77176,
+      "output_tokens": 5488,
+      "cost_usd": 0.313848
     },
     "conformant": true
   },
@@ -206,9 +204,9 @@
     "query": "CVE-9999-99999",
     "model": "sonnet",
     "expected_severity": "info",
-    "expected_in_kev": false,
+    "expected_in_kev": null,
     "severity": "info",
-    "confidence": "high",
+    "confidence": "low",
     "verdict": {
       "case_id": "unknown-cve-degrade",
       "passed": true,
@@ -218,11 +216,11 @@
       "ransomware_ok": true,
       "notes": []
     },
-    "elapsed_seconds": 18.365116541011957,
+    "elapsed_seconds": 13.002820583002176,
     "usage": {
-      "input_tokens": 26077,
-      "output_tokens": 862,
-      "cost_usd": 0.09116099999999999
+      "input_tokens": 16762,
+      "output_tokens": 454,
+      "cost_usd": 0.057095999999999994
     },
     "conformant": true
   },
@@ -243,11 +241,11 @@
       "ransomware_ok": true,
       "notes": []
     },
-    "elapsed_seconds": 106.98154383301153,
+    "elapsed_seconds": 156.57621595798992,
     "usage": {
-      "input_tokens": 143425,
-      "output_tokens": 7085,
-      "cost_usd": 0.53655
+      "input_tokens": 138953,
+      "output_tokens": 7470,
+      "cost_usd": 0.528909
     },
     "conformant": true
   },
@@ -256,7 +254,7 @@
     "query": "unauthenticated remote code execution in a popular web server",
     "model": "sonnet",
     "expected_severity": "high",
-    "expected_in_kev": false,
+    "expected_in_kev": null,
     "severity": "critical",
     "confidence": "high",
     "verdict": {
@@ -268,11 +266,11 @@
       "ransomware_ok": true,
       "notes": []
     },
-    "elapsed_seconds": 81.46227254200494,
+    "elapsed_seconds": 73.12466770800529,
     "usage": {
-      "input_tokens": 70728,
-      "output_tokens": 5347,
-      "cost_usd": 0.292389
+      "input_tokens": 70676,
+      "output_tokens": 5081,
+      "cost_usd": 0.28824299999999997
     },
     "conformant": true
   }
