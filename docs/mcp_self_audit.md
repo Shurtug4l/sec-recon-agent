@@ -12,9 +12,9 @@ collision). It is a self-audit, not a third-party certification; residual risks
 are named, not hidden (same posture as [`security_findings.md`](security_findings.md)).
 
 Every control below is grounded in code in `src/sec_recon_agent/mcp_server/`.
-To re-run an external check, point [MCP-Scanner](https://github.com/modelcontextprotocol) or an
-equivalent at the SSE endpoint (`:8001/sse`) with `MCP_AUTH_TOKEN` set; the
-findings here are what such a scan should confirm.
+To re-run an external check, point an MCP security scanner at the SSE endpoint
+(`:8001/sse`) with `MCP_AUTH_TOKEN` set; the findings here are what such a scan
+should confirm.
 
 ## Attack surface at a glance
 
@@ -54,7 +54,7 @@ findings here are what such a scan should confirm.
 
 ## Cross-cutting controls
 
-### LLM07 — Insecure plugin / tool design
+### LLM07 - Insecure plugin / tool design
 
 - **Typed I/O contract.** Every tool returns a Pydantic model (`models.py`);
   the agent's output is itself a validated `TriageReport`. There is no free-form
@@ -72,7 +72,7 @@ findings here are what such a scan should confirm.
   re-checks it after redirects (`*_TRUSTED_HOST`), so a hostile redirect cannot
   turn a tool into an SSRF pivot or a data-exfil channel.
 
-### LLM08 — Excessive agency
+### LLM08 - Excessive agency
 
 - **No state-changing tools.** The blast radius of a fully compromised prompt is
   bounded by "the model produced a wrong triage report": there is no tool to
@@ -84,7 +84,7 @@ findings here are what such a scan should confirm.
   authority.
 - **Deterministic prioritization.** The SSVC verdict is computed server-side
   from the collected signals, not by the LLM (`agent/ssvc.py`), so a
-  prompt-injected model cannot silently downgrade an Act to a Track — the
+  prompt-injected model cannot silently downgrade an Act to a Track - the
   structured verdict is recomputed from the signals regardless of the prose.
 
 ### MCP-specific anti-patterns
@@ -121,7 +121,7 @@ findings here are what such a scan should confirm.
   [`security_findings.md`](security_findings.md).
 - **Auth is opt-in.** `MCP_AUTH_TOKEN` defaults off for frictionless local dev.
   Publishing `:8001` without setting it exposes the tools unauthenticated on the
-  network — an explicit deployment decision, documented in the README and
+  network - an explicit deployment decision, documented in the README and
   `.env.example`.
 - **Free-text service banners from Nmap are not fenced.** They are treated as
   structured (service/product/version) rather than prose; a crafted banner is a

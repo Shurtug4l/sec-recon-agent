@@ -4,7 +4,7 @@ Companion to [`docs/design.md`](design.md), focused on the Next.js + React UI in
 
 ## What it is
 
-A Next.js 15 (App Router) application on React 19 + TypeScript strict + Tailwind, with five routes: `/` (landing), `/triage` (form + report), `/dashboard` (statistics / observability / transparency), `/guide` (framework explainer), and `/r` (a self-contained shared-report viewer). It is the primary interface for the triage agent: the user types a query (free text, a CVE ID, a product description, or Nmap XML), the UI streams the agent's progress as it happens, and renders the final `TriageReport` as a structured card — the deterministic SSVC verdict, per-feed signal coverage, severity/confidence, and per-CVE detail.
+A Next.js 15 (App Router) application on React 19 + TypeScript strict + Tailwind, with six routes: `/` (landing), `/triage` (form + report), `/dashboard` (statistics / observability / transparency), `/scorecard` (the sonnet-baseline scorecard rendered statically from committed result JSONs), `/guide` (framework explainer), and `/r` (a self-contained shared-report viewer, not in the nav). The header nav carries five tabs: Home, Triage, Dashboard, Scorecard, Guide. It is the primary interface for the triage agent: the user types a query (free text, a CVE ID, a product description, or Nmap XML), the UI streams the agent's progress as it happens, and renders the final `TriageReport` as a structured card - the deterministic SSVC verdict (SSVC is CISA's remediation-urgency methodology: one of Act / Attend / Track* / Track, computed server-side, never by the LLM), per-feed signal coverage (whether each external feed returned data, had no entry, or errored), severity/confidence, and per-CVE detail.
 
 It is not a thin wrapper around the FastAPI surface; it adds:
 - A Next.js-side `/api/triage` proxy that lets the browser talk same-origin (no CORS opened on the backend).
@@ -22,6 +22,7 @@ frontend/src/
 │   ├── page.tsx                 # landing: split hero (copy + pipeline diagram), pillars, tools
 │   ├── triage/page.tsx          # form + progress stream + report + history sidebar
 │   ├── dashboard/page.tsx       # ARIA tablist: statistics / observability / transparency
+│   ├── scorecard/page.tsx       # static scorecard: sonnet baseline from committed JSONs
 │   ├── guide/page.tsx           # framework explainer with sticky TOC
 │   ├── r/page.tsx               # shared-report viewer: decodes a report from the URL fragment
 │   ├── globals.css              # Tailwind directives + the Slate Recon CSS-variable tokens
@@ -32,6 +33,7 @@ frontend/src/
 ├── components/
 │   ├── providers.tsx            # client wrapper mounting TriageProvider at the layout
 │   ├── header.tsx               # sticky macro-tab nav + GitHub link
+│   ├── demo-banner.tsx          # demo-mode banner naming the capture model
 │   ├── triage-form.tsx          # textarea + example chips + Triage/Stop buttons
 │   ├── progress-stream.tsx      # ordered list of node events with in-flight spinner
 │   ├── triage-report-view.tsx   # TriageReport card: SSVC ladder, coverage strip, CVEs, exports
@@ -42,6 +44,12 @@ frontend/src/
 │                                #   button, badge, card, textarea, separator, scroll-area,
 │                                #   collapsible, skeleton
 │
+├── demo/
+│   ├── config.ts                # DEMO_MODE flag + the capture model (sonnet)
+│   ├── fixtures.ts + fixtures/  # 7 committed real SSE captures (full SSVC ladder)
+│   ├── replay.ts                # replays a capture as a paced SSE stream
+│   └── scorecard/               # slimmed eval / retrieval / redteam JSONs + provenance
+│
 ├── hooks/
 │   ├── use-triage.tsx           # Provider-backed run state machine, SSE driver, abort, history patch
 │   └── use-history.ts           # localStorage CRUD with quota safety (newest-first, cap 30)
@@ -50,6 +58,7 @@ frontend/src/
     ├── types.ts                 # mirrors src/sec_recon_agent/agent/schema.py
     ├── sse.ts                   # fetch+ReadableStream SSE parser
     ├── stats.ts                 # history aggregation + real node-waterfall builder
+    ├── scorecard.ts             # aggregations for /scorecard, mirrors eval/metrics.py
     ├── markdown-export.ts       # TriageReport -> Markdown / JSON download helpers
     ├── permalink.ts             # gzip+base64url a report into a shareable URL fragment
     └── utils.ts                 # cn() class-name merger
@@ -79,24 +88,24 @@ API: `run(query)`, `cancel()`, `reset()`, plus the history surface (`entries`, `
 
 **`useHistory()`** persists past runs in `localStorage` (key `sec-recon-history`, newest-first, cap 30). Failures on read/write are swallowed (corrupted storage starts fresh; quota-exceeded does not crash the UI).
 
-On submit, `run()` creates a `HistoryEntry`, `add()`s it to the sidebar, then drives the SSE stream — capturing outer-scope values **before** dispatching `setState` (React 18 defers the updater to the render phase; capturing inside it would race the surrounding `await` chain). As the stream advances it records each `node` event's arrival time and, at `final`, snapshots them onto the entry (`nodeEvents`) together with the token `usage`, so the observability view draws a *measured* waterfall rather than a synthesized one.
+On submit, `run()` creates a `HistoryEntry`, `add()`s it to the sidebar, then drives the SSE stream - capturing outer-scope values **before** dispatching `setState` (React 18 defers the updater to the render phase; capturing inside it would race the surrounding `await` chain). As the stream advances it records each `node` event's arrival time and, at `final`, snapshots them onto the entry (`nodeEvents`) together with the token `usage`, so the observability view draws a *measured* waterfall rather than a synthesized one.
 
-## SSE wire protocol (frontend ↔ Next.js ↔ FastAPI)
+## SSE wire protocol (browser to Next.js to FastAPI)
 
 The browser never talks to FastAPI directly. Three hops:
 
 ```
 Browser            Next.js (/api/triage)          FastAPI (/v1/triage)
    │                       │                              │
-   │  POST {"query":...}    │                              │
-   │─────────────────────▶  │                              │
-   │                       │  POST {"query":...}            │
-   │                       │ ─────────────────────────────▶│
+   │  POST {"query":...}   │                              │
+   │---------------------> │                              │
+   │                       │  POST {"query":...}          │
+   │                       │ ---------------------------> │
    │                       │                              │
    │                       │  text/event-stream chunks    │
-   │                       │ ◀──────────────────────────── │
+   │                       │ <--------------------------- │
    │  text/event-stream    │                              │
-   │ ◀────────────────────  │                              │
+   │ <-------------------- │                              │
 ```
 
 The Next.js route (`src/app/api/triage/route.ts`) is a passthrough: it reads the upstream `ReadableStream` and returns it as the response body. SSE headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache, no-transform`, `X-Accel-Buffering: no`) are set explicitly so reverse proxies (CDN, nginx) do not buffer the stream.
@@ -123,9 +132,18 @@ The frontend strips the markers for display and renders the body inside a `borde
 
 If a field is not fenced (some upstream sources do not have free text), it renders inline like normal copy.
 
+## Report export and share
+
+Every report card carries three exports plus a share link, all client-side with zero new dependencies:
+
+- **Export .md** builds a Markdown document (severity / confidence header, summary, recommended action, per-CVE details with KEV / ransomware / EPSS, ATT&CK techniques with mitigations, the full reasoning chain) and triggers a browser download (`lib/markdown-export.ts`). No backend route.
+- **Raw JSON** downloads the `TriageReport` as returned, verdict and coverage included.
+- **Export PDF** calls `window.print()` with an `@media print` stylesheet in `globals.css` that scopes visibility to the report block, hides the chrome, and forces an A4 light-on-white layout; the user picks "Save as PDF" in the system dialog. Native multi-page.
+- **Copy link** gzip-encodes the whole report into the URL fragment (`lib/permalink.ts`); `/r` decodes it locally. The fragment never reaches a server; past a size cap it falls back to suggesting the JSON export.
+
 ## Theming
 
-**"Slate Recon" — dark-only.** A security triage console reads dark-first, so the app ships one tuned palette instead of a light/dark toggle. It is a cool blue-slate NOC surface with a single cyan signal (`#22D3EE`, main CTA / interactive) and an indigo focus accent (`#818CF8`), in the idiom of Grafana / Datadog / Vercel. It replaced the earlier Catppuccin Latte/Macchiato dual theme.
+**"Slate Recon" - dark-only.** A security triage console reads dark-first, so the app ships one tuned palette instead of a light/dark toggle. It is a cool blue-slate NOC surface with a single cyan signal (`#22D3EE`, main CTA / interactive) and an indigo focus accent (`#818CF8`), in the idiom of Grafana / Datadog / Vercel. It replaced the earlier Catppuccin Latte/Macchiato dual theme.
 
 All color lives in **one source**: CSS variables in `src/app/globals.css` (HSL channels, so Tailwind's `hsl(var(--token))` and the `/alpha` modifier keep working). There is no `.dark` toggle and no light token set; `color-scheme: dark` is set on `:root`. The categorical chart palette and the diverging severity ramp are also tokens (`--chart-*`, `--severity-*`).
 
@@ -144,12 +162,18 @@ Dockerfile (frontend/)
 └── runtime stage  : node:22-alpine + curl + tini + non-root `node` user
                     Copies only .next/standalone and .next/static
                     Healthcheck: curl GET /
-                    PID 1: tini  ·  CMD: node server.js
+                    PID 1: tini, CMD: node server.js
 ```
 
 `output: "standalone"` in `next.config.mjs` is the load-bearing piece: it produces a self-contained runtime bundle so the final image does not need `node_modules` or the entire source tree, only ~150 MB of compiled assets.
 
 `--legacy-peer-deps` papers over Next 15's peer-range on the React 19 RC tag; Next 15.x supports React 19 GA at runtime but the package.json range is pinned to an RC string. Future Next minors should make this flag unnecessary.
+
+### Demo build (GitHub Pages)
+
+`NEXT_PUBLIC_DEMO_MODE=1` flips the build to `output: "export"`: a fully static, keyless bundle that replays the committed real SSE captures in `src/demo/` instead of calling the backend - no Anthropic key, no seed, no server. `scripts/build-demo.mjs` stashes the `/api` route handlers for the duration of the build (route handlers are incompatible with static export) and restores them even if the build fails. `NEXT_PUBLIC_BASE_PATH` serves the export under `/sec-recon-agent` for the GitHub Pages project site; it stays empty on root-served hosts. `.github/workflows/deploy-demo.yml` rebuilds and redeploys on every `frontend/**` push to main.
+
+The demo banner names the capture model (sonnet) so the replayed runs are honestly attributed. Replay pacing is compressed for the visitor, but history entries keep the real measured timings, so the observability waterfall stays honest.
 
 ## Local development
 
@@ -179,12 +203,12 @@ npm run build        # production build
 
 | Decision | Why | Alternative rejected |
 |---|---|---|
-| Next.js 15 App Router | Same React/TS the Etiqa ad cites, plus a built-in API route for the SSE proxy | Vite SPA (no native API route) |
-| shadcn-style primitives (Radix + CVA, copied) | Small bundle, design tokens flow into Tailwind via CSS variables | Component libraries (MUI / Mantine) — too heavy, design lock-in |
-| Dark-only "Slate Recon" on one token source | A security console is dark-first; one tuned palette beats a maintained light/dark pair, and single-source kills the earlier three-way color drift | Catppuccin dual theme + toggle — dev-dotfiles read, colors fragmented across CSS / charts / diagram |
-| Real node waterfall from client-timestamped `node` events | Honest measured timing on a transparency-thesis project; zero backend change | Even-split synthesis by `reasoning_chain` length — fabricated, retired |
-| Permalink via URL fragment (`#r=`, gzip+base64url) | Shareable report with no backend, no storage; the fragment never reaches the server | Server-side share links — would require a DB, an ID scheme, and a leak surface |
-| Plain Tailwind animations, `prefers-reduced-motion` guard | Type-safe, zero runtime cost, respects the OS motion preference | framer-motion 11.x — TS strict mode conflicts with motion.* + onClick |
-| `localStorage` history | Demo scope, no backend persistence needed | Server-side history — would require a DB and auth |
-| `fetch()` + ReadableStream for SSE | EventSource does not support POST body; the parser is 50 lines | Vercel AI SDK — wrong protocol shape |
-| `output: "standalone"` Docker | ~150 MB image, no separate nginx | Static export — loses the `/api/triage` route |
+| Next.js 15 App Router | Same React/TS stack the target roles cite, plus a built-in API route for the SSE proxy | Vite SPA (no native API route) |
+| shadcn-style primitives (Radix + CVA, copied) | Small bundle, design tokens flow into Tailwind via CSS variables | Component libraries (MUI / Mantine) - too heavy, design lock-in |
+| Dark-only "Slate Recon" on one token source | A security console is dark-first; one tuned palette beats a maintained light/dark pair, and single-source kills the earlier three-way color drift | Catppuccin dual theme + toggle - dev-dotfiles read, colors fragmented across CSS / charts / diagram |
+| Real node waterfall from client-timestamped `node` events | Honest measured timing on a transparency-thesis project; zero backend change | Even-split synthesis by `reasoning_chain` length - fabricated, retired |
+| Permalink via URL fragment (`#r=`, gzip+base64url) | Shareable report with no backend, no storage; the fragment never reaches the server | Server-side share links - would require a DB, an ID scheme, and a leak surface |
+| Plain Tailwind animations, `prefers-reduced-motion` guard | Type-safe, zero runtime cost, respects the OS motion preference | framer-motion 11.x - TS strict mode conflicts with motion.* + onClick |
+| `localStorage` history | Demo scope, no backend persistence needed | Server-side history - would require a DB and auth |
+| `fetch()` + ReadableStream for SSE | EventSource does not support POST body; the parser is 50 lines | Vercel AI SDK - wrong protocol shape |
+| `output: "standalone"` Docker | ~150 MB image, no separate nginx | Static export - loses the `/api/triage` route (used only for the keyless demo build, where the routes are stashed) |

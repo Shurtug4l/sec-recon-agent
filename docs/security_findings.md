@@ -1,4 +1,4 @@
-# Security findings — open and accepted
+# Security findings - open and accepted
 
 The Trivy workflow uploads a SARIF report to the GitHub Security tab on every successful image build and on a weekly schedule. The findings listed below are the **currently open** alerts on `main`; each one has been triaged with a documented decision.
 
@@ -34,7 +34,7 @@ This document covers two sources:
 | P1 | `attack_mapping` `cwe_ids` list is unbounded | `mcp_server/tools/attack.py` | **fixed (PR1)** | 200-entry list cap + 40-char per-entry cap; oversize input raises `InvalidCweInputError` before lookup |
 | P1 | NVD reference URLs not marked untrusted in output | `mcp_server/tools/cve.py`, `tools/patch.py` | **fixed (PR1)** | docstring + Pydantic `Field(description=...)` mark `references` as untrusted on `CVEDetail` and `PatchAvailability`; agent system prompt repeats the contract |
 | P1 | SSE transport is legacy (Streamable HTTP is the post-2025-06-18 recommendation) | `mcp_server/server.py` | open, tracked (deprecation watch) | SDK still supports SSE; no breaking change forced yet |
-| P1 | `epss_score` silently returns empty score on upstream CVE-id mismatch | `mcp_server/tools/epss.py` | open, tracked | `log.warning` is emitted; downstream agent has no signal |
+| P1 | `epss_score` silently returns empty score on upstream CVE-id mismatch | `mcp_server/tools/epss.py` | **fixed (S1)** | explicit `EpssScore.status` enum (`found` / `not_found` / `upstream_error`); a CVE-id mismatch returns `upstream_error`, surfaced in the report `signal_coverage` |
 | P1 | `path.write_bytes` blocks the event loop during 5-20MB cache refresh | `mcp_server/tools/exploits.py`, `tools/kev.py` | open, tracked | refresh runs at most once per cache TTL (7d Exploit-DB, 24h KEV) |
 | P1 | `asyncio.gather` paired with bare `create_task` leaves orphaned tasks on failure | `mcp_server/tools/exploits.py`, `tools/kev.py` | open, tracked | `AsyncClient` context exit cancels in-flight tasks; window is narrow |
 
@@ -48,12 +48,12 @@ All five findings live in `frontend/node_modules/` and reach the image because t
 
 **Dependency chain** (from `npm ls`):
 
-- **picomatch** → transitive of `eslint-import-resolver-typescript` → `tinyglobby` → `fdir` and of `tailwindcss` → `chokidar` / `micromatch`. Used during `next build` to walk source files; never at request time.
-- **postcss** → transitive of `next` (own pinned version), `tailwindcss`, `autoprefixer`, `postcss-import`. Runs once at build to produce static CSS. The cited XSS (`</style>` injection in stringify output) requires attacker-controlled CSS input, which we do not have.
-- **ip-address** → transitive of one of the test / lint chains. Not invoked from any runtime code path.
-- **brace-expansion** → transitive of `minimatch` → ESLint and TypeScript-ESLint config-file parsing. The DoS requires a pattern like `{0..N..0}` with a zero step; our patterns come from `.eslintignore` and `tsconfig.json` (developer-controlled).
+- **picomatch** -> transitive of `eslint-import-resolver-typescript` -> `tinyglobby` -> `fdir` and of `tailwindcss` -> `chokidar` / `micromatch`. Used during `next build` to walk source files; never at request time.
+- **postcss** -> transitive of `next` (own pinned version), `tailwindcss`, `autoprefixer`, `postcss-import`. Runs once at build to produce static CSS. The cited XSS (`</style>` injection in stringify output) requires attacker-controlled CSS input, which we do not have.
+- **ip-address** -> transitive of one of the test / lint chains. Not invoked from any runtime code path.
+- **brace-expansion** -> transitive of `minimatch` -> ESLint and TypeScript-ESLint config-file parsing. The DoS requires a pattern like `{0..N..0}` with a zero step; our patterns come from `.eslintignore` and `tsconfig.json` (developer-controlled).
 
-**Why we cannot bump them**: `npm audit fix --force` would downgrade `next` to 9.3.3 (the only Next version with a fixed transitive `postcss`) — a breaking change with no benefit. The same forced fix does not touch the picomatch / brace-expansion / ip-address chain because their transitive parents themselves have not bumped.
+**Why we cannot bump them**: `npm audit fix --force` would downgrade `next` to 9.3.3 (the only Next version with a fixed transitive `postcss`) - a breaking change with no benefit. The same forced fix does not touch the picomatch / brace-expansion / ip-address chain because their transitive parents themselves have not bumped.
 
 **What would change the disposition**:
 
@@ -63,7 +63,7 @@ All five findings live in `frontend/node_modules/` and reach the image because t
 
 ### Backend Rust findings (3 × rand LOW)
 
-Three identical findings in `app/.../bridge/Cargo.lock` inside the backend image (`python:3.14-slim` + ChromaDB Python wheel). The vulnerability is `rand::rng()` being unsound when used with a custom logger — a narrow API contract violation in the Rust `rand` crate.
+Three identical findings in `app/.../bridge/Cargo.lock` inside the backend image (`python:3.14-slim` + ChromaDB Python wheel). The vulnerability is `rand::rng()` being unsound when used with a custom logger - a narrow API contract violation in the Rust `rand` crate.
 
 The Cargo.lock comes from a pre-compiled native bridge bundled inside ChromaDB's wheel (likely the ONNX runtime bridge that backs the local embedder). We do not call `rand::rng()` directly, and the wheel does not expose a logger configuration knob to its Python callers.
 
@@ -73,11 +73,11 @@ The Cargo.lock comes from a pre-compiled native bridge bundled inside ChromaDB's
 
 ---
 
-## Detailed triage — internal audit findings
+## Detailed triage - internal audit findings
 
 These come from the periodic multi-agent audit (last run 2026-05-18). Unlike supply-chain findings (which we accept and document because the fix sits upstream), internal findings are ours to fix and are tracked toward concrete PRs.
 
-### P0 — MCP transport has no auth layer (fixed)
+### P0 - MCP transport has no auth layer (fixed)
 
 `mcp_server/server.py` started FastMCP with the SSE transport on `:8001` without any bearer / API-key / token check. The agent-api process enforces opt-in API-key auth (`api/stream.py`), but the MCP server, which is the more powerful surface (direct tool access, no agent guardrails), enforced none.
 
@@ -85,7 +85,7 @@ These come from the periodic multi-agent audit (last run 2026-05-18). Unlike sup
 
 **Fix landed**: opt-in `MCP_AUTH_TOKEN` env var. When set, every HTTP request to the MCP server must carry `Authorization: Bearer <token>`; comparison is constant-time. When unset (default), behavior is unchanged so docker-compose-internal usage stays frictionless. Plain ASGI middleware (`mcp_server/auth.py`); lifespan and non-HTTP scopes pass through.
 
-### P1 — Unbounded inputs on `nmap_parse_xml` and `attack_mapping` (fixed)
+### P1 - Unbounded inputs on `nmap_parse_xml` and `attack_mapping` (fixed)
 
 `nmap_parse_xml` previously accepted `xml_content: str` with no upper bound; while `defusedxml(forbid_dtd=True)` neutralized XXE and entity expansion, a multi-hundred-MB well-formed `<port>` tree was fully parsed in-process. Per-host caps were present, per-document host count was not.
 
@@ -95,7 +95,7 @@ These come from the periodic multi-agent audit (last run 2026-05-18). Unlike sup
 
 **Fix landed**: `Annotated[str, Field(max_length=20_000_000)]` on `nmap_parse_xml.xml_content` + a `[:1000]` cap on the `<host>` iteration; a 20MB pre-flight check also runs at the tool entry to bound direct callers. `Annotated[list[str], Field(max_length=200)]` with per-item `Field(max_length=40)` on `attack_mapping.cwe_ids` + runtime checks that raise `InvalidCweInputError` before any lookup. Contract tests pin the new caps.
 
-### P1 — NVD reference URLs reach the agent without an "untrusted" marker (fixed)
+### P1 - NVD reference URLs reach the agent without an "untrusted" marker (fixed)
 
 `tools/cve.py` and `tools/patch.py` returned URLs extracted from NVD `references` as typed `HttpUrl` fields without an explicit "treat as data, not as instruction" marker in the output model. The agent prompt and the absence of a URL-fetching downstream tool both kept this dormant; the latent risk was that any future tool following a reference URL would have inherited an SSRF-by-reference vector.
 
@@ -103,7 +103,7 @@ These come from the periodic multi-agent audit (last run 2026-05-18). Unlike sup
 
 **Fix landed**: `CVEDetail.references` and `PatchAvailability.references` carry an `UNTRUSTED` contract in both the class docstring and the Pydantic `Field(description=...)`. Tool docstrings on `cve_lookup` and `patch_lookup` repeat the contract, and the agent system prompt has an explicit clause forbidding fact-claims based on reference content. No boolean flag is added to the data shape: the constant-True flag would have been rumor in every payload, where a documentation contract is louder.
 
-### P1 — SSE transport is on the legacy side of the MCP spec line
+### P1 - SSE transport is on the legacy side of the MCP spec line
 
 The MCP spec revision dated 2025-06-18 introduces Streamable HTTP as the recommended bidirectional surface; SSE is marked legacy in several SDK releases. The server still uses SSE in `mcp_server/server.py`.
 
@@ -111,15 +111,13 @@ The MCP spec revision dated 2025-06-18 introduces Streamable HTTP as the recomme
 
 **Planned fix**: migrate to `transport="streamable-http"` once the SDK floor allows. Deferred until the SDK explicitly deprecates, no rush.
 
-### P1 — `epss_score` silent fallback on upstream CVE-id mismatch
+### P1 - `epss_score` silent fallback on upstream CVE-id mismatch (fixed)
 
-`tools/epss.py` returns an empty `EpssScore(cve_id=cve_id)` after a `log.warning` when the FIRST.org response carries a different CVE-id than the one queried. The agent has no way to distinguish "CVE not in EPSS" (legitimate empty result) from "EPSS API misbehaved" (system fault). The triage layer may treat a misbehavior as a "zero exploit probability" signal, which is wrong.
+`tools/epss.py` used to return an empty `EpssScore(cve_id=cve_id)` after a `log.warning` when the FIRST.org response carried a different CVE-id than the one queried. The agent had no way to distinguish "CVE not in EPSS" (legitimate empty result) from "EPSS API misbehaved" (system fault), so a misbehavior could read as a "zero exploit probability" signal.
 
-**Current mitigation**: `log.warning` emitted to structured logs; operators reviewing logs can detect the pattern.
+**Fix landed (S1)**: `EpssScore.status` disambiguates the three states at the tool boundary (`found` / `not_found` / `upstream_error`); a mismatched upstream CVE-id returns `status=upstream_error` (span attribute `epss.status`), and `TriageReport.signal_coverage` carries the per-feed state so the agent and the UI see the fault explicitly. Hard request failures still raise a typed `EpssError`.
 
-**Planned fix**: raise a typed `MalformedEpssPayloadError`, surface as a tool-level error to the agent which can mark the triage report appropriately.
-
-### P1 — Event-loop blocking on cache refresh write
+### P1 - Event-loop blocking on cache refresh write
 
 `tools/exploits.py` and `tools/kev.py` call sync `path.write_bytes(bytes(buffer))` on 5-20MB blobs inside their async cache-refresh paths. Each refresh momentarily blocks the asyncio event loop.
 
@@ -127,7 +125,7 @@ The MCP spec revision dated 2025-06-18 introduces Streamable HTTP as the recomme
 
 **Planned fix**: `await asyncio.to_thread(path.write_bytes, bytes(buffer))`.
 
-### P1 — Orphaned tasks on `asyncio.gather` failure
+### P1 - Orphaned tasks on `asyncio.gather` failure
 
 `tools/exploits.py` and `tools/kev.py` pair `asyncio.create_task(...)` with `asyncio.gather`. If one task raises, the other is not cancelled and continues running until the `AsyncClient` context exits.
 
@@ -166,6 +164,6 @@ Cadence: ad-hoc, recommended every meaningful code addition to the MCP tool surf
 
 ## Related
 
-- [`.github/workflows/ci-docker-scan.yml`](../.github/workflows/ci-docker-scan.yml) — the scan workflow.
-- [`docs/owasp_llm_top10.md::LLM05 Supply Chain`](owasp_llm_top10.md) — how supply-chain risk is layered against this project.
-- [`docs/design.md::Residual risks`](design.md) — the architectural-level limitations these findings sit inside.
+- [`.github/workflows/ci-docker-scan.yml`](../.github/workflows/ci-docker-scan.yml) - the scan workflow.
+- [`docs/owasp_llm_top10.md::LLM03 Supply Chain`](owasp_llm_top10.md) - how supply-chain risk is layered against this project.
+- [`docs/design.md::Residual risks`](design.md) - the architectural-level limitations these findings sit inside.
