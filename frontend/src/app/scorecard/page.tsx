@@ -314,9 +314,10 @@ export default function ScorecardPage() {
                 and the check is whether cve_semantic_search ranks that CVE back (
                 {retrieval.sampled} samples, top_k={retrieval.top_k}). MRR = mean of 1/rank
                 of the correct CVE, 1.0 = always first. hit-rate@k = share of queries with
-                the correct CVE in the top k. Stock MiniLM-L6 embeddings, no reranker yet;
-                self-retrieval from a truncated description is a lenient task, so treat
-                these as an upper bound.
+                the correct CVE in the top k. Retrieval is hybrid: dense MiniLM-L6
+                embeddings fused with lexical BM25 (reciprocal-rank fusion), no
+                cross-encoder reranker yet; self-retrieval from a truncated description
+                is a lenient task, so treat these as an upper bound.
               </p>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
