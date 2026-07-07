@@ -242,6 +242,22 @@ def _model_pin(model: str) -> str:
     return ""
 
 
+# Human names for the ATLAS technique IDs the battery exercises, so the table
+# reads without a MITRE lookup. Canonical names as used in docs/mitre_atlas.md.
+_ATLAS_NAMES = {
+    "AML.T0024": "Exfiltration via ML Inference API",
+    "AML.T0029": "Discover ML Model Family",
+    "AML.T0040": "LLM Prompt Injection",
+    "AML.T0054": "LLM Jailbreak",
+    "AML.T0055": "Unsafe Plugin Output Handling",
+}
+
+
+def _atlas_label(technique: str) -> str:
+    name = _ATLAS_NAMES.get(technique)
+    return f"{technique} ({name})" if name else technique
+
+
 def _pct(value: float | None) -> str:
     return f"{value:.0%}" if value is not None else _PENDING
 
@@ -313,7 +329,12 @@ def build_scorecard(
         if technique in live_by_tech:
             b = live_by_tech[technique]
             cell = f"{b.get('resisted', 0)}/{b.get('total', 0)} ({float(b.get('rate', 0.0)):.0%})"
-        a(f"| {technique} | {payload_count} | {cell} |")
+        a(f"| {_atlas_label(technique)} | {payload_count} | {cell} |")
+    a("")
+    a(
+        "_A payload can exercise more than one technique, so the payload column "
+        "sums past the battery size._",
+    )
     a("")
 
     # --- detection quality ---
@@ -322,8 +343,9 @@ def build_scorecard(
     a(
         f"Golden set: **{golden.total} curated cases** "
         f"({golden.kev_cases} expect a CISA KEV hit, {golden.ransomware_cases} expect "
-        "a ransomware flag). Soft assertions: severity within +-1 step, expected "
-        "CVE recall >= 50%, KEV / ransomware honored when asked.",
+        "a ransomware flag; KEV = CISA's Known Exploited Vulnerabilities catalog, "
+        "CVEs observed exploited in the wild). Soft assertions: severity within "
+        "+-1 step, expected CVE recall >= 50%, KEV / ransomware honored when asked.",
     )
     a("")
     if eval_metrics is not None:
@@ -361,6 +383,12 @@ def build_scorecard(
         cmd = f"--retrieval --json-output {DEFAULT_RESULTS_DIR}/retrieval.json"
         a(f"- **MRR / hit-rate@k**: {_PENDING} (run `make eval EVAL_ARGS='{cmd}'`)")
     a("")
+    a(
+        "_MRR = mean reciprocal rank of the expected CVE (1.0 = always ranked "
+        "first); hit-rate@k = share of samples whose expected CVE appears in the "
+        "top k results._",
+    )
+    a("")
 
     # --- efficiency ---
     a("## Efficiency (cost & latency)")
@@ -396,9 +424,11 @@ def build_scorecard(
     a("## Prioritization (deterministic SSVC)")
     a("")
     a(
-        "The SSVC verdict is computed server-side from the collected signals, not "
-        "by the LLM, so it is reproducible from the same inputs. Decision rules, "
-        "most-urgent first:",
+        "The SSVC verdict (Stakeholder-Specific Vulnerability Categorization, "
+        "CISA's remediation-urgency methodology) is computed server-side from the "
+        "collected signals, not by the LLM, so it is reproducible from the same "
+        "inputs. EPSS below is FIRST.org's predicted probability of exploitation "
+        "in the next 30 days. Decision rules, most-urgent first:",
     )
     a("")
     high_p = ssvc_thresholds["high_probability"]
