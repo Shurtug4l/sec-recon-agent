@@ -4,7 +4,7 @@ Single reproducible measurement of the system across security posture, detection
 
 - **Model**: `sonnet`
 - **Date**: 2026-07-07
-- **Commit**: `1568655`
+- **Commit**: `101e6d8`
 - **Token pricing**: Anthropic published rates as of 2026-06-24
 
 ## Security posture (red-team resistance)
@@ -33,11 +33,11 @@ Golden set: **11 curated cases** (8 expect a CISA KEV hit, 1 expect a ransomware
 
 ## Retrieval quality (cve_semantic_search)
 
-Measured by sampling the seeded ChromaDB index and querying with a truncated description; the corpus is a moving window, so numbers depend on the seed. Stock MiniLM-L6 embeddings, no reranker (yet).
+Measured by sampling the seeded ChromaDB index and querying with a truncated description; the corpus is a moving window, so numbers depend on the seed. Hybrid retrieval: dense MiniLM-L6 fused with lexical BM25 (reciprocal-rank fusion); no cross-encoder reranker (yet). Ablation vs dense-only in docs/evaluation.md.
 
-- **Sampled**: 100 CVEs (top_k=10)
-- **MRR**: 0.950
-- **hit-rate@1 / @3 / @5**: 93% / 97% / 97%
+- **Sampled**: 500 CVEs (top_k=10)
+- **MRR**: 0.790
+- **hit-rate@1 / @3 / @5**: 77% / 81% / 82%
 
 _MRR = mean reciprocal rank of the expected CVE (1.0 = always ranked first); hit-rate@k = share of samples whose expected CVE appears in the top k results._
 
@@ -76,7 +76,7 @@ make up          # start the stack
 make seed        # seed the CVE index (once)
 mkdir -p data/scorecard
 make eval     EVAL_ARGS='--json-output data/scorecard/eval.json --model sonnet'
-make eval     EVAL_ARGS='--retrieval --json-output data/scorecard/retrieval.json'
+make eval     EVAL_ARGS='--retrieval --retrieval-sample 500 --json-output data/scorecard/retrieval.json'
 make redteam  REDTEAM_ARGS='--json-output data/scorecard/redteam.json --model sonnet'
 make scorecard   # regenerate this file from whatever JSONs exist
 ```

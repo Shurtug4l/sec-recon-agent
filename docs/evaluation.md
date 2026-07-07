@@ -43,7 +43,7 @@ Beyond pass / fail, the suite measures the axes an engineering review actually a
 - **Tokens and $/triage**, from a `usage` SSE event the API emits, priced by a per-model table in `eval/cost.py`.
 - **Structured-output conformance**: fraction of runs returning a well-formed, non-degenerate report.
 - **Confidence calibration**: expected calibration error (ECE) of the agent's `confidence` enum against whether the case actually passed.
-- **Retrieval quality** of `cve_semantic_search`, in its own mode (`--retrieval`): samples the seeded ChromaDB index, turns a truncated description into a query, and reports hit-rate@k and mean reciprocal rank (MRR).
+- **Retrieval quality** of `cve_semantic_search`, in its own mode (`--retrieval`): samples the seeded ChromaDB index, turns each sampled CVE's description into a query, and reports hit-rate@k and mean reciprocal rank (MRR). Two query modes; see [Retrieval eval](#retrieval-eval-modes-and-hybrid-ablation).
 
 ## Commands
 
@@ -56,9 +56,30 @@ make eval EVAL_ARGS='--model sonnet'             # one run against a specific al
 make eval-compare                                # run the suite against haiku + sonnet + opus, side-by-side
 make eval-compare EVAL_ARGS='--filter kev'       # comparison limited to one tag
 make eval EVAL_ARGS='--retrieval'                # hit-rate@k + MRR (needs a seeded index)
+make eval EVAL_ARGS='--retrieval --retrieval-hard --retrieval-sample 500'  # hard keyword mode
 ```
 
 `--model` and `--models` route through a per-request body field that the backend validates against an explicit allowlist (`ALLOWED_MODELS` in `agent/triage.py`). The aliases `haiku` / `sonnet` / `opus` expand to the full Anthropic model identifiers. An unknown value comes back as an error event with the allowlist violation surfaced, never as a silent fallback to the default.
+
+## Retrieval eval: modes and hybrid ablation
+
+The retrieval mode is self-retrieval: sample CVEs from the live index, derive a query from each CVE's own description, and check whether `cve_semantic_search` ranks that CVE back. It needs a seeded index and no LLM (embeddings only, zero billing). Two query modes:
+
+- **default**: the first 160 characters of the description. Near-verbatim text, so the task is lenient; on short descriptions query and document coincide and similarity saturates at 1.0. Treat these numbers as an upper bound.
+- **hard** (`--retrieval-hard`): an ~80-char keyword-style query distilled from the description: stopwords and CVE boilerplate ("allows", "attacker", "versions") stripped, identifier tokens kept whole (`log4j2`, `2.14.1`), first-occurrence order, deduped. Closer to how an analyst actually queries, and the mode where retriever variants separate.
+
+Retrieval is hybrid by default (`RETRIEVAL_HYBRID_ENABLED`): the dense MiniLM-L6 cosine ranking is fused with an in-process Okapi BM25 over the same corpus via reciprocal-rank fusion. Ablation measured on a local 84,202-document index, 500 sampled queries, top_k 10, all four arms on the identical corpus and sample:
+
+| mode | retriever | MRR | hit@1 | hit@3 | hit@5 |
+|---|---|---|---|---|---|
+| default | dense-only | 0.769 | 74.2% | 79.6% | 80.6% |
+| default | hybrid | 0.790 | 77.0% | 81.0% | 81.8% |
+| hard | dense-only | 0.730 | 69.8% | 74.6% | 77.2% |
+| hard | hybrid | 0.778 | 75.2% | 80.4% | 81.6% |
+
+The lexical arm earns most on keyword-style queries (+0.048 MRR, +5.4 points hit@1): identifier-heavy inputs are exactly what BM25 exists for and what dense embeddings blur. With hybrid on, hard-mode retrieval ranks about as well as dense-only did on the easy mode. A cross-encoder reranker (the possible next stage) can only reorder candidates the retrievers already surfaced, never recover the ~18% missed outright; its reorderable headroom (hit@5 minus hit@1, ~6 points) bounds what it could add, and shipping one is gated on that number staying worth the ~90 MB image cost.
+
+Corpus note: the index is upsert-only, so a long-lived local index accumulates well beyond the ~5-8k 30-day seed window, and MRR drops as the corpus grows (more confusable neighbors). Compare arms only within the same corpus and sample; the stamped scorecard number and this table are not directly comparable to runs on a differently sized index.
 
 ## Red-team battery
 

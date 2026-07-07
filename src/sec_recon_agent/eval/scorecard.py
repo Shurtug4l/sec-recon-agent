@@ -370,7 +370,9 @@ def build_scorecard(
     a(
         "Measured by sampling the seeded ChromaDB index and querying with a "
         "truncated description; the corpus is a moving window, so numbers depend "
-        "on the seed. Stock MiniLM-L6 embeddings, no reranker (yet).",
+        "on the seed. Hybrid retrieval: dense MiniLM-L6 fused with lexical BM25 "
+        "(reciprocal-rank fusion); no cross-encoder reranker (yet). Ablation vs "
+        "dense-only in docs/evaluation.md.",
     )
     a("")
     if retrieval is not None:
@@ -380,7 +382,9 @@ def build_scorecard(
         a(f"- **MRR**: {_num(r.mrr, '.3f')}")
         a(f"- **hit-rate@1 / @3 / @5**: {hits}")
     else:
-        cmd = f"--retrieval --json-output {DEFAULT_RESULTS_DIR}/retrieval.json"
+        cmd = (
+            f"--retrieval --retrieval-sample 500 --json-output {DEFAULT_RESULTS_DIR}/retrieval.json"
+        )
         a(f"- **MRR / hit-rate@k**: {_PENDING} (run `make eval EVAL_ARGS='{cmd}'`)")
     a("")
     a(
@@ -461,7 +465,10 @@ def build_scorecard(
     a(f"mkdir -p {DEFAULT_RESULTS_DIR}")
     a(f"make eval     EVAL_ARGS='--json-output {DEFAULT_RESULTS_DIR}/eval.json{pin}'")
     # Retrieval eval is embeddings-only (ChromaDB, no LLM), so it takes no --model.
-    a(f"make eval     EVAL_ARGS='--retrieval --json-output {DEFAULT_RESULTS_DIR}/retrieval.json'")
+    a(
+        f"make eval     EVAL_ARGS='--retrieval --retrieval-sample 500 "
+        f"--json-output {DEFAULT_RESULTS_DIR}/retrieval.json'",
+    )
     a(f"make redteam  REDTEAM_ARGS='--json-output {DEFAULT_RESULTS_DIR}/redteam.json{pin}'")
     a("make scorecard   # regenerate this file from whatever JSONs exist")
     a("```")

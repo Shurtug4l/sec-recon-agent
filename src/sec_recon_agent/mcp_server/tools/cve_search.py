@@ -269,7 +269,7 @@ async def cve_semantic_search(query: str, top_k: int = 5) -> list[CVECandidate]:
             span.set_attribute("results.count", 0)
             return []
         # Cap defensively at the tool boundary: the FastAPI layer caps user
-        # input at 4000 chars, but the agent can synthesize longer queries.
+        # input at 100,000 chars, and the agent can synthesize long queries.
         query = query[:MAX_QUERY_CHARS]
         top_k = max(1, min(top_k, MAX_TOP_K))
 

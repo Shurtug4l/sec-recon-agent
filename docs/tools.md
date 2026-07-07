@@ -8,7 +8,7 @@ Reference for the ten MCP tools, one section per tool: what it queries, what it 
 
 ## cve_semantic_search
 
-`cve_semantic_search(query, top_k)` runs vector retrieval over a local ChromaDB index of recent high-severity CVEs (30-day lookback, ~5-8k entries). Embeddings via ChromaDB's `DefaultEmbeddingFunction` (ONNX MiniLM-L6, 384-d). Returns ranked `CVECandidate` hits with cosine similarity.
+`cve_semantic_search(query, top_k)` runs hybrid retrieval over a local ChromaDB index of recent high-severity CVEs (30-day lookback, ~5-8k entries): a dense cosine ranking (ChromaDB's `DefaultEmbeddingFunction`, ONNX MiniLM-L6, 384-d) fused via reciprocal-rank fusion with an in-process Okapi BM25 over the same corpus, which catches the identifier-heavy signal (product names, version strings) dense embeddings blur. `RETRIEVAL_HYBRID_ENABLED=false` restores dense-only. Returns ranked `CVECandidate` hits; each hit's `similarity` is its true cosine similarity to the query, while the rank order comes from the fusion. Measured delta and the eval methodology are in [evaluation.md](evaluation.md#retrieval-eval-modes-and-hybrid-ablation).
 
 ## exploit_check
 

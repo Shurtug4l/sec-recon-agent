@@ -121,7 +121,7 @@ The audit trail and the rate-limit are the only side effects of `/v1/triage`, an
 - The vector store (ChromaDB) is local to the container, mounted on a named volume. There is no cross-tenant separation because the project is single-tenant by design.
 - The embedded corpus is public CVE data from NVD (~5-8k entries on a typical 30-day lookback). It contains no PII and no user-supplied content. Embedding inversion attacks would recover... public CVE descriptions.
 - User queries are NOT persisted in the embedded corpus.
-- `cve_semantic_search` truncates the query at the tool boundary (1000 chars) so a pathological query cannot blow up the embedding compute path.
+- `cve_semantic_search` truncates the query at the tool boundary (2000 chars, `MAX_QUERY_CHARS`) so a pathological query cannot blow up the embedding compute path.
 
 **Why partial**: a deployment that ingests private threat intel into the same ChromaDB collection would inherit risks this design did not consider. The project documents the boundary; a future deployment would need a separate vector store with proper auth and tenant separation.
 
@@ -140,7 +140,7 @@ The 11-case golden eval set (`src/sec_recon_agent/eval/golden_set.py`) measures 
 **Status**: mitigated.
 
 **How**:
-- **Per-tool resource caps**: Exploit-DB CSV 20 MB cap with streaming abort; KEV catalog 50 MB cap; EPSS response 4 MB cap; Nmap hostnames / ports per host capped at 50 / 200; cve_semantic_search query truncated at 1000 chars; seed pagination capped at 25 pages per severity. See `docs/design.md` "Bounded resource consumption".
+- **Per-tool resource caps**: Exploit-DB CSV 20 MB cap with streaming abort; KEV catalog 50 MB cap; EPSS response 4 MB cap; Nmap hostnames / ports per host capped at 50 / 200; cve_semantic_search query truncated at 2000 chars; seed pagination capped at 25 pages per severity. See `docs/design.md` "Bounded resource consumption".
 - **TriageRequest body size**: 100 KB (`api/stream.py::TriageRequest.query`) - generous enough for pasted SBOMs, hard cap against arbitrary blob uploads.
 - **API auth + rate limit (opt-in)**: `API_KEYS` and `RATE_LIMIT_PER_MINUTE` env switches close the unbounded-call exposure when the API is reachable beyond `localhost`. See `docs/design.md` "Why opt-in auth + rate limit".
 - **Structured output bound on LLM cost**: TriageReport caps every list field (max 10 CVEs, max 20 attack techniques, etc.) so the model cannot emit unbounded payloads that drive token cost up.

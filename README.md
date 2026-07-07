@@ -57,7 +57,7 @@ It is deliberately **not**:
 +------------+-------------+
              |
              +-- NVD CVE 2.0 API           (cve_lookup, async + rate-limited)
-             +-- ChromaDB ONNX MiniLM-L6   (cve_semantic_search, ~5-8k CVE corpus)
+             +-- ChromaDB MiniLM-L6 + BM25 (cve_semantic_search, hybrid RRF-fused)
              +-- Exploit-DB CSV + GitHub   (exploit_check, parallel fan-out)
              +-- CISA KEV catalog          (kev_check, "patch now" signal + ransomware flag)
              +-- FIRST EPSS API            (epss_score, 30-day exploitation probability)
@@ -100,7 +100,7 @@ Each tool has a typed Pydantic contract: validated input, typed result model, ty
 | Tool | Source | Returns |
 |---|---|---|
 | `cve_lookup` | NVD CVE 2.0 API | `CVEDetail`: CVSS v3, severity, CWEs, affected CPEs, references |
-| `cve_semantic_search` | local ChromaDB index | ranked `CVECandidate` hits for fuzzy descriptions |
+| `cve_semantic_search` | local ChromaDB index | ranked `CVECandidate` hits for fuzzy descriptions (hybrid dense + BM25, RRF-fused) |
 | `exploit_check` | Exploit-DB CSV + GitHub code search | `ExploitCheck`: public-PoC availability |
 | `kev_check` | CISA KEV catalog | `KevCheck`: exploited-in-the-wild, remediation deadline, ransomware flag |
 | `epss_score` | FIRST.org EPSS API | `EpssScore`: 30-day exploitation probability + percentile |
