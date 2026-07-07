@@ -24,7 +24,7 @@ import {
 import { cn } from "@/lib/utils";
 
 export const metadata = {
-  title: "Scorecard · sec-recon-agent",
+  title: "Scorecard - sec-recon-agent",
   description:
     "A single reproducible measurement of the agent across security posture, detection quality, retrieval, efficiency, and calibration.",
 };
@@ -57,7 +57,11 @@ export default function ScorecardPage() {
             retrieval, efficiency, and reliability. Every number here is parsed from the
             eval / retrieval / red-team result JSONs a live{" "}
             <code className="font-mono text-xs">make scorecard</code> run produced. Nothing
-            is hand-authored; the misses are shown next to the wins.
+            is hand-authored; the misses are shown next to the wins. Measured on{" "}
+            <span className="font-mono text-foreground">sonnet</span>: the deployment
+            default is haiku and scores are model-specific, so these numbers do not
+            transfer to other models (<code className="font-mono text-xs">make eval-compare</code>{" "}
+            runs the same suite against haiku, sonnet, and opus side by side).
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
             <span>
@@ -111,10 +115,15 @@ export default function ScorecardPage() {
           <KpiCard
             label="Calibration ECE"
             value={calibration.ece.toFixed(3)}
-            hint={`${golden.conformant}/${golden.total} conformant`}
+            hint="0 = perfectly calibrated"
             icon={Activity}
           />
         </div>
+        <p className="-mt-5 mb-8 text-[11px] text-muted-foreground">
+          Cost and latency are measured over the same 11 golden-set runs. Cost is estimated
+          locally from token counts at published API rates (the API reports tokens, not
+          prices); p95 = 95% of runs finished within this time.
+        </p>
 
         {/* Security posture: ATLAS matrix + misses */}
         <section className="mb-8">
@@ -122,13 +131,19 @@ export default function ScorecardPage() {
             <Crosshair className="h-4 w-4 text-primary" />
             <h2 className="text-lg font-semibold">Security posture</h2>
             <span className="text-xs text-muted-foreground">
-              prompt-injection battery, {redteam.summary.total} payloads mapped to MITRE ATLAS
+              {redteam.summary.total} prompt-injection payloads across 6 categories, each
+              mapped to MITRE ATLAS, the adversarial-ML counterpart of ATT&amp;CK
             </span>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">ATLAS resistance by technique</CardTitle>
+                <p className="text-[11px] text-muted-foreground">
+                  Each payload plants adversarial instructions in the user query or in tool
+                  output. Resisted = the report passed every falsifiable check for that
+                  payload: no canary string leaked, no attacker-dictated severity or action.
+                </p>
               </CardHeader>
               <CardContent className="space-y-3">
                 {redteam.atlas_breakdown.map((t) => (
@@ -197,7 +212,10 @@ export default function ScorecardPage() {
             <BadgeCheck className="h-4 w-4 text-primary" />
             <h2 className="text-lg font-semibold">Detection quality</h2>
             <span className="text-xs text-muted-foreground">
-              {golden.total} curated golden cases, soft-assertion scoring
+              {golden.total} curated cases with known ground truth, scored with soft
+              assertions: severity within +-1 step, at least half the expected CVE IDs
+              recalled, CISA KEV (Known Exploited Vulnerabilities) and ransomware flags
+              honored when expected
             </span>
           </div>
           <Card>
@@ -264,6 +282,11 @@ export default function ScorecardPage() {
                           >
                             {c.passed ? "pass" : "miss"}
                           </Badge>
+                          {!c.passed && c.notes.length > 0 && (
+                            <p className="mt-1 font-mono text-[10px] leading-relaxed text-warning">
+                              {c.notes.join("; ")}
+                            </p>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -272,6 +295,10 @@ export default function ScorecardPage() {
               </div>
             </CardContent>
           </Card>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            11 cases is regression-detector scale, not a benchmark: it catches breakage in
+            the prompt or the tool chain, it does not prove general detection accuracy.
+          </p>
         </section>
 
         {/* Retrieval + calibration */}
@@ -282,8 +309,14 @@ export default function ScorecardPage() {
                 <Target className="h-4 w-4" /> Retrieval quality
               </CardTitle>
               <p className="text-[11px] text-muted-foreground">
-                cve_semantic_search over {retrieval.sampled} sampled CVEs (top_k={retrieval.top_k}).
-                Stock MiniLM-L6, no reranker yet.
+                Self-retrieval test over the seeded CVE index: each query is the first{" "}
+                {retrieval.query_chars} characters of a sampled CVE&apos;s own description,
+                and the check is whether cve_semantic_search ranks that CVE back (
+                {retrieval.sampled} samples, top_k={retrieval.top_k}). MRR = mean of 1/rank
+                of the correct CVE, 1.0 = always first. hit-rate@k = share of queries with
+                the correct CVE in the top k. Stock MiniLM-L6 embeddings, no reranker yet;
+                self-retrieval from a truncated description is a lenient task, so treat
+                these as an upper bound.
               </p>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
@@ -304,9 +337,14 @@ export default function ScorecardPage() {
                 <Activity className="h-4 w-4" /> Confidence calibration
               </CardTitle>
               <p className="text-[11px] text-muted-foreground">
-                The model emits a categorical confidence, so this is a discrete reliability
-                diagram (one bin per level), not a smoothed curve. ECE ={" "}
+                The model emits a 3-level confidence (high / medium / low), mapped to
+                nominal probabilities 0.9 / 0.6 / 0.3, so this is a discrete reliability
+                diagram with one bin per level, not a smoothed curve. ECE (expected
+                calibration error) weights |predicted - observed| by each bin&apos;s share
+                of cases; 0 is perfectly calibrated. ECE ={" "}
                 <span className="font-mono text-foreground">{calibration.ece.toFixed(3)}</span>.
+                All {golden.conformant}/{golden.total} reports were structurally
+                conformant: non-empty summary and action, SSVC verdict stamped.
               </p>
             </CardHeader>
             <CardContent className="space-y-3">
