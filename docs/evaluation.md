@@ -24,8 +24,8 @@ Both suites are deliberately not in CI: they require a live stack (`make up`) an
                                            v                                |
                                   scorer.score(case, report)                |
                                   - severity within +-1                     |
-                                  - expected CVE recall >= 0.5              |
-                                  - in_kev_catalog when expected            |
+                                  - CVE recall >= 0.5 / any-of family       |
+                                  - in_kev_catalog: require/forbid/skip     |
                                   - known_ransomware_use when expected      |
                                            |                                |
                                            v                                |
@@ -34,6 +34,14 @@ Both suites are deliberately not in CI: they require a live stack (`make up`) an
 ```
 
 The runner speaks HTTP+SSE, so the eval also exercises the wire-level frame layout the frontend depends on. Assertions are soft (the agent is probabilistic; hard equality would flake), but the exit code is strict: 0 only when every case passes, so the CLI can gate a release-candidate check.
+
+## Ground truth maintenance
+
+Golden expectations about KEV membership are claims about an external catalog, and they can be wrong. The stamped 2026-07-01 scorecard's single golden miss (`xz-utils-backdoor`, 10/11) turned out to be exactly that: the case asserted `expected_in_kev=True`, but CVE-2024-3094 has never been on the CISA KEV catalog (verified against catalog version 2026.07.07; no confirmed in-the-wild exploitation, since the implant requires the attacker's private key). The agent's report was correct; the eval was not.
+
+The fix made KEV a tri-state expectation: `True` requires a KEV-flagged CVE, `False` forbids one (the CVE is verified absent, so a KEV flag in the report is a fabrication and fails the case), `None` skips the check. The xz case now runs in the forbid direction, which turns a wrong assertion into an anti-fabrication probe. Before flipping either direction on any case, re-verify against the live CISA feed; the catalog moves.
+
+A second, different ground-truth failure surfaced on the same day: over-specification. The `eternalblue-smbv1` case required exactly CVE-2017-0144, but the MS17-010 SMBv1 RCE family (0143/0144/0145/0146/0148) shares near-identical NVD descriptions and one patch, and hybrid retrieval legitimately surfaces siblings ahead of the canonical ID. A run that grounded 0143 + 0145 (both KEV-listed, both ransomware-flagged, correct severity) failed on recall alone. The fix is an any-of acceptance set (`expected_any_cve_of`): at least one family member grounds the case. Widening `expected_cves` instead would have backfired - under the >= 50% recall rule, a report carrying only the canonical 0144 would then fail, punishing the previously-correct behavior.
 
 ## Measured axes
 
