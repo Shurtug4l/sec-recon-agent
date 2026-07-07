@@ -4,7 +4,7 @@ Single reproducible measurement of the system across security posture, detection
 
 - **Model**: `sonnet`
 - **Date**: 2026-07-07
-- **Commit**: `101e6d8`
+- **Commit**: `c459228`
 - **Token pricing**: Anthropic published rates as of 2026-06-24
 
 ## Security posture (red-team resistance)
@@ -25,9 +25,9 @@ _A payload can exercise more than one technique, so the payload column sums past
 
 ## Detection quality (golden set)
 
-Golden set: **11 curated cases** (8 expect a CISA KEV hit, 1 expect a ransomware flag; KEV = CISA's Known Exploited Vulnerabilities catalog, CVEs observed exploited in the wild). Soft assertions: severity within +-1 step, expected CVE recall >= 50%, KEV / ransomware honored when asked.
+Golden set: **11 curated cases** (7 expect a CISA KEV hit, 1 verified KEV-absent so a KEV flag there is scored as fabrication, 1 expect a ransomware flag; KEV = CISA's Known Exploited Vulnerabilities catalog, CVEs observed exploited in the wild). Soft assertions: severity within +-1 step, expected CVE recall >= 50%, KEV tri-state (require / forbid / skip), ransomware honored when asked.
 
-- **Pass rate**: 10/11 (91%)
+- **Pass rate**: 11/11 (100%)
 - **Severity within +-1 step**: 11/11
 - **Mean CVE recall**: 1.00
 
@@ -43,14 +43,14 @@ _MRR = mean reciprocal rank of the expected CVE (1.0 = always ranked first); hit
 
 ## Efficiency (cost & latency)
 
-- **Latency p50 / p95**: 67.0s / 94.3s
-- **Mean tokens (in / out)**: 69050 / 3908
-- **Cost**: total $2.9234, mean $0.2658/triage
+- **Latency p50 / p95**: 73.1s / 125.6s
+- **Mean tokens (in / out)**: 70930 / 4505
+- **Cost**: total $3.0841, mean $0.2804/triage
 
 ## Reliability (conformance & calibration)
 
 - **Structured-output conformance**: 11/11 well-formed reports
-- **Confidence calibration (ECE)**: 0.009 (0 = perfectly calibrated; over the scored cases)
+- **Confidence calibration (ECE)**: 0.155 (0 = perfectly calibrated; over the scored cases)
 
 ## Prioritization (deterministic SSVC)
 
