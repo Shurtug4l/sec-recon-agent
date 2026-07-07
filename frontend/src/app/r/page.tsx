@@ -78,7 +78,7 @@ export default function SharedReportPage() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Link2 className="h-4 w-4 text-primary" />
-                Shared report — decoded locally from the link, nothing sent to a server.
+                Shared report: decoded locally from the link, nothing sent to a server.
               </div>
               <Button asChild size="sm" variant="outline">
                 <Link href="/triage">

@@ -58,7 +58,7 @@ export function StatisticsTab({ entries }: { entries: HistoryEntry[] }) {
           value={
             stats.totalRuns > 0
               ? `${Math.round((stats.completedRuns / stats.totalRuns) * 100)}%`
-              : "—"
+              : "n/a"
           }
           hint={stats.errorRuns > 0 ? `${stats.errorRuns} errored` : "no errors"}
           icon={CheckCircle2}
@@ -66,25 +66,29 @@ export function StatisticsTab({ entries }: { entries: HistoryEntry[] }) {
         />
       </div>
 
+      <p className="text-[11px] text-muted-foreground">
+        Threat signals over the CVEs in your completed reports; a CVE reported in two runs
+        counts twice.
+      </p>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <KpiCard
           label="CISA KEV"
           value={stats.kevCount}
-          hint="actively exploited"
+          hint="on CISA's Known Exploited Vulnerabilities catalog: exploited in the wild"
           icon={Flame}
           accent={stats.kevCount > 0 ? "critical" : "default"}
         />
         <KpiCard
           label="Ransomware"
           value={stats.ransomwareCount}
-          hint="known ransomware use"
+          hint="known ransomware use, per the KEV catalog"
           icon={Skull}
           accent={stats.ransomwareCount > 0 ? "critical" : "default"}
         />
         <KpiCard
           label="High EPSS"
           value={stats.highEpssCount}
-          hint="probability >= 0.5"
+          hint="EPSS exploit probability >= 0.5 (FIRST.org 30-day forecast)"
           icon={TrendingUp}
           accent={stats.highEpssCount > 0 ? "high" : "default"}
         />
@@ -94,6 +98,10 @@ export function StatisticsTab({ entries }: { entries: HistoryEntry[] }) {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Severity distribution</CardTitle>
+            <p className="text-[11px] text-muted-foreground">
+              Final severity of each completed report (the highest CVSS severity across its
+              CVEs). One bar per level; the y-axis counts runs.
+            </p>
           </CardHeader>
           <CardContent>
             <SeverityBarChart data={stats.bySeverity} />
@@ -103,6 +111,11 @@ export function StatisticsTab({ entries }: { entries: HistoryEntry[] }) {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Tool call counts</CardTitle>
+            <p className="text-[11px] text-muted-foreground">
+              Counted by matching tool names in each report&apos;s reasoning chain (the
+              agent&apos;s self-reported audit log), not from server-side telemetry. Exact
+              per-call data lives in the OpenTelemetry traces (observability tab).
+            </p>
           </CardHeader>
           <CardContent className="flex items-center gap-6">
             <div className="flex-1">
@@ -118,7 +131,11 @@ export function StatisticsTab({ entries }: { entries: HistoryEntry[] }) {
       {stats.topCves.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Top CVEs by query frequency</CardTitle>
+            <CardTitle className="text-base">Most-referenced CVEs</CardTitle>
+            <p className="text-[11px] text-muted-foreground">
+              CVEs that appear most often across your triage reports. CVSS is the 0-10 base
+              severity score from NVD (higher = more severe); links open the NVD record.
+            </p>
           </CardHeader>
           <CardContent className="space-y-1">
             {stats.topCves.map((cve) => (
@@ -156,6 +173,12 @@ export function StatisticsTab({ entries }: { entries: HistoryEntry[] }) {
               <Crosshair className="h-4 w-4" />
               Top ATT&CK techniques
             </CardTitle>
+            <p className="text-[11px] text-muted-foreground">
+              MITRE ATT&amp;CK techniques (the standard catalog of adversary behaviors)
+              that the agent mapped from the CVEs&apos; weakness types: how an attacker
+              would actually use the flaw. Gray labels are the ATT&amp;CK tactics; links
+              open the MITRE page.
+            </p>
           </CardHeader>
           <CardContent className="space-y-1">
             {stats.topAttackTechniques.map((technique) => (

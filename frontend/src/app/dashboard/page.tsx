@@ -30,8 +30,8 @@ export default function DashboardPage() {
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   // Deep-link: hydrate the active tab from ?tab= on mount. Reading the query
-  // directly (not useSearchParams) keeps the page statically prerenderable —
-  // no Suspense boundary required — while ?tab=observability stays shareable.
+  // directly (not useSearchParams) keeps the page statically prerenderable
+  // (no Suspense boundary required) while ?tab=observability stays shareable.
   useEffect(() => {
     const fromUrl = new URLSearchParams(window.location.search).get("tab");
     if (isTab(fromUrl)) setTab(fromUrl);
@@ -88,7 +88,7 @@ export default function DashboardPage() {
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
               </span>
-              Triage in progress — running in the background
+              Triage in progress, running in the background
             </div>
           )}
         </div>

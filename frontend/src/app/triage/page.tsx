@@ -70,12 +70,18 @@ export default function TriagePage() {
                 <code className="font-mono">CVE-2021-44228</code>), a
                 product/version (<code className="font-mono">Apache 2.4.49</code>),
                 a fuzzy symptom description, a raw Nmap XML scan, or a
-                CycloneDX / SPDX / requirements.txt SBOM. The agent grounds every
-                answer with ten typed tools (NVD, CISA KEV, FIRST EPSS,
-                Exploit-DB, GitHub, ATT&amp;CK, patch lookup, OSV.dev, SBOM and
-                Nmap parsers) and returns a typed{" "}
+                CycloneDX / SPDX / requirements.txt SBOM (a machine-readable
+                dependency inventory). The agent grounds every answer with ten
+                typed tools: NVD lookup and semantic CVE search (NVD is the NIST
+                vulnerability database), CISA KEV (the US agency&apos;s catalog of
+                vulnerabilities confirmed exploited in the wild), FIRST EPSS
+                (estimated probability of exploitation in the next 30 days),
+                public-exploit search across Exploit-DB and GitHub, MITRE
+                ATT&amp;CK technique mapping, patch and OSV.dev advisory lookups
+                (fixed versions and open source advisories), plus SBOM and Nmap
+                parsers. The answer comes back as a typed{" "}
                 <code className="font-mono">TriageReport</code>; the reasoning
-                chain is the audit log.
+                chain at the bottom of each report logs every tool call behind it.
               </p>
               <TriageForm
                 isRunning={state.isRunning}

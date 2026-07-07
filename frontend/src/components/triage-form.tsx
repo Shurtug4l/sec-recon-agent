@@ -100,6 +100,7 @@ export function TriageForm({ isRunning, onSubmit, onCancel }: Props) {
                     "shrink-0 rounded-full border px-2 py-0.5 font-mono text-[10px]",
                     DECISION_CLASS[f.decision],
                   )}
+                  title={`SSVC verdict of this captured run: ${f.decision}. CISA-style urgency decision, computed server-side; the ladder is explained in the report header.`}
                 >
                   {f.decision}
                 </span>

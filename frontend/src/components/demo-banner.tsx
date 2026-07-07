@@ -13,8 +13,8 @@ export function DemoBanner() {
     <div className="border-b border-primary/20 bg-primary/10 px-4 py-1.5 text-center text-[11px] leading-relaxed text-foreground">
       <FlaskConical className="mr-1.5 inline h-3 w-3 text-primary" aria-hidden />
       Demo build: every run replays a <strong className="font-semibold">real captured</strong>{" "}
-      triage (model <code className="font-mono">{DEMO_MODEL}</code>) — no API key, no backend.
-      Clone the repo to run the live agent.
+      triage (captured with Claude <code className="font-mono">{DEMO_MODEL}</code>, replayed
+      faster than real time). No API key, no backend. Clone the repo to run the live agent.
     </div>
   );
 }

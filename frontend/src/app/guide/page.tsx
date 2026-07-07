@@ -22,6 +22,7 @@ import {
 import { Header } from "@/components/header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DEMO_MODE } from "@/demo/config";
 import { cn } from "@/lib/utils";
 
 interface Section {
@@ -46,7 +47,7 @@ const SECTIONS: Section[] = [
     what:
       "A CVE (Common Vulnerabilities and Exposures) is a globally unique identifier for a single, publicly disclosed vulnerability, assigned by a CVE Numbering Authority (CNA). The NVD (NIST National Vulnerability Database) enriches each CVE record with CVSS (Common Vulnerability Scoring System) v3 base scores in the range 0.0-10.0, mapped to severity bands (low / medium / high / critical), one or more CWE (Common Weakness Enumeration) identifiers describing the underlying weakness class, and CPE (Common Platform Enumeration) match expressions that pinpoint affected products and versions. CVSS is a deterministic vector of base metrics (attack vector, complexity, privileges, user interaction, scope, CIA impact), not a probability of exploitation.",
     whyHere:
-      "cve_lookup pulls the full NVD 2.0 record. patch_lookup extracts fixed-version info from CPE versionEndExcluding ranges. attack_mapping turns the returned CWE IDs into ATT&CK techniques. CVSS is reported but the agent does not treat it as exploit likelihood — that is EPSS's job.",
+      "cve_lookup pulls the full NVD 2.0 record. patch_lookup extracts fixed-version info from CPE versionEndExcluding ranges. attack_mapping turns the returned CWE IDs into ATT&CK techniques. CVSS is reported but the agent does not treat it as exploit likelihood; that is EPSS's job.",
     used: ["cve_lookup", "cve_semantic_search", "patch_lookup", "attack_mapping"],
     refs: [
       { label: "NVD home", href: "https://nvd.nist.gov/" },
@@ -56,7 +57,7 @@ const SECTIONS: Section[] = [
   },
   {
     id: "kev",
-    title: "CISA KEV — Known Exploited Vulnerabilities",
+    title: "CISA KEV: Known Exploited Vulnerabilities",
     shortLabel: "CISA KEV",
     badge: "Patch-now signal",
     icon: Flame,
@@ -72,7 +73,7 @@ const SECTIONS: Section[] = [
   },
   {
     id: "epss",
-    title: "FIRST EPSS — Exploit Prediction Scoring System",
+    title: "FIRST EPSS: Exploit Prediction Scoring System",
     shortLabel: "EPSS",
     badge: "Forward-looking probability",
     icon: TrendingUp,
@@ -87,13 +88,29 @@ const SECTIONS: Section[] = [
     ],
   },
   {
+    id: "osv",
+    title: "OSV.dev: package-level advisories",
+    shortLabel: "OSV.dev",
+    badge: "Package + version lookup",
+    icon: Package,
+    what:
+      "OSV.dev is Google's open vulnerability database keyed by package and version rather than by product. It aggregates CVE records, GitHub Security Advisories (GHSA), and ecosystem-native advisories (PyPI, npm, Go, Maven, crates.io, NuGet, RubyGems) into one schema with precise introduced / fixed version ranges. Where NVD answers 'what is CVE-2021-44228?', OSV answers 'is this package at this version affected by anything?'.",
+    whyHere:
+      "osv_lookup is the inverse of cve_lookup: given a dependency at an exact version it queries OSV.dev and returns each applicable advisory with its CVE / GHSA aliases, upstream severity, and the version boundary where the fix landed. It is the fastest path from a dependency pin ('requests 2.5.0') to a grounded verdict.",
+    used: ["osv_lookup"],
+    refs: [
+      { label: "OSV.dev", href: "https://osv.dev/" },
+      { label: "OSV schema", href: "https://ossf.github.io/osv-schema/" },
+    ],
+  },
+  {
     id: "attack",
     title: "MITRE ATT&CK",
     shortLabel: "MITRE ATT&CK",
     badge: "Adversary TTPs",
     icon: Crosshair,
     what:
-      "MITRE ATT&CK is a globally-accessible knowledge base of adversary tactics (the 'why' of an attack step — e.g. Initial Access, Execution, Persistence), techniques (the 'how' — e.g. Phishing, Exploitation of Remote Services), sub-techniques, and procedures, sourced from observed real-world incidents. Each technique has a stable ID (e.g. T1190, T1059) and ships with detection guidance, data sources, and mapped mitigations.",
+      "MITRE ATT&CK is a globally-accessible knowledge base of adversary tactics (the 'why' of an attack step: Initial Access, Execution, Persistence), techniques (the 'how': Phishing, Exploitation of Remote Services), sub-techniques, and procedures, sourced from observed real-world incidents. Each technique has a stable ID (e.g. T1190, T1059) and ships with detection guidance, data sources, and mapped mitigations.",
     whyHere:
       "attack_mapping turns the CWE IDs surfaced by cve_lookup into ATT&CK techniques + mitigations. This pivots the report from defect-class (CWE) to attacker-behavior (ATT&CK), which is the language SOC and red-team teams actually use to plan detections and exercises.",
     used: ["attack_mapping"],
@@ -104,14 +121,14 @@ const SECTIONS: Section[] = [
   },
   {
     id: "atlas",
-    title: "MITRE ATLAS — AI threat matrix",
+    title: "MITRE ATLAS: AI threat matrix",
     shortLabel: "MITRE ATLAS",
     badge: "Adversary TTPs for AI",
     icon: Library,
     what:
-      "MITRE ATLAS (Adversarial Threat Landscape for Artificial-Intelligence Systems) is the ATT&CK-equivalent matrix for AI/ML systems. Tactics include AI Model Access, ML Attack Staging, Exfiltration via AI Inference API, Persistence, and Impact. Techniques cover LLM Prompt Injection (direct and indirect), LLM Jailbreak, LLM Plugin Compromise, Unsafe Plugin Output Handling, Exfiltration via Inference API, Denial of AI Service, Cost Harvesting, External Harms. ATLAS is the canonical taxonomy for talking about LLM-specific attacks in the same shape SOC teams already understand.",
+      "MITRE ATLAS (Adversarial Threat Landscape for Artificial-Intelligence Systems) is the ATT&CK-equivalent matrix for AI/ML systems: the same tactic-and-technique structure, extended to AI-specific attack surfaces. Tactics include ML Model Access, ML Attack Staging, Exfiltration, and Impact. Techniques cover LLM Prompt Injection (direct and indirect), LLM Jailbreak, Unsafe Plugin Output Handling, Exfiltration via ML Inference API, Cost Harvesting, and Denial of ML Service. ATLAS is the canonical taxonomy for talking about LLM-specific attacks in the same shape SOC teams already understand.",
     whyHere:
-      "The red-team battery (sec-recon-redteam) tags every prompt-injection payload with one or more ATLAS technique IDs. The drift detector reports per-technique resistance rates so a regression on Exfiltration via Inference API surfaces by stable identifier rather than by free-text. The repository's authoritative mapping (with the specific T-IDs that this codebase tracks) lives in docs/mitre_atlas.md; MITRE periodically renumbers techniques, so consult that file for the version actually exercised by tests.",
+      "The red-team battery (sec-recon-redteam) tags every prompt-injection payload with one or more ATLAS technique IDs. The drift detector reports per-technique resistance rates so a regression on Exfiltration via ML Inference API surfaces by stable identifier rather than by free-text. The repository's authoritative mapping (with the specific T-IDs that this codebase tracks) lives in docs/mitre_atlas.md; MITRE periodically renumbers techniques, so consult that file for the version actually exercised by tests.",
     used: ["sec-recon-redteam (CLI)"],
     refs: [
       { label: "ATLAS matrix", href: "https://atlas.mitre.org/matrices/ATLAS" },
@@ -120,7 +137,7 @@ const SECTIONS: Section[] = [
   },
   {
     id: "sbom",
-    title: "SBOM — CycloneDX, SPDX, PEP 508",
+    title: "SBOM: CycloneDX, SPDX, PEP 508",
     shortLabel: "SBOM",
     badge: "Software inventory",
     icon: Package,
@@ -173,7 +190,7 @@ const SECTIONS: Section[] = [
     badge: "AI management system",
     icon: Gavel,
     what:
-      "ISO/IEC 42001:2023 is the first international standard for an AI Management System (AIMS): a Plan-Do-Check-Act framework analogous to ISO 27001 but specific to AI. Annex A enumerates 38 controls across leadership, planning, support, operation, performance evaluation, and improvement — explicitly covering responsibilities, data quality, transparency, system impact, and lifecycle management. It is the certifiable spine for EU AI Act risk management for high-risk systems.",
+      "ISO/IEC 42001:2023 is the first international standard for an AI Management System (AIMS): a Plan-Do-Check-Act framework analogous to ISO 27001 but specific to AI. Annex A enumerates 38 controls across leadership, planning, support, operation, performance evaluation, and improvement, explicitly covering responsibilities, data quality, transparency, system impact, and lifecycle management. It is certifiable, and it is the closest existing management-system scaffold for EU AI Act risk-management obligations; it is not an AI Act harmonized standard.",
     whyHere:
       "docs/iso_42001.md maps the relevant Annex A controls to where they are implemented or explicitly out of scope. The TriageReport schema, the audit trail, the red-team battery, and the published threat-model documents satisfy the transparency, traceability, and risk-control clauses for a small portfolio-scale AIMS.",
     used: ["docs/iso_42001.md", "audit trail", "red-team battery"],
@@ -198,12 +215,12 @@ const SECTIONS: Section[] = [
   },
   {
     id: "mcp",
-    title: "MCP — Model Context Protocol",
+    title: "MCP: Model Context Protocol",
     shortLabel: "MCP",
     badge: "Tool transport protocol",
     icon: Network,
     what:
-      "MCP (Model Context Protocol) is Anthropic's open protocol for connecting LLMs to external tools and data sources. A MCP server exposes typed tools (name + JSON schema + handler), resources (read-only data), and prompts. Transports include stdio (local subprocess) and HTTP+SSE (remote). The protocol decouples the LLM agent from the tool implementation and gives tool I/O its own contract surface, separate from the LLM prompt.",
+      "MCP (Model Context Protocol) is Anthropic's open protocol for connecting LLMs to external tools and data sources. An MCP server exposes typed tools (name + JSON schema + handler), resources (read-only data), and prompts. Transports include stdio (local subprocess) and HTTP+SSE (remote). The protocol decouples the LLM agent from the tool implementation and gives tool I/O its own contract surface, separate from the LLM prompt.",
     whyHere:
       "The 10 tools live in a separate MCP server process (FastMCP, HTTP+SSE on :8001). The agent connects via MCPToolset. This means the tools can be reused by any MCP-aware client (Claude Desktop, future agents), and the tool surface is auditable as a stable contract independent of the prompt.",
     used: ["mcp-server :8001", "MCPToolset"],
@@ -223,12 +240,12 @@ const INPUT_TYPES: { label: string; example: string; desc: string }[] = [
   {
     label: "A package at a version",
     example: "log4j-core 2.14.1",
-    desc: "OSV.dev advisories for that exact package and version — the inverse lookup.",
+    desc: "OSV.dev advisories for that exact package and version: the inverse of a CVE lookup.",
   },
   {
     label: "A natural-language question",
     example: "Is my Spring app exposed to Spring4Shell?",
-    desc: "Semantic search over ~20k recent high-severity CVEs when there is no explicit ID.",
+    desc: "Semantic search over a local index of recent high-severity CVEs when there is no explicit ID.",
   },
   {
     label: "An SBOM",
@@ -249,11 +266,11 @@ const SSVC_LADDER: { decision: string; when: string }[] = [
   },
   {
     decision: "Attend",
-    when: "Prioritize in the fast lane of the normal cycle. A public exploit already exists, or EPSS is elevated.",
+    when: "Prioritize in the fast lane of the normal cycle. A public exploit already exists, or EPSS predicts high near-term exploitation (probability >= 0.5, or percentile >= 0.95).",
   },
   {
     decision: "Track*",
-    when: "Watch closely. High severity but no confirmed exploitation yet; a pre-mortem signal, not an emergency.",
+    when: "Watch closely. EPSS is elevated (probability >= 0.1) but below the high band, or CVSS severity is high or critical with no exploitation signal observed yet; a pre-mortem signal, not an emergency.",
   },
   {
     decision: "Track",
@@ -318,7 +335,7 @@ export default function GuidePage() {
             </p>
           </div>
 
-          {/* Part 1 — how to use the agent */}
+          {/* Part 1 - how to use the agent */}
           <section className="mb-14 space-y-5">
             <div className="flex items-baseline gap-2">
               <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
@@ -362,6 +379,19 @@ export default function GuidePage() {
                       </div>
                     ))}
                   </div>
+                  {DEMO_MODE && (
+                    <p className="rounded-md border border-primary/30 bg-primary/5 p-3 text-xs leading-relaxed text-muted-foreground">
+                      In this hosted demo the Triage tab replays seven real
+                      captured runs (model sonnet against the live stack,
+                      captured 2026-07-02), covering the full SSVC ladder from
+                      Act to Track. Pick one from the example gallery; free-text
+                      input matches only those seven (a CVE id from the set
+                      works too). Replay pacing is compressed so you are not
+                      waiting out the real 35-135 second runs; the waterfall
+                      durations shown are the real measured ones. Clone the repo
+                      to run the live agent on arbitrary input.
+                    </p>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     The report streams in node by node as the agent reasons; a
                     single-CVE triage typically settles in under two minutes.
@@ -380,10 +410,17 @@ export default function GuidePage() {
                 </CardHeader>
                 <CardContent className="space-y-4 text-sm leading-relaxed">
                   <p className="text-foreground/90">
-                    The verdict is the headline of the report. It is computed
-                    server-side from the operational signals, not guessed by the
-                    model, and answers a single question: how urgently does this
-                    need action? Four rungs, most urgent first:
+                    The verdict is the headline of the report. SSVC
+                    (Stakeholder-Specific Vulnerability Categorization) is the
+                    decision framework CISA uses for remediation urgency, built
+                    to replace sorting by CVSS score with a decision over
+                    exploitation evidence and impact. Here it is computed
+                    server-side from the collected signals, never guessed by the
+                    model, and it is SSVC-informed rather than a certified
+                    implementation: a stateless triage tool cannot know your
+                    asset criticality, so ransomware association and CVSS
+                    severity stand in for the impact axis. Four rungs, most
+                    urgent first:
                   </p>
                   <ul className="space-y-2">
                     {SSVC_LADDER.map((s) => (
@@ -454,7 +491,7 @@ export default function GuidePage() {
             </div>
           </section>
 
-          {/* Part 2 — glossary */}
+          {/* Part 2 - glossary */}
           <div className="mb-6 flex items-baseline gap-2">
             <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
               Part 2

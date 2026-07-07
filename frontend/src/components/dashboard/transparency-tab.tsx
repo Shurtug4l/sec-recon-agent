@@ -160,6 +160,10 @@ export function TransparencyTab() {
             <Badge variant="secondary" className="mt-1 font-mono text-[10px]">
               UNTRUSTED_CONTENT fenced
             </Badge>
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              External feed text reaches the model wrapped in UNTRUSTED_CONTENT fences:
+              tool output is data, never instructions.
+            </p>
           </div>
         </CardContent>
       </Card>
@@ -183,11 +187,11 @@ export function TransparencyTab() {
             </li>
             <li className="flex gap-2">
               <span className="select-none text-muted-foreground">·</span>
-              See your <code className="font-mono">ANTHROPIC_API_KEY</code> — the key lives in the backend process only.
+              See your <code className="font-mono">ANTHROPIC_API_KEY</code>: the key lives in the backend process only.
             </li>
             <li className="flex gap-2">
               <span className="select-none text-muted-foreground">·</span>
-              Persist or log your query text in OpenTelemetry spans — the privacy invariant is enforced by tests.
+              Persist or log your query text in OpenTelemetry spans: the privacy invariant is enforced by tests.
             </li>
           </ul>
         </CardContent>

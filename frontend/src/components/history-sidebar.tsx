@@ -24,6 +24,16 @@ const severityClass: Record<Severity, string> = {
   info: "severity-info",
 };
 
+// Time-of-day for today's runs, date for older ones. The demo gallery seeds
+// entries stamped at the capture date; rendering those as bare times would
+// read as "ran today", which is not true.
+function formatWhen(iso: string): string {
+  const d = new Date(iso);
+  return d.toDateString() === new Date().toDateString()
+    ? d.toLocaleTimeString()
+    : d.toLocaleDateString();
+}
+
 export function HistorySidebar({ entries, selectedId, onSelect, onClear }: Props) {
   return (
     <aside className="hidden h-[calc(100vh-3.5rem)] w-72 shrink-0 border-r border-border bg-card/30 lg:flex lg:flex-col">
@@ -81,7 +91,7 @@ export function HistorySidebar({ entries, selectedId, onSelect, onClear }: Props
                     </Badge>
                   )}
                   <span className="text-[10px] text-muted-foreground">
-                    {new Date(entry.startedAt).toLocaleTimeString()}
+                    {formatWhen(entry.startedAt)}
                   </span>
                 </div>
               </button>

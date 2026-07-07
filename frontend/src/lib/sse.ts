@@ -37,7 +37,7 @@ export async function streamSse(opts: SseStreamOptions): Promise<void> {
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
-    // SSE servers commonly use CRLF (\r\n) line endings — sse-starlette,
+    // SSE servers commonly use CRLF (\r\n) line endings - sse-starlette,
     // the Starlette SSE helper used by our backend, defaults to that.
     // Normalize to LF so the \n\n frame separator and prefix checks below
     // work uniformly. Without this normalization the parser silently
