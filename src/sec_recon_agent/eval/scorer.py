@@ -8,7 +8,12 @@ without producing false alarms on minor LLM output variations.
 Rules:
 - Severity matches when within +-1 step of the expected baseline.
 - Expected CVE IDs match when at least half are present in the report.
-- KEV / ransomware flags must be honored when explicitly expected.
+- An any-of family (expected_any_cve_of) is satisfied by at least one
+  member appearing in the report.
+- KEV is tri-state: expected_in_kev=True requires at least one
+  KEV-flagged CVE, False forbids any (a flag on a CVE verified absent
+  from the catalog is a fabrication), None skips the check.
+- Ransomware flags must be honored when explicitly expected.
 - A CVE-not-found expectation is satisfied when the report has
   confidence=LOW and an empty CVE list (or any subset of {LOW, MEDIUM}
   severity with no CVEs).
@@ -71,12 +76,27 @@ def score(case: GoldenCase, report: TriageReport) -> CaseVerdict:
         cve_recall = 1.0
         cve_ok = True
 
+    if case.expected_any_cve_of:
+        family_hit = any(c in observed_ids for c in case.expected_any_cve_of)
+        if not family_hit:
+            cve_recall = 0.0
+            cve_ok = False
+            notes.append(
+                f"no CVE from the accepted family present: {list(case.expected_any_cve_of)}",
+            )
+
     # --- KEV flag ---
     kev_observed = any(c.in_kev_catalog for c in report.cves)
-    if case.expected_in_kev:
+    if case.expected_in_kev is True:
         kev_ok = kev_observed
         if not kev_ok:
             notes.append("no CVE in report carried in_kev_catalog=True")
+    elif case.expected_in_kev is False:
+        kev_ok = not kev_observed
+        if not kev_ok:
+            notes.append(
+                "in_kev_catalog=True fabricated: case is verified absent from the KEV catalog",
+            )
     else:
         kev_ok = True
 

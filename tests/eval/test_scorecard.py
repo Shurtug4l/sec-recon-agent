@@ -21,7 +21,7 @@ from sec_recon_agent.redteam.payloads import PAYLOADS
 def test_golden_coverage_reflects_golden_set() -> None:
     cov = golden_coverage()
     assert cov.total == len(GOLDEN_SET)
-    assert cov.kev_cases == sum(1 for c in GOLDEN_SET if c.expected_in_kev)
+    assert cov.kev_cases == sum(1 for c in GOLDEN_SET if c.expected_in_kev is True)
     assert cov.ransomware_cases == sum(1 for c in GOLDEN_SET if c.expected_ransomware)
 
 
