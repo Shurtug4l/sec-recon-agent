@@ -45,6 +45,11 @@ def fake_agent_factory(fake_report: TriageReport) -> Any:
         def __init__(self, output: TriageReport) -> None:
             self.output = output
 
+        def all_messages(self) -> list[Any]:
+            # Empty-but-present history: a real trajectory in which no tool
+            # was called (grounding evaluates, unlike a missing history).
+            return []
+
     class _FakeRun:
         def __init__(self, output: TriageReport) -> None:
             self._output = output
@@ -174,6 +179,160 @@ def test_triage_stamps_ssvc_on_final_report(
     # Fake report has no CVEs -> the deterministic verdict is Track.
     assert payload["ssvc"]["decision"] == "Track"
     assert payload["ssvc"]["rule"] == "no-cves"
+
+
+def test_triage_stamps_grounding_on_final_report(
+    monkeypatch: MonkeyPatch,
+    fake_agent_factory: Any,
+) -> None:
+    """The server verifies the report against the captured trajectory and
+    stamps `grounding` before emitting `final`. A CVE-less report over an
+    empty trajectory makes no checkable claims -> vacuously grounded."""
+    monkeypatch.setattr(stream_module, "build_agent", fake_agent_factory)
+
+    client = TestClient(app)
+    with client.stream("POST", "/v1/triage", json={"query": "test"}) as response:
+        assert response.status_code == 200
+        body = "".join(response.iter_text())
+
+    final_line = next(
+        line for line in body.splitlines() if line.startswith("data: ") and "Fake summary" in line
+    )
+    payload = json.loads(final_line[len("data: ") :])
+    assert payload["grounding"] is not None
+    assert payload["grounding"]["status"] == "grounded"
+    assert payload["grounding"]["claims_checked"] == 0
+
+
+def test_triage_grounding_flags_unbacked_claim(monkeypatch: MonkeyPatch) -> None:
+    """A positive KEV claim with no kev_check evidence in the trajectory must
+    surface as suspect/unbacked on the stamped assessment."""
+    from pydantic_ai.messages import (
+        ModelRequest,
+        ModelResponse,
+        ToolCallPart,
+        ToolReturnPart,
+    )
+
+    from sec_recon_agent.agent.schema import CVEReference
+
+    report = TriageReport(
+        summary="One CVE, KEV claimed without evidence.",
+        severity=Severity.HIGH,
+        confidence=Confidence.HIGH,
+        recommended_action="Patch.",
+        cves=[
+            CVEReference(
+                cve_id="CVE-2021-41773",
+                summary="Apache path traversal.",
+                severity=Severity.HIGH,
+                exploits_public=False,
+                nvd_url="https://nvd.nist.gov/vuln/detail/CVE-2021-41773",
+                in_kev_catalog=True,
+            ),
+        ],
+    )
+    messages = [
+        ModelResponse(
+            parts=[
+                ToolCallPart(
+                    tool_name="cve_lookup",
+                    args={"cve_id": "CVE-2021-41773"},
+                    tool_call_id="c1",
+                ),
+            ],
+        ),
+        ModelRequest(
+            parts=[
+                ToolReturnPart(
+                    tool_name="cve_lookup",
+                    content="upstream unavailable",
+                    tool_call_id="c1",
+                ),
+            ],
+        ),
+    ]
+
+    class _FakeResult:
+        def __init__(self) -> None:
+            self.output = report
+
+        def all_messages(self) -> list[Any]:
+            return list(messages)
+
+    class _FakeRun:
+        def __init__(self) -> None:
+            self.result = _FakeResult()
+
+        def __aiter__(self) -> Any:
+            async def gen() -> Any:
+                yield object()
+
+            return gen()
+
+    class _FakeAgent:
+        @asynccontextmanager
+        async def iter(self, query: str, usage_limits: Any = None) -> Any:
+            del usage_limits
+            yield _FakeRun()
+
+    monkeypatch.setattr(stream_module, "build_agent", lambda model_override=None: _FakeAgent())
+
+    client = TestClient(app)
+    with client.stream("POST", "/v1/triage", json={"query": "test"}) as response:
+        assert response.status_code == 200
+        body = "".join(response.iter_text())
+
+    final_line = next(
+        line for line in body.splitlines() if line.startswith("data: ") and "One CVE" in line
+    )
+    payload = json.loads(final_line[len("data: ") :])
+    grounding = payload["grounding"]
+    assert grounding["status"] == "suspect"
+    assert grounding["unbacked"] >= 1
+    unbacked_fields = {f["field"] for f in grounding["findings"] if f["status"] == "unbacked"}
+    assert "in_kev_catalog" in unbacked_fields
+
+
+def test_triage_grounding_not_evaluated_without_message_history(
+    monkeypatch: MonkeyPatch,
+    fake_report: TriageReport,
+) -> None:
+    """A run object that cannot produce message history (legacy fakes, API
+    churn) degrades to an honest not_evaluated stamp, never an error."""
+
+    class _FakeResult:
+        def __init__(self) -> None:
+            self.output = fake_report
+
+    class _FakeRun:
+        def __init__(self) -> None:
+            self.result = _FakeResult()
+
+        def __aiter__(self) -> Any:
+            async def gen() -> Any:
+                yield object()
+
+            return gen()
+
+    class _FakeAgent:
+        @asynccontextmanager
+        async def iter(self, query: str, usage_limits: Any = None) -> Any:
+            del usage_limits
+            yield _FakeRun()
+
+    monkeypatch.setattr(stream_module, "build_agent", lambda model_override=None: _FakeAgent())
+
+    client = TestClient(app)
+    with client.stream("POST", "/v1/triage", json={"query": "test"}) as response:
+        assert response.status_code == 200
+        body = "".join(response.iter_text())
+
+    final_line = next(
+        line for line in body.splitlines() if line.startswith("data: ") and "Fake summary" in line
+    )
+    payload = json.loads(final_line[len("data: ") :])
+    assert payload["grounding"]["status"] == "not_evaluated"
 
 
 def test_triage_emits_usage_event(
@@ -342,6 +501,7 @@ def test_triage_appends_one_audit_event_on_success(
         ev = events[0]
         assert ev.outcome == "success"
         assert ev.severity == "high"
+        assert ev.grounding_status == "grounded"
         # Privacy: query_plain stays None when AUDIT_INCLUDE_QUERY is off.
         assert ev.query_plain is None
         # But the digest is always there.

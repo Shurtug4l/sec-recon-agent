@@ -152,6 +152,16 @@ def test_system_prompt_declares_ssvc_and_signal_coverage() -> None:
     assert "not queried" in lowered or "not_queried" in lowered
 
 
+def test_system_prompt_declares_grounding_stamp() -> None:
+    """S3 contract: the prompt must tell the model the `grounding` field is
+    server-computed and must stay null, mirroring the ssvc clause. Pin it so
+    a prompt edit cannot silently drop the containment."""
+    lowered = SYSTEM_PROMPT.lower()
+    assert "grounding: leave null" in lowered
+    # The clause must state WHO fills it (the system, from tool results).
+    assert "verifies the report against the actual" in lowered
+
+
 def test_system_prompt_constrains_output_to_triagereport() -> None:
     """The prompt must reference the TriageReport schema by name."""
     assert "TriageReport" in SYSTEM_PROMPT

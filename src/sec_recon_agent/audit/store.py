@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS triage_events (
     ransomware_hits INTEGER NOT NULL DEFAULT 0,
     high_epss_hits INTEGER NOT NULL DEFAULT 0,
     ssvc_decision TEXT,
+    grounding_status TEXT,
     report_summary_plain TEXT,
     model TEXT NOT NULL,
     duration_ms INTEGER NOT NULL,
@@ -68,6 +69,7 @@ CREATE INDEX IF NOT EXISTS idx_ts ON triage_events(ts);
 # v1 row).
 _ADDITIVE_COLUMNS: tuple[tuple[str, str], ...] = (
     ("ssvc_decision", "ALTER TABLE triage_events ADD COLUMN ssvc_decision TEXT"),
+    ("grounding_status", "ALTER TABLE triage_events ADD COLUMN grounding_status TEXT"),
 )
 
 # Trigger that rejects any UPDATE / DELETE on the audit table. Belt and
@@ -172,6 +174,7 @@ class AuditStore:
                     report_sha256, severity, confidence,
                     cves_count, attack_techniques_count,
                     kev_hits, ransomware_hits, high_epss_hits, ssvc_decision,
+                    grounding_status,
                     report_summary_plain, model, duration_ms, outcome,
                     error_class, prev_event_hash, this_event_hash,
                     schema_version
@@ -180,6 +183,7 @@ class AuditStore:
                     :report_sha256, :severity, :confidence,
                     :cves_count, :attack_techniques_count,
                     :kev_hits, :ransomware_hits, :high_epss_hits, :ssvc_decision,
+                    :grounding_status,
                     :report_summary_plain, :model, :duration_ms, :outcome,
                     :error_class, :prev_event_hash, :this_event_hash,
                     :schema_version

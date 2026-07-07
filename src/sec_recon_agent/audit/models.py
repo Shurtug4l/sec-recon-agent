@@ -17,6 +17,7 @@ GENESIS_HASH = "0" * 64
 # the code learns about v2 fields. See _canonical_payload for the rationale.
 _FIELD_MIN_VERSION: dict[str, int] = {
     "ssvc_decision": 2,
+    "grounding_status": 3,
 }
 
 
@@ -31,7 +32,7 @@ class TriageEvent(BaseModel):
     or repurpose an existing field.
     """
 
-    schema_version: int = 2
+    schema_version: int = 3
 
     # Identity / timing ----------------------------------------------------
     event_id: str = Field(min_length=4, max_length=64)
@@ -54,6 +55,9 @@ class TriageEvent(BaseModel):
     # SSVC prioritization verdict (Act / Attend / Track* / Track), stamped
     # deterministically onto the report before hashing. schema_version 2+.
     ssvc_decision: str | None = None
+    # Grounding verification outcome (grounded / suspect / not_evaluated),
+    # stamped deterministically onto the report before hashing. schema_version 3+.
+    grounding_status: str | None = None
     report_summary_plain: str | None = None  # opt-in via AUDIT_INCLUDE_SUMMARY
 
     # Execution context ----------------------------------------------------
@@ -154,6 +158,11 @@ def summarize_for_audit(report_dict: dict[str, Any]) -> dict[str, int | str | No
     if isinstance(ssvc, dict):
         decision_val = ssvc.get("decision")
         ssvc_decision = decision_val if isinstance(decision_val, str) else None
+    grounding = report_dict.get("grounding")
+    grounding_status = None
+    if isinstance(grounding, dict):
+        status_val = grounding.get("status")
+        grounding_status = status_val if isinstance(status_val, str) else None
     return {
         "severity": severity_val if isinstance(severity_val, str) else None,
         "confidence": confidence_val if isinstance(confidence_val, str) else None,
@@ -163,4 +172,5 @@ def summarize_for_audit(report_dict: dict[str, Any]) -> dict[str, int | str | No
         "ransomware_hits": ransomware_hits,
         "high_epss_hits": high_epss_hits,
         "ssvc_decision": ssvc_decision,
+        "grounding_status": grounding_status,
     }
