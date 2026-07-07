@@ -116,9 +116,10 @@ export function ObservabilityTab({ entries }: { entries: HistoryEntry[] }) {
                   <Activity className="h-4 w-4" /> Node waterfall
                 </CardTitle>
                 <p className="text-[11px] text-muted-foreground">
-                  Measured client-side: the arrival time of each streamed{" "}
-                  <code className="font-mono">node</code> event. Segment widths are real
-                  elapsed time between events, not inferred.
+                  One segment per step of the agent graph: prompt, model request, tool
+                  calls, final output. Measured client-side from the arrival time of each
+                  streamed <code className="font-mono">node</code> event; segment widths
+                  are real elapsed time between events, not inferred.
                 </p>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -185,10 +186,10 @@ export function ObservabilityTab({ entries }: { entries: HistoryEntry[] }) {
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <p className="text-muted-foreground">
-              The waterfall above is the client-side view. The full server-side picture —
-              per-call latency, span attributes, and the cross-process trace tree — is exported
-              via OpenTelemetry to Jaeger, reachable only on a local stack started with the
-              observability profile (<code className="font-mono">make obs-up</code>):
+              The waterfall above is the client-side view. The full server-side picture
+              (per-call latency, span attributes, and the cross-process trace tree) is
+              exported via OpenTelemetry to Jaeger, reachable only on a local stack started
+              with the observability profile (<code className="font-mono">make obs-up</code>):
             </p>
             <a
               href={JAEGER_URL}

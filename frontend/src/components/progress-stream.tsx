@@ -9,13 +9,25 @@ interface Props {
   isRunning: boolean;
 }
 
-// Friendly labels for the Pydantic AI node class names we emit from
-// api/stream.py. Unknown class names render as-is.
-const FRIENDLY: Record<string, string> = {
-  UserPromptNode: "Loading query",
-  ModelRequestNode: "Asking the model",
-  CallToolsNode: "Calling MCP tools",
-  End: "Synthesizing report",
+// Friendly labels + hover hints for the Pydantic AI node class names we emit
+// from api/stream.py. Unknown class names render as-is.
+const FRIENDLY: Record<string, { label: string; hint: string }> = {
+  UserPromptNode: {
+    label: "Loading query",
+    hint: "The query enters the agent graph.",
+  },
+  ModelRequestNode: {
+    label: "Asking the model",
+    hint: "The LLM reads the state so far and decides which tools to call next.",
+  },
+  CallToolsNode: {
+    label: "Calling MCP tools",
+    hint: "The MCP server (Model Context Protocol) executes the typed tool calls: NVD, KEV, EPSS, exploit search and the rest.",
+  },
+  End: {
+    label: "Synthesizing report",
+    hint: "The agent emits the final answer; it must validate against the TriageReport schema.",
+  },
 };
 
 export function ProgressStream({ nodes, isRunning }: Props) {
@@ -25,11 +37,15 @@ export function ProgressStream({ nodes, isRunning }: Props) {
     <div className="space-y-2">
       <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
         <Zap className="h-3 w-3" /> Agent progress
+        <span className="normal-case tracking-normal text-muted-foreground/70">
+          one line per step of the agent loop; model and tool steps repeat each iteration
+        </span>
       </div>
       <ol className="space-y-1">
         {nodes.map((node, i) => {
           const isLast = i === nodes.length - 1;
           const isInFlight = isRunning && isLast;
+          const meta = FRIENDLY[node];
           return (
             <li
               key={`${node}-${i}`}
@@ -43,7 +59,9 @@ export function ProgressStream({ nodes, isRunning }: Props) {
               ) : (
                 <Check className="h-3.5 w-3.5 text-success" />
               )}
-              <span className="font-mono text-xs">{FRIENDLY[node] ?? node}</span>
+              <span className="font-mono text-xs" title={meta?.hint}>
+                {meta?.label ?? node}
+              </span>
             </li>
           );
         })}

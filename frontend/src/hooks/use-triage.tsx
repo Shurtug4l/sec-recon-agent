@@ -143,7 +143,7 @@ export function TriageProvider({ children }: { children: React.ReactNode }) {
             // execution to the render phase (asynchronous w.r.t. dispatch);
             // doing the capture inside the updater means the assignment
             // happens AFTER the surrounding await chain has already moved on
-            // to the `finally` block — at which point finalReport is still
+            // to the `finally` block - at which point finalReport is still
             // null and we patch the history entry with the wrong values.
             if (event.type === "node") {
               nodeEvents.push({ name: event.data.node, atMs: Date.now() - startedAt });
@@ -167,7 +167,7 @@ export function TriageProvider({ children }: { children: React.ReactNode }) {
               });
             }
 
-            // Pure setState updater — no side effects. State machine only.
+            // Pure setState updater - no side effects. State machine only.
             setState((prev) => {
               switch (event.type) {
                 case "started":
@@ -258,7 +258,7 @@ export function TriageProvider({ children }: { children: React.ReactNode }) {
   const clearHistory = useCallback(() => {
     clear();
     setSelectedId(null);
-    // If a run is currently in flight, leave it running — clearing the
+    // If a run is currently in flight, leave it running - clearing the
     // history does not abort the agent. The completion will simply have
     // no entry to update.
   }, [clear]);

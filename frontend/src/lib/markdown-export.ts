@@ -1,7 +1,7 @@
 /**
  * Render a TriageReport as a Markdown document. Used by the
  * "Export as Markdown" button on the report view. Pure function, no
- * side effects — the file/download trigger lives in the component.
+ * side effects - the file/download trigger lives in the component.
  *
  * The output mirrors the on-screen layout: header + summary +
  * recommended action + per-CVE details + ATT&CK techniques +
@@ -75,7 +75,7 @@ function renderCve(cve: CVEReference): string {
 function renderTechnique(t: AttackTechnique): string {
   const lines: string[] = [];
   const tactics = t.tactics.length > 0 ? ` _(tactics: ${t.tactics.join(", ")})_` : "";
-  lines.push(`### ${t.id} — ${t.name}${tactics}`);
+  lines.push(`### ${t.id} - ${t.name}${tactics}`);
   lines.push("");
   lines.push(`- **Reference**: ${t.url}`);
   if (t.related_cwes.length > 0) {
@@ -84,7 +84,7 @@ function renderTechnique(t: AttackTechnique): string {
   if (t.mitigations.length > 0) {
     lines.push(`- **Mitigations**:`);
     for (const m of t.mitigations) {
-      lines.push(`  - ${m.id} — ${m.name} (${m.url})`);
+      lines.push(`  - ${m.id} - ${m.name} (${m.url})`);
     }
   }
   lines.push("");
@@ -197,7 +197,7 @@ export function downloadMarkdown(filename: string, contents: string): void {
 }
 
 /**
- * Trigger a browser download of the report as raw JSON — the full validated
+ * Trigger a browser download of the report as raw JSON - the full validated
  * shape, including the SSVC verdict and per-feed coverage.
  */
 export function downloadJson(filename: string, contents: string): void {

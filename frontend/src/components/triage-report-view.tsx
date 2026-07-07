@@ -94,6 +94,25 @@ const COVERAGE_META: Record<
   not_queried: { icon: CircleDashed, label: "not queried", className: "text-muted-foreground/60" },
 };
 
+// Plain-language glosses for the coverage strip: what each feed is and what
+// each status actually means. The load-bearing distinction is not_found vs
+// error: "no entry" is a real answer, "error" means the feed was unreachable.
+const FEED_GLOSS: Record<string, string> = {
+  nvd: "NVD: NIST National Vulnerability Database (CVE records, CVSS)",
+  kev: "CISA KEV: Known Exploited Vulnerabilities catalog (confirmed in-the-wild exploitation)",
+  epss: "FIRST EPSS: estimated probability of exploitation in the next 30 days",
+  exploit: "Public exploit search across Exploit-DB and GitHub",
+  osv: "OSV.dev: open source package advisories",
+  attack: "MITRE ATT&CK: attacker technique mapping from CWE ids",
+  semantic_search: "Semantic search over a local index of recent high-severity CVEs",
+};
+const STATUS_GLOSS: Record<SignalStatus, string> = {
+  found: "queried, returned data",
+  not_found: "queried successfully, no entry: a real answer, not a failure",
+  error: "could not be consulted (timeout or unusable response)",
+  not_queried: "not consulted for this triage",
+};
+
 const UNTRUSTED_START = "<UNTRUSTED_CONTENT>";
 const UNTRUSTED_END = "</UNTRUSTED_CONTENT>";
 
@@ -150,7 +169,7 @@ export function TriageReportView({
 
   function handleExportJson() {
     const stamp = new Date().toISOString().replace(/[:.]/g, "-").replace(/Z$/, "");
-    // The full validated report, verbatim — the machine-readable form that
+    // The full validated report, verbatim - the machine-readable form that
     // carries the deterministic SSVC verdict and per-feed coverage.
     downloadJson(`triage-${stamp}.json`, JSON.stringify(report, null, 2));
   }
@@ -161,10 +180,17 @@ export function TriageReportView({
         <CardHeader className="space-y-3">
           {report.ssvc && <SsvcVerdict ssvc={report.ssvc} />}
           <div className="flex flex-wrap items-center gap-2">
-            <Badge className={cn("text-xs uppercase tracking-wider", severityClass[report.severity])}>
+            <Badge
+              className={cn("text-xs uppercase tracking-wider", severityClass[report.severity])}
+              title="Overall severity: the highest CVSS severity across the CVEs in this report."
+            >
               {report.severity}
             </Badge>
-            <Badge variant="outline" className="text-xs uppercase tracking-wider">
+            <Badge
+              variant="outline"
+              className="text-xs uppercase tracking-wider"
+              title="The agent's self-assessed grounding: high = backed by direct tool data, medium = partial, low = speculative or a tool failed during the run."
+            >
               {report.confidence} confidence
             </Badge>
             <div className="ml-auto flex items-center gap-1 print:hidden">
@@ -180,7 +206,7 @@ export function TriageReportView({
                 {linkState === "copied"
                   ? "Link copied"
                   : linkState === "toolarge"
-                    ? "Too large — use JSON"
+                    ? "Too large - use JSON"
                     : "Copy link"}
               </Button>
               <Button
@@ -259,28 +285,48 @@ export function TriageReportView({
                       {cve.severity}
                     </Badge>
                     {cve.cvss_v3_score !== null && (
-                      <Badge variant="outline" className="text-[10px]">
+                      <Badge
+                        variant="outline"
+                        className="text-[10px]"
+                        title="CVSS v3 base score (0-10): how severe the flaw is if exploited. From NVD."
+                      >
                         CVSS {cve.cvss_v3_score.toFixed(1)}
                       </Badge>
                     )}
                     {cve.exploits_public ? (
-                      <Badge variant="destructive" className="gap-1 text-[10px]">
+                      <Badge
+                        variant="destructive"
+                        className="gap-1 text-[10px]"
+                        title="Public exploit code found on Exploit-DB or GitHub."
+                      >
                         <ShieldX className="h-3 w-3" /> exploit public
                       </Badge>
                     ) : (
-                      <Badge variant="outline" className="gap-1 text-[10px]">
+                      <Badge
+                        variant="outline"
+                        className="gap-1 text-[10px]"
+                        title="No public exploit code found on Exploit-DB or GitHub at triage time. Absence of evidence, not proof of absence."
+                      >
                         <ShieldCheck className="h-3 w-3" /> no public exploit
                       </Badge>
                     )}
                     {cve.in_kev_catalog && (
-                      <Badge variant="destructive" className="gap-1 text-[10px]">
+                      <Badge
+                        variant="destructive"
+                        className="gap-1 text-[10px]"
+                        title="Listed in CISA's Known Exploited Vulnerabilities catalog: exploitation in the wild is confirmed. The due date is the deadline CISA sets for US federal agencies to remediate."
+                      >
                         <Flame className="h-3 w-3" />
                         CISA KEV
                         {cve.kev_due_date ? ` · due ${cve.kev_due_date}` : ""}
                       </Badge>
                     )}
                     {cve.known_ransomware_use && (
-                      <Badge variant="destructive" className="gap-1 text-[10px]">
+                      <Badge
+                        variant="destructive"
+                        className="gap-1 text-[10px]"
+                        title="CISA reports this CVE used in known ransomware campaigns."
+                      >
                         <Skull className="h-3 w-3" /> ransomware
                       </Badge>
                     )}
@@ -288,6 +334,7 @@ export function TriageReportView({
                       <Badge
                         variant={cve.epss_probability >= 0.5 ? "destructive" : "outline"}
                         className="gap-1 text-[10px]"
+                        title="EPSS: estimated probability this CVE is exploited in the next 30 days (FIRST.org). pNN is its percentile rank among all scored CVEs."
                       >
                         <TrendingUp className="h-3 w-3" />
                         EPSS {(cve.epss_probability * 100).toFixed(1)}%
@@ -301,7 +348,10 @@ export function TriageReportView({
                 <CardContent className="space-y-3 pt-0">
                   <div>
                     {fenced && (
-                      <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                      <div
+                        className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground"
+                        title="This description comes from the external feed, not from the agent. The backend wraps such free text in markers so the model treats it as data, not instructions (prompt-injection defense); the UI renders it as a quote."
+                      >
                         NVD description (untrusted vendor text)
                       </div>
                     )}
@@ -346,8 +396,13 @@ function SsvcVerdict({ ssvc }: { ssvc: SsvcAssessment }) {
     <div className="space-y-2">
       <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
         <ShieldAlert className="h-3.5 w-3.5" />
-        SSVC verdict
-        <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] normal-case tracking-normal text-muted-foreground">
+        <span title="SSVC: Stakeholder-Specific Vulnerability Categorization, CISA's scheme for deciding how urgently to act on a vulnerability. A prioritization decision, not a severity score.">
+          SSVC verdict
+        </span>
+        <span
+          className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] normal-case tracking-normal text-muted-foreground"
+          title="Computed by a fixed server-side rule from the collected signals (KEV, EPSS, public exploits, ransomware use, CVSS) after the model returns. The LLM does not pick this verdict; the same signals always produce the same decision."
+        >
           deterministic · server-computed
         </span>
       </div>
@@ -364,6 +419,7 @@ function SsvcVerdict({ ssvc }: { ssvc: SsvcAssessment }) {
             <div
               key={decision}
               aria-current={active ? "true" : undefined}
+              title={stopMeta.blurb}
               className={cn(
                 "flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold transition-colors",
                 active ? stopMeta.activeClass : "bg-muted/40 text-muted-foreground/50",
@@ -378,7 +434,12 @@ function SsvcVerdict({ ssvc }: { ssvc: SsvcAssessment }) {
       <div className="flex items-start gap-2">
         <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
         <div className="space-y-0.5">
-          <p className="text-sm leading-relaxed">{ssvc.rationale || meta.blurb}</p>
+          <p className="text-[11px] font-medium text-muted-foreground">
+            {ssvc.decision}: {meta.blurb}
+          </p>
+          {ssvc.rationale && (
+            <p className="text-sm leading-relaxed">{ssvc.rationale}</p>
+          )}
           <p className="text-[11px] text-muted-foreground">
             rule <span className="font-mono">{ssvc.rule}</span>
             {ssvc.driving_cve ? (
@@ -407,7 +468,7 @@ function SignalCoverageStrip({ coverage }: { coverage: FeedStatus[] }) {
         <Radar className="h-3.5 w-3.5" />
         Signal coverage
         <span className="normal-case tracking-normal text-muted-foreground/70">
-          what each feed actually returned
+          what each feed actually returned; a miss or an error is reported as such, never hidden
         </span>
       </div>
       <div className="flex flex-wrap gap-1.5">
@@ -417,7 +478,9 @@ function SignalCoverageStrip({ coverage }: { coverage: FeedStatus[] }) {
           return (
             <span
               key={feed.feed}
-              title={feed.detail ?? undefined}
+              title={[FEED_GLOSS[feed.feed] ?? feed.feed, STATUS_GLOSS[feed.status], feed.detail]
+                .filter(Boolean)
+                .join(". ")}
               className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-[11px]"
             >
               <StatusIcon className={cn("h-3.5 w-3.5 shrink-0", statusMeta.className)} />
@@ -437,6 +500,9 @@ function AttackSection({ techniques }: { techniques: TriageReport["attack_techni
       <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
         <Crosshair className="h-3 w-3" />
         MITRE ATT&CK ({techniques.length})
+        <span className="normal-case tracking-normal text-muted-foreground/70">
+          how an attacker would use these weaknesses, with mitigations
+        </span>
       </div>
       {techniques.map((technique) => (
         <Card key={technique.id} className="overflow-hidden">
@@ -460,8 +526,11 @@ function AttackSection({ techniques }: { techniques: TriageReport["attack_techni
                 </Badge>
               ))}
               {technique.related_cwes.length > 0 && (
-                <span className="ml-2 text-[10px] text-muted-foreground">
-                  triggered by {technique.related_cwes.join(", ")}
+                <span
+                  className="ml-2 text-[10px] text-muted-foreground"
+                  title="CWE: Common Weakness Enumeration, the weakness class behind the CVE. ATT&CK techniques are derived from these ids."
+                >
+                  mapped from {technique.related_cwes.join(", ")}
                 </span>
               )}
             </div>
@@ -511,6 +580,9 @@ function ReasoningChain({ steps }: { steps: string[] }) {
               <Badge variant="secondary" className="text-[10px]">
                 {steps.length} steps
               </Badge>
+              <span className="text-[11px] normal-case tracking-normal text-muted-foreground/70">
+                the agent&apos;s own log of tool calls and decisions, in order
+              </span>
             </div>
             <ChevronDown
               className={cn(

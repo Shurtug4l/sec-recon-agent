@@ -22,9 +22,9 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "sec-recon-agent",
+  title: "sec-recon-agent - security triage that cites its sources",
   description:
-    "Type-safe security triage built on Pydantic AI and a custom MCP server. Portfolio project.",
+    "Type-safe LLM vulnerability triage: a Pydantic AI agent grounds every verdict in NVD, CISA KEV, EPSS and Exploit-DB via 10 typed MCP tools, with a deterministic SSVC priority and a tamper-evident audit trail. Portfolio project.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

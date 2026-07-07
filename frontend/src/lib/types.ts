@@ -109,7 +109,7 @@ export interface HistoryEntry {
   usage: TokenUsage | null;
 }
 
-// /v1/meta response — system prompt + tool inventory for the transparency view.
+// /v1/meta response - system prompt + tool inventory for the transparency view.
 export interface ToolMeta {
   name: string;
   description: string;

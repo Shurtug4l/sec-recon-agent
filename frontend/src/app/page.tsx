@@ -33,7 +33,7 @@ import { cn } from "@/lib/utils";
 
 const TOOLS = [
   { name: "cve_lookup", icon: FileSearch, blurb: "Full NVD record (CVSS, CWE, CPE) for a known CVE." },
-  { name: "cve_semantic_search", icon: ScanSearch, blurb: "Vector search over ~20k recent high-severity CVEs." },
+  { name: "cve_semantic_search", icon: ScanSearch, blurb: "Vector search over a local index of recent high-severity CVEs (~5-8k, 30-day window)." },
   { name: "exploit_check", icon: Wrench, blurb: "Exploit-DB + GitHub public PoC availability." },
   { name: "kev_check", icon: Flame, blurb: "CISA Known Exploited Vulnerabilities. Strongest patch-now signal." },
   { name: "epss_score", icon: TrendingUp, blurb: "FIRST.org 30-day exploitation probability + percentile." },
@@ -47,7 +47,7 @@ const TOOLS = [
 const PILLARS = [
   {
     title: "Type-safe by construction",
-    body: "Pydantic AI enforces the output schema. The LLM never returns free text; it returns a TriageReport or it fails.",
+    body: "Pydantic AI, the typed Python agent framework, validates every model output against a declared schema at the model boundary. The LLM never returns free text; it returns a TriageReport or it fails.",
   },
   {
     title: "Grounded, never invented",
@@ -86,7 +86,7 @@ const AUDIENCES = [
   {
     role: "SOC & detection engineers",
     icon: Crosshair,
-    body: "Every report pivots the underlying CWE weakness classes into MITRE ATT&CK techniques and mitigations: the language detections and purple-team exercises are actually written in.",
+    body: "Every report pivots the underlying CWE weakness classes into MITRE ATT&CK techniques and mitigations, the language that detection rules and purple-team exercises are actually written in.",
   },
   {
     role: "Teams building or vetting LLM agents",
@@ -100,7 +100,7 @@ export default function Landing() {
     <div className="flex min-h-screen flex-col bg-background">
       <Header />
       <main className="flex-1">
-        {/* Hero — split: copy + a real signature (the live pipeline diagram) */}
+        {/* Hero - split: copy + a real signature (the live pipeline diagram) */}
         <section className="relative overflow-hidden border-b border-border/60">
           <div
             aria-hidden
@@ -119,11 +119,15 @@ export default function Landing() {
                 </h1>
                 <p className="mt-6 max-w-xl text-base leading-relaxed text-muted-foreground">
                   <span className="font-mono text-foreground">sec-recon-agent</span>{" "}
-                  answers vulnerability questions by calling a fixed surface of
-                  typed tools (NVD, CISA KEV, FIRST EPSS, Exploit-DB, MITRE
-                  ATT&amp;CK, SBOM and Nmap parsers) and returns a strictly-typed{" "}
+                  is an LLM agent that answers vulnerability questions by calling
+                  a fixed surface of typed tools (NVD, CISA KEV, FIRST EPSS,
+                  Exploit-DB, MITRE ATT&amp;CK, SBOM and Nmap parsers), exposed by
+                  a custom MCP server (Model Context Protocol: the open standard
+                  that gives LLM tools a typed, auditable contract), and returns a
+                  strictly-typed{" "}
                   <code className="font-mono text-foreground">TriageReport</code>.
-                  No hallucinated CVSS, no invented patches, no free-text bypass.
+                  No hallucinated CVSS scores, no invented patches, no free-text
+                  bypass.
                 </p>
                 <div className="mt-8 flex flex-wrap items-center gap-3">
                   <Button asChild size="lg">
@@ -168,19 +172,23 @@ export default function Landing() {
             </h2>
             <p className="mt-4 max-w-3xl text-2xl font-semibold leading-snug tracking-tight text-foreground md:text-3xl">
               Ten browser tabs and an educated guess, or one grounded verdict in
-              under two minutes.
+              about two minutes.
             </p>
             <p className="mt-5 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-              Deciding whether a CVE deserves an all-hands response or a slot in
-              next sprint is judgment work, and today it is done by hand: NVD for
-              the CVSS, CISA KEV to see whether it is already being exploited,
-              FIRST EPSS for the probability, Exploit-DB and GitHub for public
-              PoCs, then reconcile it all into one call. Per CVE. Reach for a
-              general-purpose LLM to go faster and it will confidently hand you a
-              CVSS that does not exist. This agent runs that entire fusion across
-              live authoritative feeds and returns a{" "}
-              <span className="text-foreground">deterministic SSVC verdict</span>,
-              never an invented one.
+              Deciding whether a CVE (a publicly catalogued vulnerability)
+              deserves an all-hands response or a slot in next sprint is judgment
+              work, and today it is done by hand: NVD for the CVSS severity
+              score, CISA KEV to see whether it is already being exploited in the
+              wild, FIRST EPSS for the probability it will be soon, Exploit-DB
+              and GitHub for public proof-of-concept exploits, then reconcile it
+              all into one call. Per CVE. Reach for a general-purpose LLM to go
+              faster and it will confidently hand you a CVSS score that does not
+              exist. This agent runs that entire fusion across live authoritative
+              feeds and returns a{" "}
+              <span className="text-foreground">deterministic SSVC verdict</span>{" "}
+              (Stakeholder-Specific Vulnerability Categorization, the CISA-backed
+              prioritization framework): the decision is computed in code from
+              the collected signals, never guessed by the model.
             </p>
 
             <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -285,7 +293,7 @@ export default function Landing() {
                 Tool surface · 10 typed contracts
               </h2>
               <Link
-                href="/dashboard"
+                href="/dashboard?tab=transparency"
                 className="text-xs text-primary hover:underline"
               >
                 See live in Transparency &rarr;
@@ -320,7 +328,7 @@ export default function Landing() {
 // reads like an instrument panel, not a splash page.
 const HERO_STATS: { value: string; label: string }[] = [
   { value: "10", label: "typed tool contracts" },
-  { value: "4-stop", label: "deterministic SSVC verdict" },
+  { value: "4-level", label: "deterministic SSVC verdict" },
   { value: "MITRE", label: "ATLAS red-team battery" },
   { value: "SHA-256", label: "tamper-evident audit" },
 ];
