@@ -89,7 +89,7 @@ Two custom hooks own the page state.
 }
 ```
 
-API: `run(query)`, `cancel()`, `reset()`, plus the history surface (`entries`, `selectEntry`, `clearHistory`, `draftQuery`). The hook holds an `AbortController` ref so the `Stop` button reliably tears down the in-flight HTTP request.
+API: `run(query)`, `cancel()`, `reset()`, plus the history surface (`entries`, `selectEntry`, `clearHistory`, `draftQuery`). The hook holds an `AbortController` ref so the `Stop` button reliably tears down the in-flight HTTP request. Selecting a history entry prefills the form with that entry's query only when the draft is empty or still an untouched programmatic fill; a draft the user is authoring is never clobbered.
 
 **`useHistory()`** persists past runs in `localStorage` (key `sec-recon-history`, newest-first, cap 30). Failures on read/write are swallowed (corrupted storage starts fresh; quota-exceeded does not crash the UI).
 

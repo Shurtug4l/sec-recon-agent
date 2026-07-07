@@ -70,9 +70,21 @@ const TriageContext = createContext<TriageContextValue | null>(null);
 export function TriageProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<TriageRunState>(INITIAL);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [draftQuery, setDraftQuery] = useState<string>("");
+  const [draftQuery, setDraftQueryState] = useState<string>("");
+  // Mirror of draftQuery readable without re-memoizing callbacks per keystroke,
+  // plus the last programmatic fill (history prefill or submitted query).
+  // Together they distinguish an authored, unsent draft - which selectEntry
+  // must never clobber - from a draft the user has already consumed or that
+  // this provider wrote itself.
+  const draftRef = useRef<string>("");
+  const lastAutoFillRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const { entries, hydrated, add, update, clear, seed } = useHistory();
+
+  const setDraftQuery = useCallback((query: string) => {
+    draftRef.current = query;
+    setDraftQueryState(query);
+  }, []);
 
   // Demo cold-open: once localStorage has hydrated and the history is empty,
   // seed the whole real-capture gallery so a first-time visitor lands on a
@@ -109,6 +121,9 @@ export function TriageProvider({ children }: { children: React.ReactNode }) {
       };
       add(entry);
       setSelectedId(id);
+      // The submitted query is a consumed draft: navigating history afterwards
+      // may freely refresh the form with each entry's query.
+      lastAutoFillRef.current = query;
       setState({ ...INITIAL, isRunning: true, startedAt, currentEntryId: id });
 
       // Fire-and-forget. The IIFE keeps run() synchronous from the caller's
@@ -266,12 +281,19 @@ export function TriageProvider({ children }: { children: React.ReactNode }) {
   const selectEntry = useCallback(
     (id: string | null) => {
       setSelectedId(id);
-      if (id) {
-        const entry = entries.find((e) => e.id === id);
-        if (entry) setDraftQuery(entry.query);
+      if (!id) return;
+      const entry = entries.find((e) => e.id === id);
+      if (!entry) return;
+      // Prefill the form with the entry's query, but never clobber a draft
+      // the user is authoring: overwrite only when the draft is empty or is
+      // still the untouched result of a previous programmatic fill.
+      const draft = draftRef.current;
+      if (draft.trim() === "" || draft === lastAutoFillRef.current) {
+        lastAutoFillRef.current = entry.query;
+        setDraftQuery(entry.query);
       }
     },
-    [entries],
+    [entries, setDraftQuery],
   );
 
   const value: TriageContextValue = {

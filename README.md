@@ -11,7 +11,7 @@
 
 ![sec-recon-agent: a live Log4Shell triage from query to a typed TriageReport with CISA KEV, ransomware, and EPSS signals](docs/assets/demo.gif)
 
-**[Try the live demo](https://shurtug4l.github.io/sec-recon-agent/)** - it replays real captured triages across the full SSVC ladder right in the browser, with a reproducible [scorecard](https://shurtug4l.github.io/sec-recon-agent/scorecard). No API key, no setup: the runs are genuine captures, not mock data.
+**[Try the live demo](https://shurtug4l.github.io/sec-recon-agent/)** - it replays real captured triages across the full SSVC ladder right in the browser, with a reproducible [scorecard](https://shurtug4l.github.io/sec-recon-agent/scorecard/). No API key, no setup: the runs are genuine captures, not mock data.
 
 Feed it a CVE ID, a product version, raw Nmap XML, or an SBOM (a machine-readable software inventory: CycloneDX, SPDX, or requirements.txt). The agent grounds its answer through ten typed MCP tools covering CVE lookup and semantic search, exploit and patch availability, KEV / EPSS / OSV feeds, SBOM and Nmap ingestion, and MITRE ATT&CK mapping. It returns a schema-validated `TriageReport`: severity, exploit availability, operational signals, prioritization verdict, recommended action with a concrete fixed version when one exists, and the full reasoning chain. Two design choices carry the whole project:
 
