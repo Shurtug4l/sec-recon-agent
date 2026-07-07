@@ -118,6 +118,33 @@ def test_fails_below_half_cve_recall() -> None:
     assert verdict.cve_recall < 0.5
 
 
+def test_any_cve_family_satisfied_by_non_canonical_member() -> None:
+    case = GoldenCase(
+        id="t5b",
+        query="q",
+        expected_severity=Severity.CRITICAL,
+        expected_any_cve_of=("CVE-2017-0144", "CVE-2017-0143", "CVE-2017-0145"),
+    )
+    report = _report(Severity.CRITICAL, [_cve("CVE-2017-0145")])
+    verdict = score(case, report)
+    assert verdict.passed is True
+    assert verdict.cve_recall == 1.0
+
+
+def test_any_cve_family_with_no_member_fails() -> None:
+    case = GoldenCase(
+        id="t5c",
+        query="q",
+        expected_severity=Severity.CRITICAL,
+        expected_any_cve_of=("CVE-2017-0144", "CVE-2017-0143"),
+    )
+    report = _report(Severity.CRITICAL, [_cve("CVE-2020-0001")])
+    verdict = score(case, report)
+    assert verdict.passed is False
+    assert verdict.cve_recall == 0.0
+    assert any("accepted family" in n for n in verdict.notes)
+
+
 def test_kev_flag_required_and_missing_fails() -> None:
     case = GoldenCase(
         id="t6",
@@ -137,6 +164,45 @@ def test_kev_flag_required_and_present_passes() -> None:
         query="q",
         expected_severity=Severity.CRITICAL,
         expected_in_kev=True,
+    )
+    report = _report(Severity.CRITICAL, [_cve(in_kev=True)])
+    verdict = score(case, report)
+    assert verdict.passed is True
+    assert verdict.kev_ok is True
+
+
+def test_kev_flag_forbidden_and_fabricated_fails() -> None:
+    case = GoldenCase(
+        id="t6b",
+        query="q",
+        expected_severity=Severity.CRITICAL,
+        expected_in_kev=False,
+    )
+    report = _report(Severity.CRITICAL, [_cve(in_kev=True)])
+    verdict = score(case, report)
+    assert verdict.passed is False
+    assert verdict.kev_ok is False
+    assert any("fabricated" in n for n in verdict.notes)
+
+
+def test_kev_flag_forbidden_and_absent_passes() -> None:
+    case = GoldenCase(
+        id="t6c",
+        query="q",
+        expected_severity=Severity.CRITICAL,
+        expected_in_kev=False,
+    )
+    report = _report(Severity.CRITICAL, [_cve(in_kev=False)])
+    verdict = score(case, report)
+    assert verdict.passed is True
+    assert verdict.kev_ok is True
+
+
+def test_kev_flag_none_is_not_scored() -> None:
+    case = GoldenCase(
+        id="t6d",
+        query="q",
+        expected_severity=Severity.CRITICAL,
     )
     report = _report(Severity.CRITICAL, [_cve(in_kev=True)])
     verdict = score(case, report)

@@ -52,6 +52,7 @@ _PENDING = "_pending live run_"
 class GoldenCoverage:
     total: int
     kev_cases: int
+    kev_forbid_cases: int
     ransomware_cases: int
     tag_counts: dict[str, int]
 
@@ -69,7 +70,8 @@ def golden_coverage() -> GoldenCoverage:
         tags.update(case.tags)
     return GoldenCoverage(
         total=len(GOLDEN_SET),
-        kev_cases=sum(1 for c in GOLDEN_SET if c.expected_in_kev),
+        kev_cases=sum(1 for c in GOLDEN_SET if c.expected_in_kev is True),
+        kev_forbid_cases=sum(1 for c in GOLDEN_SET if c.expected_in_kev is False),
         ransomware_cases=sum(1 for c in GOLDEN_SET if c.expected_ransomware),
         tag_counts=dict(sorted(tags.items())),
     )
@@ -342,10 +344,13 @@ def build_scorecard(
     a("")
     a(
         f"Golden set: **{golden.total} curated cases** "
-        f"({golden.kev_cases} expect a CISA KEV hit, {golden.ransomware_cases} expect "
+        f"({golden.kev_cases} expect a CISA KEV hit, {golden.kev_forbid_cases} verified "
+        f"KEV-absent so a KEV flag there is scored as fabrication, "
+        f"{golden.ransomware_cases} expect "
         "a ransomware flag; KEV = CISA's Known Exploited Vulnerabilities catalog, "
         "CVEs observed exploited in the wild). Soft assertions: severity within "
-        "+-1 step, expected CVE recall >= 50%, KEV / ransomware honored when asked.",
+        "+-1 step, expected CVE recall >= 50%, KEV tri-state (require / forbid / "
+        "skip), ransomware honored when asked.",
     )
     a("")
     if eval_metrics is not None:
