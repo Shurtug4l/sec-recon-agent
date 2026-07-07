@@ -150,7 +150,7 @@ Every HIGH finding from an independent security review is mapped to the code cha
 
 ## Testing
 
-**356 tests (353 fast + 3 slow ChromaDB round-trip tests, excluded from the fast run)**, all network-mocked, no LLM billing. Coverage on the fast suite holds at ~90% with a soft 70% floor. CI matrix-tests Python 3.12 + 3.13.
+**405 tests (402 fast + 3 slow ChromaDB round-trip tests, excluded from the fast run)**, all network-mocked, no LLM billing. Coverage on the fast suite holds at ~90% with a soft 70% floor. CI matrix-tests Python 3.12 + 3.13.
 
 ```bash
 make test                        # full suite (includes the 3 slow tests)

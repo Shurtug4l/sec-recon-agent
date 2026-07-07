@@ -16,7 +16,7 @@ Mitigations are layered, not perfect. A "mitigated" status means the project app
 | LLM06 | Excessive Agency | mitigated | read-only tool surface, allowlisted model identifiers, no out-of-band tools |
 | LLM07 | System Prompt Leakage | partial | system-prompt-extract payloads in red-team battery; prompt itself is not a secret |
 | LLM08 | Vector and Embedding Weaknesses | partial | local-only Chroma, no PII in queries (by default), corpus is public CVE data |
-| LLM09 | Misinformation | partial (grounding) | tools cite NVD/KEV/EPSS/ATT&CK directly; confidence field constrains over-claiming |
+| LLM09 | Misinformation | partial (grounding) | tools cite NVD/KEV/EPSS/ATT&CK directly; post-run grounding verifier stamps grounded/suspect on every report; confidence field constrains over-claiming |
 | LLM10 | Unbounded Consumption | mitigated | per-tool caps + opt-in API auth + opt-in per-IP rate limit + LLM token cost bounded by schema |
 
 ## Detailed mappings
@@ -132,6 +132,8 @@ The audit trail and the rate-limit are the only side effects of `/v1/triage`, an
 **How**: every claim in the `TriageReport` is sourced from a typed tool call. The reasoning chain (`reasoning_chain` field) is an audit log of which tools were called and what they returned. The `confidence` field constrains over-claiming: when tools return no match, the agent is instructed to set `confidence=LOW` and explain what was missing in `recommended_action`.
 
 The 11-case golden eval set (`src/sec_recon_agent/eval/golden_set.py`) measures hallucination resistance through soft assertions: severity within +-1 of the expected baseline and >= 50% recall on expected CVE IDs. A regression on the prompt or the model surfaces as drift in the score.
+
+Since S3, compliance with the no-invention contract is also *checked*, not just instructed: after every run the server re-verifies each tool-derived claim (CVE identity, CVSS, KEV, EPSS, exploit flags, ATT&CK ids) against the tool returns captured from the run's message history, and stamps the deterministic outcome onto `TriageReport.grounding` (`grounded` / `suspect` / `not_evaluated`, with per-claim findings) and `grounding_status` into the hash-chained audit trail. See `agent/grounding.py` and the design.md decisions log.
 
 **Why partial**: the model can still phrase a correct triage in misleading prose. The structured fields constrain the contract; the prose is best-effort.
 
