@@ -31,8 +31,9 @@ frontend/src/
 │       └── meta/route.ts        # proxy to /v1/meta (transparency view)
 │
 ├── components/
-│   ├── providers.tsx            # client wrapper mounting TriageProvider at the layout
-│   ├── header.tsx               # sticky macro-tab nav + GitHub link
+│   ├── providers.tsx            # client wrapper mounting TriageProvider + CommandPaletteProvider
+│   ├── header.tsx               # sticky macro-tab nav + palette trigger + GitHub link
+│   ├── command-palette.tsx      # Cmd+K provider: keydown listener, command rendering, triage ctx
 │   ├── demo-banner.tsx          # demo-mode banner naming the capture model
 │   ├── triage-form.tsx          # textarea + example chips + Triage/Stop buttons
 │   ├── progress-stream.tsx      # ordered list of node events with in-flight spinner
@@ -42,7 +43,7 @@ frontend/src/
 │   ├── dashboard/               # kpi-card, charts (Recharts), statistics / observability / transparency tabs
 │   └── ui/                      # shadcn-style primitives (copied, not imported):
 │                                #   button, badge, card, textarea, separator, scroll-area,
-│                                #   collapsible, skeleton
+│                                #   collapsible, skeleton, command (cmdk + radix-dialog shell)
 │
 ├── demo/
 │   ├── config.ts                # DEMO_MODE flag + the capture model (sonnet)
@@ -61,6 +62,10 @@ frontend/src/
     ├── scorecard.ts             # aggregations for /scorecard, mirrors eval/metrics.py
     ├── markdown-export.ts       # TriageReport -> Markdown / JSON download helpers
     ├── permalink.ts             # gzip+base64url a report into a shareable URL fragment
+    ├── commands.ts              # static 56-command registry for the palette
+    ├── guide-data.ts            # guide SECTIONS (sections + external refs), shared with the palette
+    ├── agent-meta.ts            # /v1/meta loader (demo snapshot or proxy fetch)
+    ├── nav-events.ts            # cross-component window events (dashboard tab sync)
     └── utils.ts                 # cn() class-name merger
 ```
 
@@ -141,6 +146,14 @@ Every report card carries three exports plus a share link, all client-side with 
 - **Export PDF** calls `window.print()` with an `@media print` stylesheet in `globals.css` that scopes visibility to the report block, hides the chrome, and forces an A4 light-on-white layout; the user picks "Save as PDF" in the system dialog. Native multi-page.
 - **Copy link** gzip-encodes the whole report into the URL fragment (`lib/permalink.ts`); `/r` decodes it locally. The fragment never reaches a server; past a size cap it falls back to suggesting the JSON export.
 
+## Command palette
+
+`Cmd+K` (macOS) / `Ctrl+K` (elsewhere), or the Search button in the header, opens a command palette with 56 commands in 7 groups: report actions (copy link, export .md / JSON / PDF - visible only while a report is on screen, PDF only where `#printable-report` is in the DOM), page navigation, dashboard tab jumps, the 7 demo triage runs (live mode submits the same query to the real backend), the 12 guide sections, the guide's 23 external references, and project actions (GitHub, copy system prompt).
+
+The registry is a static module (`lib/commands.ts`); context-dependent commands gate through a `visible(ctx)` predicate rather than conditional construction, so the filter always sees a stable item set. Section and reference commands consume the same `lib/guide-data.ts` the guide page renders from - one source, no drift. The binding is platform-split on purpose: registering `Ctrl+K` on macOS too would hijack readline kill-line inside the triage textarea.
+
+Fuzzy matching and combobox accessibility come from `cmdk`; the dialog shell is composed from `@radix-ui/react-dialog` directly (see the decisions log for why not cmdk's built-in dialog).
+
 ## Theming
 
 **"Slate Recon" - dark-only.** A security triage console reads dark-first, so the app ships one tuned palette instead of a light/dark toggle. It is a cool blue-slate NOC surface with a single cyan signal (`#22D3EE`, main CTA / interactive) and an indigo focus accent (`#818CF8`), in the idiom of Grafana / Datadog / Vercel. It replaced the earlier Catppuccin Latte/Macchiato dual theme.
@@ -198,6 +211,7 @@ npm run build        # production build
 - **No service worker / PWA.** Out of scope for a single-tenant demo.
 - **No auth UI.** Backend is unauthenticated by design; adding a login screen here without backend auth would be theatre.
 - **No streaming React UI library (Vercel AI SDK, etc.).** Evaluated and dropped; the SSE wrapper is 50 lines and the agent's protocol does not fit the SDK's chat-completion shape.
+- **One deliberate dependency exception: `cmdk` + `@radix-ui/react-dialog` (both exact-pinned) for the command palette.** The bias stays "hand-roll small surfaces", but fuzzy ranking plus combobox accessibility plus focus management over 56 mixed nav/action items is where hand-rolling costs more than the dependency. radix-dialog was already in the tree transitively via cmdk; making it direct lets the dialog shell carry a proper hidden `DialogTitle`.
 
 ## Decisions log
 
@@ -212,3 +226,4 @@ npm run build        # production build
 | `localStorage` history | Demo scope, no backend persistence needed | Server-side history - would require a DB and auth |
 | `fetch()` + ReadableStream for SSE | EventSource does not support POST body; the parser is 50 lines | Vercel AI SDK - wrong protocol shape |
 | `output: "standalone"` Docker | ~150 MB image, no separate nginx | Static export - loses the `/api/triage` route (used only for the keyless demo build, where the routes are stashed) |
+| `cmdk` command palette, exact-pinned | Fuzzy ranking + combobox a11y over 56 items beats hand-rolling; unstyled, so Slate Recon tokens apply untouched | Hand-rolled listbox + filter (a11y/focus surface too large for the payoff); kbar (heavier, animation dep); cmdk's built-in `Command.Dialog` (no `DialogTitle`, trips Radix's a11y console error - dialog shell composed from radix-dialog directly instead) |
