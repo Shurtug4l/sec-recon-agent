@@ -116,13 +116,15 @@ def _run_retrieval(args: argparse.Namespace) -> int:
     """Evaluate cve_semantic_search retrieval quality against the local index."""
     from sec_recon_agent.eval.retrieval import run_retrieval
 
+    mode = "hard" if args.retrieval_hard else "default"
     print(
         f"evaluating cve_semantic_search retrieval "
-        f"(sample<= {args.retrieval_sample}, top_k={args.retrieval_top_k}) ...",
+        f"(sample<= {args.retrieval_sample}, top_k={args.retrieval_top_k}, mode={mode}) ...",
     )
     report = run_retrieval(
         sample_size=args.retrieval_sample,
         top_k=args.retrieval_top_k,
+        hard=args.retrieval_hard,
     )
     if report.sampled == 0:
         print(
@@ -130,7 +132,10 @@ def _run_retrieval(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    print(f"\n  retrieval over {report.sampled} sampled CVEs (top_k={report.top_k}):")
+    print(
+        f"\n  retrieval over {report.sampled} sampled CVEs "
+        f"(top_k={report.top_k}, mode={report.mode}, query_chars={report.query_chars}):",
+    )
     print(f"  MRR:          {_fmt(report.mrr, '.3f')}")
     print(f"  hit-rate@1:   {_fmt(report.hit_rate_at_1, '.2%')}")
     print(f"  hit-rate@3:   {_fmt(report.hit_rate_at_3, '.2%')}")
@@ -214,6 +219,16 @@ def main(argv: list[str] | None = None) -> int:
         type=int,
         default=10,
         help="top_k passed to cve_semantic_search during retrieval eval (default: 10)",
+    )
+    parser.add_argument(
+        "--retrieval-hard",
+        action="store_true",
+        help=(
+            "hard mode: ~80-char keyword-style queries (stopwords and CVE "
+            "boilerplate stripped) instead of the 160-char description prefix. "
+            "Harder, closer to how an analyst queries; use it to compare "
+            "retriever variants once the default mode saturates."
+        ),
     )
     args = parser.parse_args(argv)
 
