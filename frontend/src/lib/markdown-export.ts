@@ -14,6 +14,7 @@ import type {
   TriageReport,
   CVEReference,
   AttackTechnique,
+  GroundingAssessment,
   SsvcAssessment,
   FeedStatus,
 } from "./types";
@@ -121,6 +122,38 @@ function renderCoverage(coverage: FeedStatus[]): string {
   return lines.join("\n");
 }
 
+function renderGrounding(g: GroundingAssessment): string {
+  const lines: string[] = [];
+  lines.push("## Grounding verification");
+  lines.push("");
+  lines.push(
+    "_Deterministic post-run check: every tool-derived claim re-verified server-side against the tool results captured from the run (not the model's self-assessment)._",
+  );
+  lines.push("");
+  lines.push(`- **Status**: ${g.status}`);
+  if (g.status !== "not_evaluated") {
+    lines.push(`- **Claims checked**: ${g.claims_checked}`);
+    lines.push(`- **Supported**: ${g.supported}`);
+    if (g.unbacked > 0) lines.push(`- **Unbacked**: ${g.unbacked}`);
+    if (g.mismatched > 0) lines.push(`- **Mismatched**: ${g.mismatched}`);
+    if (g.unverifiable > 0) lines.push(`- **Unverifiable**: ${g.unverifiable}`);
+  }
+  lines.push("");
+  if (g.findings.length > 0) {
+    lines.push("| Subject | Field | Status | Detail |");
+    lines.push("|---|---|---|---|");
+    for (const f of g.findings) {
+      lines.push(`| ${f.subject} | \`${f.field}\` | ${f.status} | ${f.detail ?? ""} |`);
+    }
+    lines.push("");
+  }
+  if (g.truncated) {
+    lines.push("_Findings list truncated at 40 entries; the counters remain complete._");
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
 export function reportToMarkdown(report: TriageReport, query?: string): string {
   const now = new Date().toISOString().replace(/T.*/, "");
   const lines: string[] = [];
@@ -168,6 +201,10 @@ export function reportToMarkdown(report: TriageReport, query?: string): string {
     for (const t of report.attack_techniques) {
       lines.push(renderTechnique(t));
     }
+  }
+
+  if (report.grounding) {
+    lines.push(renderGrounding(report.grounding));
   }
 
   if (report.reasoning_chain.length > 0) {
