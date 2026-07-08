@@ -32,6 +32,7 @@ in the agent system prompt (EPSS >= 0.5 or percentile >= 0.95 = high real-world
 risk; the audit trail's high_epss_hits uses the same 0.5 cut).
 """
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -50,6 +51,9 @@ EPSS_HIGH_PERCENTILE = 0.95
 # EPSS probability at or above which risk is elevated but sub-"high": enough to
 # warrant closer monitoring (Track*), not yet sustained attention (Attend).
 EPSS_WATCH_PROBABILITY = 0.10
+
+# Mirrors the CveIdStr constraint on SsvcAssessment.driving_cve.
+_CVE_ID_RE = re.compile(r"^CVE-\d{4}-\d{4,}$")
 
 # Urgency ordering used to reduce per-CVE decisions to a single report verdict.
 _DECISION_RANK: dict[SsvcDecision, int] = {
@@ -154,12 +158,28 @@ _RULE_RATIONALE: dict[str, str] = {
 }
 
 
-def assess_ssvc(cves: Iterable[CVEReference]) -> SsvcAssessment:
-    """Reduce the report's CVEs to a single, most-urgent SSVC verdict.
+def decision_rank(decision: SsvcDecision) -> int:
+    """Urgency rank of a decision (higher = more urgent).
 
-    The report-level decision is the most urgent per-CVE decision; the driving
-    CVE and rule are recorded so the verdict is explainable and auditable. With
-    no CVEs (not-affected or degraded triage) the decision is TRACK.
+    Public so policy layers (the SBOM gate's fail-on threshold) can compare
+    decisions without duplicating the ordering.
+    """
+    return _DECISION_RANK[decision]
+
+
+def rule_rationale(rule: str) -> str:
+    """Human-readable fragment for a rule id; falls back to the id itself."""
+    return _RULE_RATIONALE.get(rule, rule)
+
+
+def assess_from_signals(items: Iterable[tuple[str, SsvcSignals]]) -> SsvcAssessment:
+    """Reduce (vulnerability id, signals) pairs to a single, most-urgent verdict.
+
+    Shape-independent core shared by the LLM triage path (assess_ssvc over the
+    report's CVEReference entries) and the deterministic SBOM gate (findings
+    carry SsvcSignals directly, no report object involved). The most urgent
+    per-item decision wins; the driving id and rule are recorded so the verdict
+    is explainable and auditable. With no items the decision is TRACK.
     """
     # Sentinel below Track's rank (0) so the FIRST CVE always registers, even
     # when the whole report is Track. Initializing at Track's rank would make
@@ -171,14 +191,14 @@ def assess_ssvc(cves: Iterable[CVEReference]) -> SsvcAssessment:
     best_rule = "no-cves"
     driving_cve: str | None = None
 
-    for cve in cves:
-        decision, rule = decide_for_signals(_signals_from_cve(cve))
+    for vuln_id, signals in items:
+        decision, rule = decide_for_signals(signals)
         rank = _DECISION_RANK[decision]
         if rank > best_rank:
             best_rank = rank
             best_decision = decision
             best_rule = rule
-            driving_cve = cve.cve_id
+            driving_cve = vuln_id
 
     # driving_cve is None only when the loop never ran (no CVEs at all); any
     # CVE, including a Track one, sets it via the sentinel above.
@@ -190,6 +210,13 @@ def assess_ssvc(cves: Iterable[CVEReference]) -> SsvcAssessment:
     else:
         reason = _RULE_RATIONALE.get(best_rule, best_rule)
         rationale = f"SSVC decision {best_decision.value}: {driving_cve} {reason}."
+        if not _CVE_ID_RE.match(driving_cve):
+            # The model's driving_cve field is CVE-shaped by contract. On the
+            # SBOM-gate path the driver can be a non-CVE advisory id (GHSA-*,
+            # PYSEC-*): it stays named in the rationale, the typed field goes
+            # null. Unreachable on the triage path, where every id is a
+            # CVEReference.cve_id.
+            driving_cve = None
 
     return SsvcAssessment(
         decision=best_decision,
@@ -197,3 +224,12 @@ def assess_ssvc(cves: Iterable[CVEReference]) -> SsvcAssessment:
         rationale=rationale[:500],
         driving_cve=driving_cve,
     )
+
+
+def assess_ssvc(cves: Iterable[CVEReference]) -> SsvcAssessment:
+    """Reduce the report's CVEs to a single, most-urgent SSVC verdict.
+
+    Thin adapter over assess_from_signals for the report shape; behavior is
+    pinned bit-exact by the cassette replay gate.
+    """
+    return assess_from_signals((cve.cve_id, _signals_from_cve(cve)) for cve in cves)
