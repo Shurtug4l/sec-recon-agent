@@ -137,3 +137,17 @@ steps:
 ```
 
 Inputs mirror the CLI (`strict`, `artifact-uri`, `upload-sarif`, `sarif-category`, `python-version`); outputs expose `verdict`, `exit-code`, and the three document paths. The SARIF upload happens before the verdict is enforced, so alerts reach the Security tab even when the gate fails the job. This repository dogfoods the action in `.github/workflows/ci-sbom-gate.yml` (self-scan on dependency changes + weekly cron, artifact attestations on non-PR runs, verifiable with `gh attestation verify`).
+
+## Prebuilt images (GHCR)
+
+Tagged releases (`v*`) publish both images to GHCR, multi-arch (amd64 + arm64), with BuildKit supply-chain attestations (SLSA provenance `mode=max` + SBOM) attached to the image index:
+
+```bash
+docker pull ghcr.io/shurtug4l/sec-recon-agent:0.1.0
+docker pull ghcr.io/shurtug4l/sec-recon-frontend:0.1.0
+
+# inspect the published attestations
+docker buildx imagetools inspect ghcr.io/shurtug4l/sec-recon-agent:0.1.0
+```
+
+`latest` tracks the newest semver tag. To run the stack from the registry instead of a local build, override the two `image:` values in `docker-compose.yml` (the compose file builds locally by design; the registry is the sharing channel, not the dev loop). An Anthropic API key and a seeded ChromaDB volume are still required - see the sections above.

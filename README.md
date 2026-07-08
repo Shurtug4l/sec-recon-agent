@@ -194,7 +194,7 @@ Reports stream live over SSE, render the untrusted-content fence semantically (v
 
 ## Stack
 
-**Backend**: Python 3.12+, `uv`, `pydantic-ai`, `mcp` (FastMCP), FastAPI + `sse-starlette` + `slowapi`, ChromaDB (ONNX MiniLM embedder), `httpx` + `tenacity`, `defusedxml`, `cvss`, `pydantic-settings` (`SecretStr`), `structlog`, OpenTelemetry. **Frontend**: Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS, Radix primitives, Recharts. **Containers**: multi-stage Dockerfiles, Docker Compose, optional Jaeger profile. **Tests**: pytest, respx, Hypothesis, the OpenTelemetry SDK's `InMemorySpanExporter`.
+**Backend**: Python 3.12+, `uv`, `pydantic-ai`, `mcp` (FastMCP), FastAPI + `sse-starlette` + `slowapi`, ChromaDB (ONNX MiniLM embedder), `httpx` + `tenacity`, `defusedxml`, `cvss`, `pydantic-settings` (`SecretStr`), `structlog`, OpenTelemetry. **Frontend**: Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS, Radix primitives, Recharts. **Containers**: multi-stage Dockerfiles, Docker Compose, optional Jaeger profile; tagged releases publish multi-arch images to GHCR with BuildKit provenance + SBOM attestations. **Tests**: pytest, respx, Hypothesis, the OpenTelemetry SDK's `InMemorySpanExporter`.
 
 Observability: OTel tracing in both Python processes, stdout exporter by default, `make obs-up` for a Jaeger sidecar at `:16686`, W3C `traceparent` propagated from the frontend proxy through to the MCP server. Span attributes are allowlisted; user query text and vendor content are never recorded. Details in [docs/design.md](docs/design.md#observability).
 
