@@ -83,6 +83,8 @@ make up                    # start mcp-server + agent-api + frontend
 make ui                    # opens http://localhost:3000
 ```
 
+Prefer pulling to building? Tagged releases ship multi-arch images on GHCR with BuildKit provenance + SBOM attestations: [docs/running.md](docs/running.md#prebuilt-images-ghcr).
+
 Three services bound to localhost only: `:3000` (Next.js frontend), `:8000` (agent API, FastAPI + SSE), `:8001` (MCP server, FastMCP). One-off query from the shell:
 
 ```bash
