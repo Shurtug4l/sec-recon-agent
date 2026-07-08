@@ -32,6 +32,7 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi>=0.48b0",
     "opentelemetry-exporter-otlp-proto-http>=1.27.0",
     "slowapi>=0.1.9",
+    "cvss>=3.0",
 ]
 
 [project.optional-dependencies]
@@ -53,6 +54,7 @@ sec-recon-api = "sec_recon_agent.api.stream:main"
 sec-recon-seed = "sec_recon_agent.mcp_server.tools.cve_search:seed_index"
 sec-recon-eval = "sec_recon_agent.eval.cli:main"
 sec-recon-export = "sec_recon_agent.export.cli:main"
+sec-recon-gate = "sec_recon_agent.gate.cli:main"
 sec-recon-scorecard = "sec_recon_agent.eval.scorecard:main"
 sec-recon-audit = "sec_recon_agent.audit.cli:main"
 sec-recon-redteam = "sec_recon_agent.redteam.cli:main"
@@ -68,6 +70,12 @@ packages = ["src/sec_recon_agent"]
 strict = true
 python_version = "3.12"
 plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+# The cvss package (RedHatProductSecurity) ships no py.typed marker; scores
+# come back as Any and are range-checked at the gate/severity.py boundary.
+module = "cvss.*"
+ignore_missing_imports = true
 
 [tool.ruff]
 line-length = 100
@@ -125,6 +133,7 @@ omit = [
     "src/sec_recon_agent/redteam/cli.py",
     "src/sec_recon_agent/audit/cli.py",
     "src/sec_recon_agent/export/cli.py",         # CLI shell; the renderers underneath are unit-tested
+    "src/sec_recon_agent/gate/cli.py",           # CLI shell; runner/render underneath are unit-tested
 ]
 
 [tool.coverage.report]
