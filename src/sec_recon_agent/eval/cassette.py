@@ -20,6 +20,7 @@ behavior-bearing-text rule in CONTRIBUTING.md.
 
 import asyncio
 import hashlib
+import inspect
 import json
 from pathlib import Path
 from typing import Any
@@ -72,6 +73,20 @@ class Cassette(BaseModel):
     outcomes: RecordedOutcomes
 
 
+def normalize_description(text: str | None) -> str:
+    """Canonicalize a docstring-derived tool description for hashing.
+
+    CPython 3.13 dedents docstrings at compile time, so the same source
+    yields `__doc__` with per-line leading whitespace on 3.12 and without
+    it on 3.13+. FastMCP forwards `__doc__` as the tool description, so an
+    unnormalized hash diverges across the CI interpreter matrix while the
+    semantic surface is identical. `inspect.cleandoc` is idempotent and
+    maps both forms to the same text (which is also what a 3.13+ runtime
+    actually serves to the model).
+    """
+    return inspect.cleandoc(text) if text else ""
+
+
 def llm_surface() -> dict[str, Any]:
     """The complete LLM-visible behavior surface, as a canonicalizable dict.
 
@@ -92,7 +107,7 @@ def llm_surface() -> dict[str, Any]:
             (
                 {
                     "name": tool.name,
-                    "description": tool.description,
+                    "description": normalize_description(tool.description),
                     "input_schema": tool.inputSchema,
                 }
                 for tool in tools

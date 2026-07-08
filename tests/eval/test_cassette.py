@@ -10,6 +10,7 @@ from sec_recon_agent.eval.cassette import (
     llm_surface,
     load_all_cassettes,
     load_cassette,
+    normalize_description,
     save_cassette,
     staleness_hash,
 )
@@ -47,6 +48,30 @@ def test_surface_carries_the_full_llm_visible_set() -> None:
     assert names == sorted(names), "tool order must be canonical, not registration order"
     assert surface["system_prompt"]
     assert surface["output_schema"]["title"] == "TriageReport"
+
+
+def test_description_normalization_is_interpreter_invariant() -> None:
+    """The same docstring must hash identically on py3.12 and py3.13+.
+
+    CPython 3.13 dedents docstrings at compile time, so `__doc__` carries
+    per-line leading whitespace on 3.12 and none on 3.13+. Both literal
+    forms are pinned here so the invariant holds regardless of the
+    interpreter running the test.
+    """
+    py312_form = "Summary line.\n\n    Body line one.\n    Body line two.\n    "
+    py313_form = "Summary line.\n\nBody line one.\nBody line two.\n"
+    assert normalize_description(py312_form) == normalize_description(py313_form)
+    # Idempotent: normalizing an already-normalized text is a no-op.
+    normalized = normalize_description(py312_form)
+    assert normalize_description(normalized) == normalized
+    assert normalize_description(None) == ""
+    assert normalize_description("") == ""
+
+
+def test_surface_descriptions_are_normalized() -> None:
+    surface = llm_surface()
+    for tool in surface["tools"]:
+        assert tool["description"] == normalize_description(tool["description"])
 
 
 def test_hash_is_sensitive_to_every_surface_component() -> None:
