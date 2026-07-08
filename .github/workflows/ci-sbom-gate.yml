@@ -79,6 +79,12 @@ jobs:
           output-file: sbom.cdx.json
           upload-artifact: false
 
+      # No github-token on purpose: the Actions installation token hits the
+      # code-search secondary rate limit (429) after the first couple of
+      # calls in a fan-out, and ExploitCheck cannot surface a per-arm
+      # failure without a tool-schema change (= cassette re-record). An
+      # honestly DEGRADED exploit coverage (ExploitDB only) beats an "ok"
+      # that silently lost its GitHub arm to rate limiting.
       - name: Run the SBOM gate (dogfood)
         id: gate
         uses: ./
@@ -86,7 +92,6 @@ jobs:
           sbom-path: sbom.cdx.json
           fail-on: act
           artifact-uri: sbom.cdx.json
-          github-token: ${{ github.token }}
 
       - name: Upload gate outputs
         if: always() && steps.gate.outputs.report-path != ''
