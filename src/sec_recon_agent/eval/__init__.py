@@ -9,4 +9,8 @@ of queries and grades the model's output with soft assertions:
 The suite is deliberately not part of the unit-test fast lane: it
 requires `make up` (live MCP server + agent API) and bills the LLM
 provider. Run on demand before shipping prompt or model changes.
+
+What DOES run in the fast lane is the record-replay gate: cassette.py
+defines the frozen-trajectory format and the staleness hash that
+tests/replay/ checks against the committed recordings on every PR.
 """
