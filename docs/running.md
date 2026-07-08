@@ -115,3 +115,25 @@ Exit codes are the CI contract: `0` the gate passed, `1` a finding met the `--fa
 Feed posture: the CISA KEV catalog and the ExploitDB index are downloaded once and cached on disk; EPSS is queried per unique CVE with bounded concurrency; the GitHub exploit-search arm runs only when `GITHUB_TOKEN` is set (findings are marked `degraded` otherwise, never silently downgraded) and is skipped entirely for CVEs already on KEV, whose decision is already Act. Components without a version, without a recognizable ecosystem, or outside OSV's seven supported ecosystems are listed in the report's `skipped` section with a reason - nothing is dropped silently. GHSA / PYSEC records aliasing the same CVE fold into one finding with the sibling ids preserved in `aliases`.
 
 The full `GateReport` JSON (findings, per-feed coverage, skipped components, aggregate SSVC, policy) goes to stdout or `--report`; `--sarif` and `--openvex` render through the same renderers as `sec-recon-export`, with every VEX statement bound to the affected component's own purl (synthesized only for PyPI components from requirements.txt, where the mapping is mechanical; other identity-less findings are excluded and reported, never guessed).
+
+### As a GitHub Action
+
+The gate ships as a composite action at the repository root; the action ref is the package source, so pinning the action pins the gate:
+
+```yaml
+permissions:
+  contents: read
+  security-events: write # SARIF upload
+
+steps:
+  - uses: actions/checkout@v7
+  - uses: anchore/sbom-action@v0.24.0
+    with: { path: ., format: cyclonedx-json, output-file: sbom.cdx.json, upload-artifact: false }
+  - uses: Shurtug4l/sec-recon-agent@main
+    with:
+      sbom-path: sbom.cdx.json
+      fail-on: act # act | attend | track-star | never
+      github-token: ${{ github.token }} # optional: exploit-search arm; omitting = degraded, not silent
+```
+
+Inputs mirror the CLI (`strict`, `artifact-uri`, `upload-sarif`, `sarif-category`, `python-version`); outputs expose `verdict`, `exit-code`, and the three document paths. The SARIF upload happens before the verdict is enforced, so alerts reach the Security tab even when the gate fails the job. This repository dogfoods the action in `.github/workflows/ci-sbom-gate.yml` (self-scan on dependency changes + weekly cron, artifact attestations on non-PR runs, verifiable with `gh attestation verify`).

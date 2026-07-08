@@ -124,6 +124,16 @@ The system prompt encodes one prioritization heuristic: CISA KEV membership > kn
 
 **SBOM gate.** `sec-recon-gate` runs the same tool chain with no LLM anywhere in the loop: parse an SBOM (CycloneDX / SPDX / requirements.txt), look up advisories on OSV.dev, enrich each CVE with KEV / EPSS / exploit signals, reduce every finding to a deterministic SSVC decision, and exit with a CI verdict (`--fail-on act` by default; `--strict` also fails on enrichment coverage gaps). Findings render to SARIF and OpenVEX through the shared renderers, with each VEX statement bound to the affected component's own purl. Reproducible, free, and injection-proof by construction - there is no prompt for a hostile SBOM to attack. Usage in [docs/running.md](docs/running.md#sbom-gate).
 
+The gate ships as a composite GitHub Action at the repo root, and this repository dogfoods it: `ci-sbom-gate.yml` scans the project's own dependency tree (uv.lock + frontend lockfile via syft) on dependency changes and a weekly cron, uploads SARIF to the Security tab, and attests the SBOM + gate report with GitHub artifact attestations on non-PR runs.
+
+```yaml
+- uses: Shurtug4l/sec-recon-agent@main
+  with:
+    sbom-path: sbom.cdx.json
+    fail-on: act
+    github-token: ${{ github.token }}
+```
+
 ## Eval, red team, scorecard
 
 An end-to-end golden-set evaluation (`src/sec_recon_agent/eval/`) exercises the live HTTP API with 11 curated queries: named CVEs, fuzzy descriptions, an SBOM, degraded inputs. Assertions are soft (severity within +-1 step, expected CVE recall >= 0.5, KEV / ransomware flags honored) because the agent is probabilistic; the measured axes are the ones an engineering review actually asks about: latency p50/p95, tokens and $/triage, structured-output conformance, confidence calibration (ECE), and retrieval quality (hit-rate@k, MRR) for the semantic search index.
@@ -152,6 +162,7 @@ Every HIGH finding from an independent security review is mapped to the code cha
 - **Error-payload allowlist** - the SSE `error` event surfaces a generic message unless the exception type is explicitly allowlisted; internal messages never leak to the client.
 - **Container hardening** - non-root users, `read_only: true` rootfs, `no-new-privileges`, ports bound to `127.0.0.1`, `tmpfs:/tmp`.
 - **Trivy in CI** - both images scanned on dependency changes plus a weekly cron; CRITICAL findings block the merge, HIGH findings land as SARIF in the Security tab. Open findings are triaged with accept rationale in [docs/security_findings.md](docs/security_findings.md).
+- **SBOM gate in CI** - the repository's own dependency tree is scanned by the deterministic gate on dependency changes plus a weekly cron; an Act-grade advisory (KEV / ransomware / imminent exploitation) fails the run, findings land as SARIF, and non-PR runs attest the SBOM + gate report.
 - **Opt-in API auth and per-IP rate limiting**; the MCP port takes a bearer token whenever it is published beyond the compose network - setup in [docs/running.md](docs/running.md).
 
 ## Testing
