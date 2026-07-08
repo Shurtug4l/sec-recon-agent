@@ -80,3 +80,23 @@ uv run sec-recon-audit tail --limit 5       # last 5 rows, human-readable
 uv run sec-recon-audit tail --limit 5 --json
 uv run sec-recon-audit verify               # walks the full chain; exit 1 on tamper
 ```
+
+## Exporting a report
+
+A saved `TriageReport` JSON (the `final` SSE event payload, or the frontend's raw-JSON export) renders into SARIF 2.1.0 or OpenVEX v0.2.0 without touching the LLM:
+
+```bash
+uv run sec-recon-export sarif report.json --artifact-uri data/sbom.json > triage.sarif
+uv run sec-recon-export openvex report.json \
+    --product "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1" > triage.vex.json
+```
+
+The same renders are exposed statelessly over HTTP (same auth as the other endpoints):
+
+```bash
+curl -s localhost:8000/v1/export/sarif \
+    -H 'content-type: application/json' \
+    -d "{\"report\": $(cat report.json), \"artifact_uri\": \"data/sbom.json\"}"
+```
+
+OpenVEX requires the purl(s) of the triaged product (`--product`, repeatable): product identity is never guessed, so a bare-CVE triage exports SARIF but refuses VEX.
