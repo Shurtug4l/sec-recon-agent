@@ -38,6 +38,9 @@ import { buildPermalink } from "@/lib/permalink";
 import { cn } from "@/lib/utils";
 import type {
   FeedStatus,
+  GroundingAssessment,
+  GroundingClaimStatus,
+  GroundingStatus,
   Severity,
   SignalStatus,
   SsvcAssessment,
@@ -113,6 +116,66 @@ const STATUS_GLOSS: Record<SignalStatus, string> = {
   not_queried: "not consulted for this triage",
 };
 
+// Report-level grounding outcome: icon + text + hue (redundant encoding, same
+// discipline as the coverage strip). "suspect" renders as warning, not
+// destructive: destructive is reserved for real-world danger signals (KEV,
+// public exploits); a grounding flag is an integrity signal about the report.
+const GROUNDING_META: Record<
+  GroundingStatus,
+  { icon: typeof CircleCheck; label: string; iconClass: string; gloss: string }
+> = {
+  grounded: {
+    icon: CircleCheck,
+    label: "grounded",
+    iconClass: "text-[hsl(var(--success))]",
+    gloss: "Every checked claim is backed by an actual tool result from this run.",
+  },
+  suspect: {
+    icon: AlertTriangle,
+    label: "suspect",
+    iconClass: "text-warning",
+    gloss: "At least one claim is unbacked or contradicts what a tool actually returned.",
+  },
+  not_evaluated: {
+    icon: CircleDashed,
+    label: "not evaluated",
+    iconClass: "text-muted-foreground/60",
+    gloss:
+      "The run's message history was unavailable, so no claim could be checked. An honest skip, not a pass.",
+  },
+};
+
+const CLAIM_META: Record<
+  GroundingClaimStatus,
+  { icon: typeof CircleCheck; label: string; className: string; tooltip: string }
+> = {
+  supported: {
+    icon: CircleCheck,
+    label: "supported",
+    className: "text-[hsl(var(--success))]",
+    tooltip: "A successful tool return backs this claim.",
+  },
+  unbacked: {
+    icon: CircleSlash,
+    label: "unbacked",
+    className: "text-warning",
+    tooltip: "A positive claim with no backing tool output: the fabrication signal.",
+  },
+  mismatch: {
+    icon: AlertTriangle,
+    label: "mismatch",
+    className: "text-destructive",
+    tooltip: "The claim contradicts what a tool actually returned.",
+  },
+  unverifiable: {
+    icon: CircleDashed,
+    label: "unverifiable",
+    className: "text-muted-foreground/60",
+    tooltip:
+      "Relevant tool output existed but could not be parsed back into its typed model, so the claim cannot be judged either way.",
+  },
+};
+
 const UNTRUSTED_START = "<UNTRUSTED_CONTENT>";
 const UNTRUSTED_END = "</UNTRUSTED_CONTENT>";
 
@@ -138,6 +201,19 @@ export function TriageReportView({
   query?: string;
 }) {
   const [linkState, setLinkState] = useState<"idle" | "copied" | "toolarge">("idle");
+  // Grounding detail panel; opens by default when the verifier flagged
+  // something, because a suspect report should not hide its findings.
+  const [groundingOpen, setGroundingOpen] = useState(
+    () => report.grounding?.status === "suspect",
+  );
+
+  function handleShowGrounding() {
+    setGroundingOpen(true);
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    document
+      .getElementById("grounding-section")
+      ?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+  }
 
   async function handleCopyLink() {
     // Encode the whole report into a URL fragment (client-side, never sent to a
@@ -189,10 +265,13 @@ export function TriageReportView({
             <Badge
               variant="outline"
               className="text-xs uppercase tracking-wider"
-              title="The agent's self-assessed grounding: high = backed by direct tool data, medium = partial, low = speculative or a tool failed during the run."
+              title="The agent's self-assessed confidence: high = backed by direct tool data, medium = partial, low = speculative or a tool failed during the run. Self-reported by the model; the grounding badge next to it is the server-verified counterpart."
             >
               {report.confidence} confidence
             </Badge>
+            {report.grounding && (
+              <GroundingBadge grounding={report.grounding} onClick={handleShowGrounding} />
+            )}
             <div className="ml-auto flex items-center gap-1 print:hidden">
               <Button
                 type="button"
@@ -226,7 +305,7 @@ export function TriageReportView({
                 variant="ghost"
                 className="h-7 gap-1 text-[11px]"
                 onClick={handleExportJson}
-                title="Download the full report as JSON (includes the SSVC verdict + signal coverage)"
+                title="Download the full report as JSON (includes the SSVC verdict, signal coverage + grounding verification)"
               >
                 <Braces className="h-3.5 w-3.5" />
                 Export JSON
@@ -382,6 +461,14 @@ export function TriageReportView({
 
       {report.attack_techniques.length > 0 && (
         <AttackSection techniques={report.attack_techniques} />
+      )}
+
+      {report.grounding && (
+        <GroundingSection
+          grounding={report.grounding}
+          open={groundingOpen}
+          onOpenChange={setGroundingOpen}
+        />
       )}
 
       <ReasoningChain steps={report.reasoning_chain} />
@@ -561,6 +648,181 @@ function AttackSection({ techniques }: { techniques: TriageReport["attack_techni
         </Card>
       ))}
     </div>
+  );
+}
+
+function GroundingBadge({
+  grounding,
+  onClick,
+}: {
+  grounding: GroundingAssessment;
+  onClick: () => void;
+}) {
+  const meta = GROUNDING_META[grounding.status];
+  const Icon = meta.icon;
+  const flagged = grounding.unbacked + grounding.mismatched;
+  const label =
+    grounding.status === "grounded"
+      ? `grounded ${grounding.supported}/${grounding.claims_checked}`
+      : grounding.status === "suspect"
+        ? `suspect ${flagged}/${grounding.claims_checked}`
+        : "grounding not evaluated";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Deterministic grounding verification: after the model returns, the server re-checks every tool-derived claim (CVE identity, CVSS, KEV, EPSS, exploit flags, ATT&CK ids) against the tool results captured from the run. Not the model's self-assessment. Click for the per-claim breakdown."
+      className="rounded-full"
+    >
+      <Badge variant="outline" className="gap-1 text-xs uppercase tracking-wider">
+        <Icon className={cn("h-3 w-3 shrink-0", meta.iconClass)} />
+        {label}
+      </Badge>
+    </button>
+  );
+}
+
+function GroundingSection({
+  grounding,
+  open,
+  onOpenChange,
+}: {
+  grounding: GroundingAssessment;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const meta = GROUNDING_META[grounding.status];
+  const StatusIcon = meta.icon;
+  const counters: { label: string; value: number; claimStatus: GroundingClaimStatus }[] = [
+    { label: "supported", value: grounding.supported, claimStatus: "supported" },
+    { label: "unbacked", value: grounding.unbacked, claimStatus: "unbacked" },
+    { label: "mismatched", value: grounding.mismatched, claimStatus: "mismatch" },
+    { label: "unverifiable", value: grounding.unverifiable, claimStatus: "unverifiable" },
+  ];
+  return (
+    <Collapsible open={open} onOpenChange={onOpenChange}>
+      <Card id="grounding-section" className="scroll-mt-20">
+        <CollapsibleTrigger asChild>
+          <button className="flex w-full items-center justify-between p-4 text-left transition-colors hover:bg-accent">
+            <div className="flex flex-wrap items-center gap-2">
+              <ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Grounding verification
+              </span>
+              <span
+                className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] normal-case tracking-normal text-muted-foreground"
+                title="Computed by a fixed server-side verifier from the tool results captured in the run's message history, after the model returns. The LLM does not produce this assessment; the same run always verifies the same way."
+              >
+                deterministic · server-computed
+              </span>
+              <Badge variant="secondary" className="gap-1 text-[10px]">
+                <StatusIcon className={cn("h-3 w-3 shrink-0", meta.iconClass)} />
+                {meta.label}
+              </Badge>
+              <span className="text-[11px] normal-case tracking-normal text-muted-foreground/70">
+                every tool-derived claim re-checked against what the tools actually returned
+              </span>
+            </div>
+            <ChevronDown
+              className={cn(
+                "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+                open && "rotate-180",
+              )}
+            />
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <Separator />
+          <CardContent className="space-y-3 pt-4">
+            <p className="text-sm leading-relaxed">{meta.gloss}</p>
+            {grounding.status !== "not_evaluated" && (
+              <div className="flex flex-wrap gap-1.5">
+                <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-[11px]">
+                  <span className="font-mono">{grounding.claims_checked}</span>
+                  <span className="text-muted-foreground">claims checked</span>
+                </span>
+                {counters
+                  .filter((c) => c.value > 0)
+                  .map((c) => {
+                    const claimMeta = CLAIM_META[c.claimStatus];
+                    const CounterIcon = claimMeta.icon;
+                    return (
+                      <span
+                        key={c.label}
+                        title={claimMeta.tooltip}
+                        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-[11px]"
+                      >
+                        <CounterIcon className={cn("h-3.5 w-3.5 shrink-0", claimMeta.className)} />
+                        <span className="font-mono">{c.value}</span>
+                        <span className="text-muted-foreground">{c.label}</span>
+                      </span>
+                    );
+                  })}
+              </div>
+            )}
+            {grounding.status === "grounded" && (
+              <p className="text-xs text-muted-foreground">
+                {grounding.claims_checked === 0
+                  ? "The report makes no checkable tool-derived claims."
+                  : `All ${grounding.claims_checked} tool-derived claims match the tool returns captured from this run.`}
+              </p>
+            )}
+            {grounding.findings.length > 0 && (
+              <ul className="space-y-2 text-sm">
+                {grounding.findings.map((finding, i) => {
+                  const claimMeta = CLAIM_META[finding.status];
+                  const FindingIcon = claimMeta.icon;
+                  const isCve = /^CVE-\d{4}-\d+$/i.test(finding.subject);
+                  return (
+                    <li key={i} className="flex items-start gap-2">
+                      <FindingIcon
+                        className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", claimMeta.className)}
+                      />
+                      <div className="space-y-0.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {isCve ? (
+                            <a
+                              href={`#cve-${finding.subject.toUpperCase()}`}
+                              className="font-mono text-xs font-semibold text-primary hover:underline"
+                            >
+                              {finding.subject}
+                            </a>
+                          ) : (
+                            <span className="font-mono text-xs font-semibold">
+                              {finding.subject}
+                            </span>
+                          )}
+                          <span className="font-mono text-xs text-muted-foreground">
+                            {finding.field}
+                          </span>
+                          <Badge
+                            variant="secondary"
+                            className="text-[10px]"
+                            title={claimMeta.tooltip}
+                          >
+                            {claimMeta.label}
+                          </Badge>
+                        </div>
+                        {finding.detail && (
+                          <p className="text-xs leading-snug text-muted-foreground">
+                            {finding.detail}
+                          </p>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {grounding.truncated && (
+              <p className="text-[11px] text-muted-foreground">
+                Findings list truncated at 40 entries; the counters above remain complete.
+              </p>
+            )}
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
   );
 }
 

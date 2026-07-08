@@ -12,6 +12,7 @@ import {
   Play,
   Printer,
   Share2,
+  ShieldCheck,
   Terminal,
 } from "lucide-react";
 
@@ -146,6 +147,23 @@ const REPORT_ACTIONS: PaletteCommand[] = [
     // DOM only where TriageReportView is mounted.
     visible: (ctx) => hasReport(ctx) && (ctx.pathname === "/triage" || ctx.pathname === "/r"),
     run: () => window.print(),
+  },
+  {
+    id: "report:show-grounding",
+    label: "Show grounding verification",
+    group: "Report actions",
+    keywords: ["provenance", "claims", "verified", "hallucination", "evidence"],
+    icon: ShieldCheck,
+    // #grounding-section exists only where TriageReportView is mounted and the
+    // report carries a grounding assessment (absent on pre-grounding history).
+    visible: (ctx) =>
+      !!ctx.report?.grounding && (ctx.pathname === "/triage" || ctx.pathname === "/r"),
+    run: () => {
+      document.getElementById("grounding-section")?.scrollIntoView({
+        behavior: prefersReducedMotion() ? "auto" : "smooth",
+        block: "start",
+      });
+    },
   },
 ];
 

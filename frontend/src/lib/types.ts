@@ -49,6 +49,33 @@ export interface SsvcAssessment {
   driving_cve: string | null; // the CVE whose signals drove the report-level call
 }
 
+// Deterministic post-run grounding verification, computed server-side in
+// agent/grounding.py against the tool returns captured from the run's message
+// history and stamped onto the report AFTER the model returns (same authority
+// pattern as `ssvc`; the LLM does not produce it).
+export type GroundingStatus = "grounded" | "suspect" | "not_evaluated";
+export type GroundingClaimStatus = "supported" | "unbacked" | "mismatch" | "unverifiable";
+
+// One non-supported claim surfaced by the verifier. `findings` carries only
+// these (supported claims are counted, not listed) so the payload stays bounded.
+export interface GroundingClaim {
+  subject: string;       // a CVE id, an ATT&CK technique id, or "report"
+  field: string;         // the report field the claim lives in (e.g. in_kev_catalog)
+  status: GroundingClaimStatus;
+  detail: string | null; // short evidence note (e.g. "kev_check returned in_catalog=false")
+}
+
+export interface GroundingAssessment {
+  status: GroundingStatus;
+  claims_checked: number;
+  supported: number;
+  unbacked: number;
+  mismatched: number;
+  unverifiable: number;
+  findings: GroundingClaim[];
+  truncated: boolean;
+}
+
 // Per-feed coverage honesty: what each external signal feed actually returned.
 export type SignalStatus = "found" | "not_found" | "error" | "not_queried";
 
@@ -70,6 +97,9 @@ export interface TriageReport {
   // reports restored from older localStorage history (render defensively).
   ssvc: SsvcAssessment | null;
   signal_coverage: FeedStatus[];
+  // Same defensive-render caveat: absent on pre-grounding history entries and
+  // permalinks; null when the backend could not run the verifier at all.
+  grounding?: GroundingAssessment | null;
 }
 
 // Token usage for one run, emitted by api/stream.py as a `usage` SSE event

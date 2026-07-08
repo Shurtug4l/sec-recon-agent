@@ -137,18 +137,27 @@ The frontend strips the markers for display and renders the body inside a `borde
 
 If a field is not fenced (some upstream sources do not have free text), it renders inline like normal copy.
 
+## Grounding provenance render
+
+Since the backend stamps `TriageReport.grounding` (deterministic post-run claim verification, PR #112), the report view surfaces it in two places:
+
+- **Badge** in the header row, next to the model's self-assessed confidence: `grounded N/N`, `suspect K/N`, or `grounding not evaluated`, with icon + hue redundant encoding (`suspect` renders as warning, not destructive - destructive stays reserved for real-world danger signals like KEV). The deliberate pairing: confidence is what the model says about itself, grounding is what the server verified; the two tooltips cross-reference each other. Clicking the badge scrolls to and opens the detail panel.
+- **Collapsible panel** (`#grounding-section`, between ATT&CK and the reasoning chain) carrying the same `deterministic · server-computed` authority chip as the SSVC verdict, the per-status claim counters, and the findings list. `findings` holds only non-supported claims (the wire payload is bounded by design; supported claims are counted, not listed), each with subject / report field / status / evidence note; CVE subjects anchor-link to their card. `not_evaluated` renders as an honest skip, `truncated` is labeled. The panel opens by default when the verifier flagged something.
+
+Reports restored from pre-grounding localStorage history or permalinks have no `grounding` key: badge and panel simply do not render (same defensive pattern as `ssvc`).
+
 ## Report export and share
 
 Every report card carries three exports plus a share link, all client-side with zero new dependencies:
 
-- **Export .md** builds a Markdown document (severity / confidence header, summary, recommended action, per-CVE details with KEV / ransomware / EPSS, ATT&CK techniques with mitigations, the full reasoning chain) and triggers a browser download (`lib/markdown-export.ts`). No backend route.
+- **Export .md** builds a Markdown document (severity / confidence header, summary, recommended action, per-CVE details with KEV / ransomware / EPSS, ATT&CK techniques with mitigations, the grounding verification, the full reasoning chain) and triggers a browser download (`lib/markdown-export.ts`). No backend route.
 - **Raw JSON** downloads the `TriageReport` as returned, verdict and coverage included.
 - **Export PDF** calls `window.print()` with an `@media print` stylesheet in `globals.css` that scopes visibility to the report block, hides the chrome, and forces an A4 light-on-white layout; the user picks "Save as PDF" in the system dialog. Native multi-page.
 - **Copy link** gzip-encodes the whole report into the URL fragment (`lib/permalink.ts`); `/r` decodes it locally. The fragment never reaches a server; past a size cap it falls back to suggesting the JSON export. The minted URL is basePath-aware (`NEXT_PUBLIC_BASE_PATH`), so links copied on the Pages demo point inside the project sub-path.
 
 ## Command palette
 
-`Cmd+K` (macOS) / `Ctrl+K` (elsewhere), or the Search button in the header, opens a command palette with 56 commands in 7 groups: report actions (copy link, export .md / JSON / PDF - visible only while a report is on screen, PDF only where `#printable-report` is in the DOM), page navigation, dashboard tab jumps, the 7 demo triage runs (live mode submits the same query to the real backend), the 12 guide sections, the guide's 23 external references, and project actions (GitHub, copy system prompt).
+`Cmd+K` (macOS) / `Ctrl+K` (elsewhere), or the Search button in the header, opens a command palette with 57 commands in 7 groups: report actions (copy link, export .md / JSON / PDF, show grounding verification - visible only while a report is on screen, PDF and grounding only where the report view is in the DOM), page navigation, dashboard tab jumps, the 7 demo triage runs (live mode submits the same query to the real backend), the 12 guide sections, the guide's 23 external references, and project actions (GitHub, copy system prompt).
 
 The registry is a static module (`lib/commands.ts`); context-dependent commands gate through a `visible(ctx)` predicate rather than conditional construction, so the filter always sees a stable item set. Section and reference commands consume the same `lib/guide-data.ts` the guide page renders from - one source, no drift. The binding is platform-split on purpose: registering `Ctrl+K` on macOS too would hijack readline kill-line inside the triage textarea.
 
@@ -188,6 +197,20 @@ Dockerfile (frontend/)
 
 The demo banner names the capture model (sonnet) so the replayed runs are honestly attributed. Replay pacing is compressed for the visitor, but history entries keep the real measured timings, so the observability waterfall stays honest.
 
+### Re-capturing the demo fixtures
+
+The fixtures in `src/demo/fixtures/*.json` are real SSE captures, re-recorded whenever the report schema grows a user-visible field (they date from whatever backend was live at capture time; a capture predating a field simply lacks it). `scripts/capture_fixtures.py` (repo root) records one fixture per run in the exact committed shape - gallery metadata from CLI args, `decision` read from the captured `final` frame, never hand-typed - and refuses streams that error out or never reach `final`. Recipe:
+
+```bash
+make up && make seed        # full stack with a real ANTHROPIC_API_KEY
+python scripts/capture_fixtures.py \
+  --query "<the fixture's exact query>" \
+  --slug log4shell --cve CVE-2021-44228 \
+  --title Log4Shell --subtitle "Apache Log4j JNDI lookup RCE"
+```
+
+Captures bill the LLM (sonnet, roughly one triage run each). After re-capturing, diff the `decision` fields against the gallery order in `src/demo/fixtures.ts` (most- to least-urgent): live feeds drift, and a changed verdict may require reordering or updating the subtitle. Then rebuild the demo and re-run the Playwright pass.
+
 ## Local development
 
 ```bash
@@ -211,7 +234,7 @@ npm run build        # production build
 - **No service worker / PWA.** Out of scope for a single-tenant demo.
 - **No auth UI.** Backend is unauthenticated by design; adding a login screen here without backend auth would be theatre.
 - **No streaming React UI library (Vercel AI SDK, etc.).** Evaluated and dropped; the SSE wrapper is 50 lines and the agent's protocol does not fit the SDK's chat-completion shape.
-- **One deliberate dependency exception: `cmdk` + `@radix-ui/react-dialog` (both exact-pinned) for the command palette.** The bias stays "hand-roll small surfaces", but fuzzy ranking plus combobox accessibility plus focus management over 56 mixed nav/action items is where hand-rolling costs more than the dependency. radix-dialog was already in the tree transitively via cmdk; making it direct lets the dialog shell carry a proper hidden `DialogTitle`.
+- **One deliberate dependency exception: `cmdk` + `@radix-ui/react-dialog` (both exact-pinned) for the command palette.** The bias stays "hand-roll small surfaces", but fuzzy ranking plus combobox accessibility plus focus management over 57 mixed nav/action items is where hand-rolling costs more than the dependency. radix-dialog was already in the tree transitively via cmdk; making it direct lets the dialog shell carry a proper hidden `DialogTitle`.
 
 ## Decisions log
 
@@ -226,4 +249,5 @@ npm run build        # production build
 | `localStorage` history | Demo scope, no backend persistence needed | Server-side history - would require a DB and auth |
 | `fetch()` + ReadableStream for SSE | EventSource does not support POST body; the parser is 50 lines | Vercel AI SDK - wrong protocol shape |
 | `output: "standalone"` Docker | ~150 MB image, no separate nginx | Static export - loses the `/api/triage` route (used only for the keyless demo build, where the routes are stashed) |
-| `cmdk` command palette, exact-pinned | Fuzzy ranking + combobox a11y over 56 items beats hand-rolling; unstyled, so Slate Recon tokens apply untouched | Hand-rolled listbox + filter (a11y/focus surface too large for the payoff); kbar (heavier, animation dep); cmdk's built-in `Command.Dialog` (no `DialogTitle`, trips Radix's a11y console error - dialog shell composed from radix-dialog directly instead) |
+| `cmdk` command palette, exact-pinned | Fuzzy ranking + combobox a11y over 57 items beats hand-rolling; unstyled, so Slate Recon tokens apply untouched | Hand-rolled listbox + filter (a11y/focus surface too large for the payoff); kbar (heavier, animation dep); cmdk's built-in `Command.Dialog` (no `DialogTitle`, trips Radix's a11y console error - dialog shell composed from radix-dialog directly instead) |
+| Grounding render = badge + findings-only panel | The wire already carries a bounded assessment (counters + non-supported claims); rendering exactly that keeps the UI honest about what the server verified, and the badge/panel split mirrors the SSVC authority pattern | Raw tool-payload evidence viewer - per-tool payloads never reach the SSE stream by design (bounded payload); shipping them to the browser would be a second provenance channel to secure and size |
