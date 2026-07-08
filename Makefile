@@ -62,5 +62,8 @@ redteam:  ## Run the prompt-injection battery against a live stack. Bills the LL
 scorecard:  ## Regenerate SCORECARD.md from deterministic coverage + any result JSONs in data/scorecard/.
 	@uv run sec-recon-scorecard $(SCORECARD_ARGS)
 
+record-cassettes:  ## Re-record replay cassettes from the golden set (needs a live MCP server). Bills the LLM.
+	@uv run python scripts/record_cassettes.py $(RECORD_ARGS)
+
 clean:  ## Stop services and DELETE the ChromaDB volume. Destructive.
 	docker compose down --volumes

@@ -2,11 +2,13 @@
 
 from typing import Any
 
+from sec_recon_agent.eval.cassette import Cassette, RecordedOutcomes
 from sec_recon_agent.eval.golden_set import GOLDEN_SET
 from sec_recon_agent.eval.scorecard import (
     build_scorecard,
     eval_metrics_from_records,
     golden_coverage,
+    grounding_metrics_from_cassettes,
     main,
     redteam_coverage,
     redteam_metrics_from_json,
@@ -136,6 +138,50 @@ def test_redteam_metrics_empty_is_none() -> None:
     assert redteam_metrics_from_json({"summary": {"total": 0}}) is None
 
 
+# --- grounding metric aggregation ------------------------------------------
+
+
+def _cassette(case_id: str, status: str = "grounded", checked: int = 5) -> Cassette:
+    return Cassette(
+        case_id=case_id,
+        model="claude-sonnet-4-6",
+        recorded_at="2026-07-08T10:00:00+00:00",
+        staleness_hash="f" * 64,
+        elapsed_seconds=60.0,
+        messages=[],
+        report={},
+        outcomes=RecordedOutcomes(
+            ssvc={"decision": "act", "rule": "kev"},
+            grounding={
+                "status": status,
+                "claims_checked": checked,
+                "supported": checked if status == "grounded" else checked - 1,
+                "unbacked": 0 if status == "grounded" else 1,
+                "mismatched": 0,
+                "unverifiable": 0,
+            },
+            golden_passed=True,
+        ),
+    )
+
+
+def test_grounding_metrics_from_cassettes() -> None:
+    m = grounding_metrics_from_cassettes([_cassette("a"), _cassette("b", status="suspect")])
+    assert m is not None
+    assert m.cases == 2
+    assert m.grounded == 1
+    assert m.claims_checked == 10
+    assert m.supported == 9
+    assert m.unbacked == 1
+    assert m.model == "claude-sonnet-4-6"
+    assert m.recorded_on == "2026-07-08"
+    assert m.surface_hash == "f" * 12
+
+
+def test_grounding_metrics_empty_is_none() -> None:
+    assert grounding_metrics_from_cassettes([]) is None
+
+
 # --- markdown builder -----------------------------------------------------
 
 
@@ -150,6 +196,7 @@ def _build(**kwargs: Any) -> str:
         "eval_metrics": None,
         "retrieval": None,
         "redteam": None,
+        "grounding": None,
     }
     defaults.update(kwargs)
     return build_scorecard(**defaults)
@@ -172,6 +219,15 @@ def test_build_scorecard_marks_live_sections_pending_without_results() -> None:
     # Deterministic numbers are still present.
     assert f"**{len(PAYLOADS)} payloads**" in md
     assert f"**{len(GOLDEN_SET)} curated cases**" in md
+    # No cassettes -> the grounding section points at the recorder.
+    assert "make record-cassettes" in md
+
+
+def test_build_scorecard_renders_grounding_from_cassettes() -> None:
+    md = _build(grounding=grounding_metrics_from_cassettes([_cassette("a")]))
+    assert "## Grounding (deterministic claim verification)" in md
+    assert "- **Reports grounded**: 1/1" in md
+    assert "surface `ffffffffffff`" in md
 
 
 def test_build_scorecard_fills_live_sections() -> None:
@@ -249,6 +305,8 @@ def test_main_writes_deterministic_scorecard(tmp_path: Any) -> None:
             str(tmp_path / "nope-retrieval.json"),
             "--redteam-json",
             str(tmp_path / "nope-redteam.json"),
+            "--cassettes-dir",
+            str(tmp_path / "no-cassettes"),
         ],
     )
     assert rc == 0

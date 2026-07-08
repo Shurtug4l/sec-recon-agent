@@ -3,8 +3,8 @@
 Single reproducible measurement of the system across security posture, detection quality, retrieval, efficiency, and reliability. Regenerate with `make scorecard` (see [Reproduce](#reproduce)). Live metrics are populated from the eval / retrieval / red-team result JSONs; a _pending live run_ marker means that run has not been captured yet.
 
 - **Model**: `sonnet`
-- **Date**: 2026-07-07
-- **Commit**: `c459228`
+- **Date**: 2026-07-08
+- **Commit**: `27cde79`
 - **Token pricing**: Anthropic published rates as of 2026-06-24
 
 ## Security posture (red-team resistance)
@@ -52,6 +52,14 @@ _MRR = mean reciprocal rank of the expected CVE (1.0 = always ranked first); hit
 - **Structured-output conformance**: 11/11 well-formed reports
 - **Confidence calibration (ECE)**: 0.155 (0 = perfectly calibrated; over the scored cases)
 
+## Grounding (deterministic claim verification)
+
+Every triage is stamped with a grounding verdict: the server re-checks each tool-derived claim in the report (CVSS, KEV, EPSS, exploit flags, ATT&CK ids) against the tool returns captured from the run's own message history. The numbers below aggregate the committed replay cassettes (`tests/cassettes/`): frozen real trajectories that CI replays through the current deterministic pipeline on every PR, hard-failing when the system prompt or a tool schema drifts from what the recorded model saw.
+
+- **Cassettes**: 11 (model `claude-sonnet-4-6`, recorded 2026-07-08, surface `ee13bc52b5bf`)
+- **Reports grounded**: 11/11
+- **Claims checked**: 150 (supported 150, unbacked 0, mismatched 0, unverifiable 0)
+
 ## Prioritization (deterministic SSVC)
 
 The SSVC verdict (Stakeholder-Specific Vulnerability Categorization, CISA's remediation-urgency methodology) is computed server-side from the collected signals, not by the LLM, so it is reproducible from the same inputs. EPSS below is FIRST.org's predicted probability of exploitation in the next 30 days. Decision rules, most-urgent first:
@@ -78,6 +86,7 @@ mkdir -p data/scorecard
 make eval     EVAL_ARGS='--json-output data/scorecard/eval.json --model sonnet'
 make eval     EVAL_ARGS='--retrieval --retrieval-sample 500 --json-output data/scorecard/retrieval.json'
 make redteam  REDTEAM_ARGS='--json-output data/scorecard/redteam.json --model sonnet'
+make record-cassettes RECORD_ARGS='--model sonnet'  # replay cassettes (recorder defaults to sonnet)
 make scorecard   # regenerate this file from whatever JSONs exist
 ```
 

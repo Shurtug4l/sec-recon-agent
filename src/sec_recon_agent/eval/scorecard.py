@@ -31,6 +31,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from sec_recon_agent.eval.cassette import (
+    DEFAULT_CASSETTES_DIR,
+    Cassette,
+    load_all_cassettes,
+)
 from sec_recon_agent.eval.cost import PRICING_SOURCE_DATE
 from sec_recon_agent.eval.golden_set import GOLDEN_SET
 from sec_recon_agent.eval.metrics import (
@@ -223,6 +228,51 @@ def redteam_metrics_from_json(data: dict[str, Any]) -> RedteamMetrics | None:
     )
 
 
+@dataclass(frozen=True)
+class GroundingMetrics:
+    """Aggregate grounding outcomes over the committed replay cassettes."""
+
+    cases: int
+    model: str
+    recorded_on: str
+    surface_hash: str
+    grounded: int
+    claims_checked: int
+    supported: int
+    unbacked: int
+    mismatched: int
+    unverifiable: int
+
+
+def grounding_metrics_from_cassettes(cassettes: list[Cassette]) -> GroundingMetrics | None:
+    """Aggregate the recorded grounding assessments; None when no cassettes exist.
+
+    Cassettes are frozen real trajectories that CI replays on every PR
+    (tests/replay/), so these numbers are re-verified continuously, unlike
+    the pending-marker live metrics.
+    """
+    if not cassettes:
+        return None
+
+    def _count(key: str) -> int:
+        return sum(int(c.outcomes.grounding.get(key, 0)) for c in cassettes)
+
+    models = {c.model for c in cassettes}
+    hashes = {c.staleness_hash for c in cassettes}
+    return GroundingMetrics(
+        cases=len(cassettes),
+        model=models.pop() if len(models) == 1 else "mixed",
+        recorded_on=max(c.recorded_at for c in cassettes)[:10],
+        surface_hash=hashes.pop()[:12] if len(hashes) == 1 else "mixed",
+        grounded=sum(1 for c in cassettes if c.outcomes.grounding.get("status") == "grounded"),
+        claims_checked=_count("claims_checked"),
+        supported=_count("supported"),
+        unbacked=_count("unbacked"),
+        mismatched=_count("mismatched"),
+        unverifiable=_count("unverifiable"),
+    )
+
+
 # --- markdown rendering (pure) --------------------------------------------
 
 
@@ -279,6 +329,7 @@ def build_scorecard(
     eval_metrics: EvalMetrics | None,
     retrieval: RetrievalMetrics | None,
     redteam: RedteamMetrics | None,
+    grounding: GroundingMetrics | None,
 ) -> str:
     """Render the scorecard markdown from coverage + optional live metrics.
 
@@ -429,6 +480,35 @@ def build_scorecard(
         a(f"- **Conformance / calibration**: {_PENDING} (from the golden-set eval run above)")
     a("")
 
+    # --- grounding (replay cassettes) ---
+    a("## Grounding (deterministic claim verification)")
+    a("")
+    a(
+        "Every triage is stamped with a grounding verdict: the server re-checks "
+        "each tool-derived claim in the report (CVSS, KEV, EPSS, exploit flags, "
+        "ATT&CK ids) against the tool returns captured from the run's own message "
+        "history. The numbers below aggregate the committed replay cassettes "
+        "(`tests/cassettes/`): frozen real trajectories that CI replays through "
+        "the current deterministic pipeline on every PR, hard-failing when the "
+        "system prompt or a tool schema drifts from what the recorded model saw.",
+    )
+    a("")
+    if grounding is not None:
+        g = grounding
+        a(
+            f"- **Cassettes**: {g.cases} (model `{g.model}`, recorded {g.recorded_on}, "
+            f"surface `{g.surface_hash}`)",
+        )
+        a(f"- **Reports grounded**: {g.grounded}/{g.cases}")
+        a(
+            f"- **Claims checked**: {g.claims_checked} (supported {g.supported}, "
+            f"unbacked {g.unbacked}, mismatched {g.mismatched}, "
+            f"unverifiable {g.unverifiable})",
+        )
+    else:
+        a(f"- **Grounding**: {_PENDING} (record with `make record-cassettes`)")
+    a("")
+
     # --- prioritization (deterministic) ---
     a("## Prioritization (deterministic SSVC)")
     a("")
@@ -475,6 +555,8 @@ def build_scorecard(
         f"--json-output {DEFAULT_RESULTS_DIR}/retrieval.json'",
     )
     a(f"make redteam  REDTEAM_ARGS='--json-output {DEFAULT_RESULTS_DIR}/redteam.json{pin}'")
+    record_args = f" RECORD_ARGS='{pin.strip()}'" if pin.strip() else ""
+    a(f"make record-cassettes{record_args}  # replay cassettes (recorder defaults to sonnet)")
     a("make scorecard   # regenerate this file from whatever JSONs exist")
     a("```")
     a("")
@@ -540,6 +622,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--eval-json", default=f"{DEFAULT_RESULTS_DIR}/eval.json")
     parser.add_argument("--retrieval-json", default=f"{DEFAULT_RESULTS_DIR}/retrieval.json")
     parser.add_argument("--redteam-json", default=f"{DEFAULT_RESULTS_DIR}/redteam.json")
+    parser.add_argument("--cassettes-dir", default=str(DEFAULT_CASSETTES_DIR))
     parser.add_argument(
         "--model",
         default="n/a (deterministic-only)",
@@ -558,6 +641,13 @@ def main(argv: list[str] | None = None) -> int:
         retrieval_metrics_from_json(retrieval_data) if isinstance(retrieval_data, dict) else None
     )
     redteam = redteam_metrics_from_json(redteam_data) if isinstance(redteam_data, dict) else None
+    try:
+        cassettes = load_all_cassettes(Path(args.cassettes_dir))
+    except (ValueError, OSError):
+        # Forgiving like _load_json: a malformed cassette must not block the
+        # scorecard; the replay gate in CI is where malformation hard-fails.
+        cassettes = []
+    grounding = grounding_metrics_from_cassettes(cassettes)
 
     model = eval_metrics.model if eval_metrics is not None else args.model
     markdown = build_scorecard(
@@ -570,6 +660,7 @@ def main(argv: list[str] | None = None) -> int:
         eval_metrics=eval_metrics,
         retrieval=retrieval,
         redteam=redteam,
+        grounding=grounding,
     )
     Path(args.output).write_text(markdown, encoding="utf-8")
     print(f"scorecard written to {args.output}")
