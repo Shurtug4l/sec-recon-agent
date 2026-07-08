@@ -4,7 +4,7 @@ Single reproducible measurement of the system across security posture, detection
 
 - **Model**: `sonnet`
 - **Date**: 2026-07-08
-- **Commit**: `27cde79`
+- **Commit**: `cca5b70`
 - **Token pricing**: Anthropic published rates as of 2026-06-24
 
 ## Security posture (red-team resistance)
@@ -56,7 +56,7 @@ _MRR = mean reciprocal rank of the expected CVE (1.0 = always ranked first); hit
 
 Every triage is stamped with a grounding verdict: the server re-checks each tool-derived claim in the report (CVSS, KEV, EPSS, exploit flags, ATT&CK ids) against the tool returns captured from the run's own message history. The numbers below aggregate the committed replay cassettes (`tests/cassettes/`): frozen real trajectories that CI replays through the current deterministic pipeline on every PR, hard-failing when the system prompt or a tool schema drifts from what the recorded model saw.
 
-- **Cassettes**: 11 (model `claude-sonnet-4-6`, recorded 2026-07-08, surface `ee13bc52b5bf`)
+- **Cassettes**: 11 (model `claude-sonnet-4-6`, recorded 2026-07-08, surface `c87d096b0e8e`)
 - **Reports grounded**: 11/11
 - **Claims checked**: 150 (supported 150, unbacked 0, mismatched 0, unverifiable 0)
 

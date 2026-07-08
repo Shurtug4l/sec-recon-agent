@@ -3,7 +3,7 @@
  "case_id": "spring4shell",
  "model": "claude-sonnet-4-6",
  "recorded_at": "2026-07-08T14:32:24+00:00",
- "staleness_hash": "ee13bc52b5bfdf858885242d77b2d6bb41ebf32cb4c82769c1388677b1449b40",
+ "staleness_hash": "c87d096b0e8e7dba74cb2c58ec2dd5d0697c855f82b6b0e6756ea06e246d007b",
  "elapsed_seconds": 54.56,
  "usage": {
   "input_tokens": 65272,
