@@ -115,9 +115,23 @@ make redteam REDTEAM_ARGS='--json-output redteam.json'  # JSON output includes a
 
 The battery doubles as a regression detector after a system-prompt change or a model swap. Exit code 0 only when every payload was resisted.
 
+## Record-replay gate
+
+The eval suite above bills the LLM and needs a live stack, so it stays out of CI. The record-replay gate is the piece that runs on *every PR*: `tests/cassettes/` holds one committed cassette per golden case - a frozen real run (full message history, raw report, and the deterministic outcomes computed at record time) - and `tests/replay/` replays each one through the current deterministic pipeline (trajectory extraction, grounding verification, SSVC, golden scorer), asserting bit-exact agreement with the recording. No LLM call, no network, no live-feed drift: a regression in any deterministic layer fails the required CI check against real agent behavior.
+
+Each cassette is stamped with a **staleness hash** of the LLM-visible surface: the system prompt, every MCP tool schema (name, description, input schema, introspected in-process from the FastMCP instance), and the `TriageReport` JSON schema. When that surface changes, the recorded trajectories describe a model that saw a different world, so the gate hard-fails until they are re-recorded:
+
+```bash
+make up
+make record-cassettes                            # all 11 cases, sonnet, bills the LLM
+make record-cassettes RECORD_ARGS='--only log4shell-jndi'   # one case
+```
+
+The recorder runs the agent directly against the live MCP server and refuses to write a cassette whose fresh run fails the golden scorer (LLM variance: re-run the case instead of baking a failing baseline into the gate; `--allow-failing` overrides for debugging). Cassettes carry only public feed data; the recorder additionally refuses to write if API-key material appears in the serialized payload.
+
 ## Scorecard
 
-`make scorecard` regenerates [SCORECARD.md](../SCORECARD.md) from deterministic coverage plus any result JSONs found in `data/scorecard/`: one stamped, reproducible document across security posture, detection quality, retrieval, cost / latency, and calibration. The scorecard baseline is measured on sonnet: the default haiku is cheaper per triage but thrashes on multi-tool cases, and a scorecard should reflect the configuration you would actually defend.
+`make scorecard` regenerates [SCORECARD.md](../SCORECARD.md) from deterministic coverage plus any result JSONs found in `data/scorecard/`: one stamped, reproducible document across security posture, detection quality, retrieval, cost / latency, and calibration. The scorecard baseline is measured on sonnet: the default haiku is cheaper per triage but thrashes on multi-tool cases, and a scorecard should reflect the configuration you would actually defend. The grounding section aggregates the committed replay cassettes, so unlike the pending-marker live metrics it is re-verified by CI on every PR.
 
 ## Sample output
 
