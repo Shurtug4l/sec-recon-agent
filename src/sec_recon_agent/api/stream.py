@@ -9,6 +9,9 @@ Endpoints:
 - GET /v1/meta: exposes the system prompt and the tool inventory so the
   UI's transparency view can show what the agent is told and what it can
   reach. Read-only, no auth, single-tenant demo.
+- POST /v1/export/{sarif,openvex}: stateless render of an
+  already-produced TriageReport into SARIF 2.1.0 / OpenVEX v0.2.0 via
+  the pure functions in export/.
 
 The agent reaches the MCP server over its own HTTP+SSE connection; the
 API process and the MCP server are independent.
@@ -16,6 +19,7 @@ API process and the MCP server are independent.
 
 import hmac
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -32,8 +36,11 @@ from sse_starlette.sse import EventSourceResponse
 from starlette.responses import JSONResponse
 
 from sec_recon_agent.agent.prompts import SYSTEM_PROMPT
+from sec_recon_agent.agent.schema import TriageReport
 from sec_recon_agent.agent.triage import build_agent, export_anthropic_api_key_to_env
 from sec_recon_agent.config import settings
+from sec_recon_agent.export.openvex import DEFAULT_AUTHOR, ProductIdentityError, to_openvex
+from sec_recon_agent.export.sarif import to_sarif
 from sec_recon_agent.mcp_server.errors import CveNotFoundError
 from sec_recon_agent.observability import setup_tracing
 
@@ -262,6 +269,51 @@ async def meta() -> MetaResponse:
             ),
         ],
     )
+
+
+class ExportSarifRequest(BaseModel):
+    report: TriageReport
+    # Repo-relative path (or stable identifier) GitHub code scanning
+    # attaches the alerts to, e.g. the SBOM or report file that produced
+    # the triage.
+    artifact_uri: str = Field(default="triage-report.json", min_length=1, max_length=500)
+
+
+class ExportOpenVexRequest(BaseModel):
+    report: TriageReport
+    # purl(s) of the triaged product. Required: a standalone OpenVEX
+    # statement without products is invalid, and product identity is
+    # never guessed from the report.
+    products: list[str] = Field(min_length=1, max_length=50)
+    author: str = Field(default=DEFAULT_AUTHOR, min_length=1, max_length=200)
+
+
+@app.post("/v1/export/sarif", dependencies=[Depends(verify_api_key)])
+async def export_sarif(body: ExportSarifRequest) -> JSONResponse:
+    """Stateless render of an already-produced TriageReport into SARIF
+    2.1.0. Pure CPU transform of a schema-bounded body, so it goes
+    unthrottled like /v1/meta; the report was validated by FastAPI on the
+    way in."""
+    return JSONResponse(content=to_sarif(body.report, artifact_uri=body.artifact_uri))
+
+
+@app.post("/v1/export/openvex", dependencies=[Depends(verify_api_key)])
+async def export_openvex(body: ExportOpenVexRequest) -> JSONResponse:
+    """Stateless render into an OpenVEX v0.2.0 document. 422 when the
+    supplied product identifiers are not purls."""
+    try:
+        doc = to_openvex(
+            body.report,
+            products=body.products,
+            timestamp=datetime.now(UTC),
+            author=body.author,
+        )
+    except ProductIdentityError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    return JSONResponse(content=doc)
 
 
 @app.post("/v1/triage", dependencies=[Depends(verify_api_key)])

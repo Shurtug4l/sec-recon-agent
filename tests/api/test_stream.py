@@ -723,3 +723,102 @@ def test_triage_emits_error_event_when_agent_raises(monkeypatch: MonkeyPatch) ->
     assert "agent boom" not in body
     assert "/var/lib/secret" not in body
     assert "Internal error" in body
+
+
+_EXPORT_REPORT: dict[str, Any] = {
+    "summary": "Critical Log4Shell exposure in the queried product.",
+    "severity": "critical",
+    "confidence": "high",
+    "recommended_action": "Upgrade log4j-core to 2.17.1 or later immediately.",
+    "cves": [
+        {
+            "cve_id": "CVE-2021-44228",
+            "summary": "Log4Shell RCE in Apache Log4j2 via JNDI lookup.",
+            "cvss_v3_score": 10.0,
+            "severity": "critical",
+            "exploits_public": True,
+            "nvd_url": "https://nvd.nist.gov/vuln/detail/CVE-2021-44228",
+            "in_kev_catalog": True,
+        },
+    ],
+}
+
+
+def test_export_sarif_renders_the_posted_report() -> None:
+    client = TestClient(app)
+    resp = client.post(
+        "/v1/export/sarif",
+        json={"report": _EXPORT_REPORT, "artifact_uri": "data/sbom.json"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["version"] == "2.1.0"
+    results = body["runs"][0]["results"]
+    assert len(results) == 1
+    assert results[0]["ruleId"] == "CVE-2021-44228"
+    location = results[0]["locations"][0]["physicalLocation"]
+    assert location["artifactLocation"]["uri"] == "data/sbom.json"
+
+
+def test_export_sarif_defaults_the_artifact_uri() -> None:
+    client = TestClient(app)
+    resp = client.post("/v1/export/sarif", json={"report": _EXPORT_REPORT})
+    assert resp.status_code == 200
+    location = resp.json()["runs"][0]["results"][0]["locations"][0]["physicalLocation"]
+    assert location["artifactLocation"]["uri"] == "triage-report.json"
+
+
+def test_export_sarif_rejects_an_invalid_report_body() -> None:
+    client = TestClient(app)
+    resp = client.post("/v1/export/sarif", json={"report": {"summary": "incomplete"}})
+    assert resp.status_code == 422
+
+
+def test_export_openvex_renders_affected_statements() -> None:
+    client = TestClient(app)
+    purl = "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1"
+    resp = client.post(
+        "/v1/export/openvex",
+        json={"report": _EXPORT_REPORT, "products": [purl]},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["@context"] == "https://openvex.dev/ns/v0.2.0"
+    statement = body["statements"][0]
+    assert statement["status"] == "affected"
+    assert statement["products"][0]["identifiers"]["purl"] == purl
+
+
+def test_export_openvex_requires_a_product_list() -> None:
+    client = TestClient(app)
+    resp = client.post("/v1/export/openvex", json={"report": _EXPORT_REPORT, "products": []})
+    assert resp.status_code == 422
+
+
+def test_export_openvex_rejects_non_purl_products() -> None:
+    client = TestClient(app)
+    resp = client.post(
+        "/v1/export/openvex",
+        json={"report": _EXPORT_REPORT, "products": ["log4j-core 2.14.1"]},
+    )
+    assert resp.status_code == 422
+    assert "purl" in resp.json()["detail"]
+
+
+def test_export_requires_api_key_when_configured(monkeypatch: MonkeyPatch) -> None:
+    from pydantic import SecretStr
+
+    from sec_recon_agent.config import settings
+
+    monkeypatch.setattr(settings, "api_keys", [SecretStr("good-key")])
+    client = TestClient(app)
+
+    resp = client.post("/v1/export/sarif", json={"report": _EXPORT_REPORT})
+    assert resp.status_code == 401
+
+    resp = client.post(
+        "/v1/export/sarif",
+        json={"report": _EXPORT_REPORT},
+        headers={"X-API-Key": "good-key"},
+    )
+    assert resp.status_code == 200
