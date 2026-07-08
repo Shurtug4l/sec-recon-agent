@@ -1,0 +1,109 @@
+name: sbom-gate
+
+# Dogfoods the repo-root composite action on this repository's own
+# dependency tree: uv.lock exported to requirements.txt + the frontend
+# lockfile, cataloged by syft into one CycloneDX SBOM, gated by
+# sec-recon-gate with fail-on=act.
+#
+# The uv-export step exists on purpose: syft's uv.lock support is
+# version-dependent, and a silently missing Python ecosystem would be a
+# false green. requirements.txt is always cataloged; if syft also reads
+# uv.lock, the duplicates fold at ingest (the gate dedupes per
+# name/version/ecosystem).
+#
+# Non-required check by design: an Act-grade advisory in a dependency
+# must fail THIS workflow loudly without blocking unrelated PRs the way
+# a required-but-skipped check would (same reasoning as docker-scan).
+# Attestations run only outside pull_request events: per-PR provenance
+# is noise, main/schedule/dispatch runs are the evidence trail.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pyproject.toml"
+      - "uv.lock"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
+      - "action.yml"
+      - ".github/workflows/ci-sbom-gate.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "pyproject.toml"
+      - "uv.lock"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
+      - "action.yml"
+      - ".github/workflows/ci-sbom-gate.yml"
+  schedule:
+    # Monday 07:00 UTC, right after docker-scan's 06:30 slot: a fresh KEV
+    # or EPSS escalation against a pinned dependency surfaces weekly even
+    # with no PR in flight.
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: sbom-gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write # SARIF upload to the Security tab.
+  id-token: write # artifact attestations (non-PR runs only).
+  attestations: write
+
+jobs:
+  gate:
+    name: sbom gate (self-scan)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Export the Python dependency tree
+        run: uv export --frozen --no-hashes --no-emit-project --output-file requirements.txt
+
+      - name: Generate the repository SBOM
+        uses: anchore/sbom-action@v0.24.0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+          upload-artifact: false
+
+      - name: Run the SBOM gate (dogfood)
+        id: gate
+        uses: ./
+        with:
+          sbom-path: sbom.cdx.json
+          fail-on: act
+          artifact-uri: sbom.cdx.json
+          github-token: ${{ github.token }}
+
+      - name: Upload gate outputs
+        if: always() && steps.gate.outputs.report-path != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: sbom-gate-outputs
+          if-no-files-found: warn
+          path: |
+            sbom.cdx.json
+            ${{ steps.gate.outputs.report-path }}
+            ${{ steps.gate.outputs.sarif-path }}
+            ${{ steps.gate.outputs.openvex-path }}
+
+      - name: Attest SBOM and gate report
+        if: always() && github.event_name != 'pull_request' && steps.gate.outputs.exit-code != '2' && steps.gate.outputs.exit-code != ''
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            sbom.cdx.json
+            ${{ steps.gate.outputs.report-path }}

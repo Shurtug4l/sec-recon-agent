@@ -1,0 +1,146 @@
+name: "sec-recon SBOM gate"
+description: >-
+  Deterministic, LLM-free SBOM gate: OSV.dev advisories enriched with CISA
+  KEV, FIRST EPSS and public-exploit signals, prioritized with SSVC,
+  rendered to SARIF 2.1.0 and OpenVEX v0.2.0. Exit codes are the CI
+  contract: pass, policy fail, or infrastructure failure.
+author: "Simone La Porta"
+
+branding:
+  icon: "shield"
+  color: "purple"
+
+inputs:
+  sbom-path:
+    description: >-
+      Path to the SBOM to scan (CycloneDX 1.x JSON, SPDX 2.x JSON, or
+      requirements.txt), relative to the workspace.
+    required: true
+  fail-on:
+    description: >-
+      Minimum SSVC decision that fails the gate: act, attend, track-star,
+      or never.
+    required: false
+    default: "act"
+  strict:
+    description: >-
+      Fail the gate on enrichment coverage gaps (feed errors), not only on
+      findings.
+    required: false
+    default: "false"
+  artifact-uri:
+    description: >-
+      Repo-relative path GitHub code scanning attaches alerts to. Defaults
+      to sbom-path.
+    required: false
+    default: ""
+  github-token:
+    description: >-
+      Token for the GitHub exploit-search arm of exploit_check. Optional:
+      without it the gate still runs and marks exploit coverage as
+      degraded (ExploitDB only) instead of silently downgrading.
+    required: false
+    default: ""
+  upload-sarif:
+    description: "Upload the SARIF to GitHub code scanning."
+    required: false
+    default: "true"
+  sarif-category:
+    description: "Code scanning category for the SARIF upload."
+    required: false
+    default: "sec-recon-gate"
+  python-version:
+    description: "Python version used to run the gate."
+    required: false
+    default: "3.13"
+
+outputs:
+  verdict:
+    description: "pass or fail (the policy verdict; infra failures fail the step directly)."
+    value: ${{ steps.gate.outputs.verdict }}
+  exit-code:
+    description: "Raw gate exit code: 0 pass, 1 policy fail, 2 infrastructure failure."
+    value: ${{ steps.gate.outputs.exit-code }}
+  report-path:
+    description: "Path to the full GateReport JSON."
+    value: ${{ steps.gate.outputs.report-path }}
+  sarif-path:
+    description: "Path to the SARIF 2.1.0 document."
+    value: ${{ steps.gate.outputs.sarif-path }}
+  openvex-path:
+    description: >-
+      Path to the OpenVEX document, empty when no finding carried a
+      product identity (the gate excludes rather than fabricates).
+    value: ${{ steps.gate.outputs.openvex-path }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install uv
+      uses: astral-sh/setup-uv@v8
+      with:
+        # No cache: the cache-dependency-glob would have to resolve inside
+        # the consumer's workspace, where this action's uv.lock does not
+        # exist. A cold uv install of the gate is fast enough not to earn
+        # that footgun.
+        enable-cache: false
+
+    - name: Install sec-recon-agent from the action ref
+      shell: bash
+      env:
+        PYTHON_VERSION: ${{ inputs.python-version }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        uv python install "$PYTHON_VERSION"
+        uv venv --python "$PYTHON_VERSION" "$RUNNER_TEMP/sec-recon-gate-venv"
+        uv pip install --python "$RUNNER_TEMP/sec-recon-gate-venv/bin/python" "$ACTION_PATH"
+
+    - name: Run the gate
+      id: gate
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        SBOM_PATH: ${{ inputs.sbom-path }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        STRICT: ${{ inputs.strict }}
+        ARTIFACT_URI: ${{ inputs.artifact-uri }}
+      run: |
+        set +e
+        out="$RUNNER_TEMP/sec-recon-gate"
+        mkdir -p "$out"
+        args=("$SBOM_PATH" --fail-on "$FAIL_ON"
+              --report "$out/gate-report.json"
+              --sarif "$out/gate.sarif"
+              --openvex "$out/gate.vex.json")
+        if [ "$STRICT" = "true" ]; then args+=(--strict); fi
+        if [ -n "$ARTIFACT_URI" ]; then args+=(--artifact-uri "$ARTIFACT_URI"); fi
+        "$RUNNER_TEMP/sec-recon-gate-venv/bin/sec-recon-gate" "${args[@]}"
+        code=$?
+        {
+          echo "exit-code=$code"
+          if [ "$code" -eq 0 ]; then echo "verdict=pass"; else echo "verdict=fail"; fi
+          echo "report-path=$out/gate-report.json"
+          echo "sarif-path=$out/gate.sarif"
+          if [ -f "$out/gate.vex.json" ]; then
+            echo "openvex-path=$out/gate.vex.json"
+          else
+            echo "openvex-path="
+          fi
+        } >> "$GITHUB_OUTPUT"
+        # Infrastructure failure: nothing useful to upload, fail immediately.
+        if [ "$code" -eq 2 ]; then exit 2; fi
+
+    - name: Upload SARIF to code scanning
+      if: ${{ inputs.upload-sarif == 'true' }}
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: ${{ steps.gate.outputs.sarif-path }}
+        category: ${{ inputs.sarif-category }}
+
+    # Runs after the SARIF upload so alerts land in the Security tab even
+    # when the verdict fails the job.
+    - name: Enforce the verdict
+      shell: bash
+      env:
+        CODE: ${{ steps.gate.outputs.exit-code }}
+      run: exit "$CODE"
