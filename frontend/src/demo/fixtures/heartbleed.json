@@ -5,9 +5,9 @@
   "subtitle": "OpenSSL heartbeat memory disclosure",
   "query": "Assess CVE-2014-0160 (Heartbleed) in OpenSSL and tell me how urgently to remediate.",
   "model": "sonnet",
-  "capturedAt": "2026-07-02",
+  "capturedAt": "2026-07-08",
   "decision": "Act",
-  "durationMs": 53263,
+  "durationMs": 49695,
   "frames": [
     {
       "event": "started",
@@ -15,101 +15,102 @@
         "query": "Assess CVE-2014-0160 (Heartbleed) in OpenSSL and tell me how urgently to remediate.",
         "model": "sonnet"
       },
-      "at_ms": 30
+      "at_ms": 42
     },
     {
       "event": "node",
       "data": {
         "node": "UserPromptNode"
       },
-      "at_ms": 46
+      "at_ms": 57
     },
     {
       "event": "node",
       "data": {
         "node": "ModelRequestNode"
       },
-      "at_ms": 46
+      "at_ms": 57
     },
     {
       "event": "node",
       "data": {
         "node": "CallToolsNode"
       },
-      "at_ms": 2827
+      "at_ms": 3200
     },
     {
       "event": "node",
       "data": {
         "node": "ModelRequestNode"
       },
-      "at_ms": 3455
+      "at_ms": 3947
     },
     {
       "event": "node",
       "data": {
         "node": "CallToolsNode"
       },
-      "at_ms": 5464
+      "at_ms": 6311
     },
     {
       "event": "node",
       "data": {
         "node": "ModelRequestNode"
       },
-      "at_ms": 6052
+      "at_ms": 6838
     },
     {
       "event": "node",
       "data": {
         "node": "CallToolsNode"
       },
-      "at_ms": 34272
+      "at_ms": 34560
     },
     {
       "event": "node",
       "data": {
         "node": "ModelRequestNode"
       },
-      "at_ms": 34275
+      "at_ms": 34561
     },
     {
       "event": "node",
       "data": {
         "node": "CallToolsNode"
       },
-      "at_ms": 53251
+      "at_ms": 49687
     },
     {
       "event": "node",
       "data": {
         "node": "End"
       },
-      "at_ms": 53256
+      "at_ms": 49689
     },
     {
       "event": "final",
       "data": {
-        "summary": "CVE-2014-0160 (Heartbleed) is an out-of-bounds memory read in OpenSSL 1.0.1\u20131.0.1f's TLS Heartbeat extension. Unauthenticated remote attackers can leak private keys, session tokens, and passwords from server memory. EPSS: 99.999%, on CISA KEV, 4 public exploits on Exploit-DB. Treat as an active emergency.",
+        "summary": "Heartbleed (CVE-2014-0160) is a CWE-125 out-of-bounds read in OpenSSL 1.0.1 &lt; 1.0.1g letting any remote unauthenticated attacker read up to 64 KB of server memory per request, potentially leaking private TLS keys, sessions, and plaintext. Every triage signal is maximal: CISA KEV, ~100% EPSS, and 4 public Exploit-DB exploits.",
         "severity": "high",
         "confidence": "high",
-        "recommended_action": "SSVC: Act \u2014 CISA KEV (due 2022-05-25), EPSS 99.999%, 4 public exploits. Patch immediately: (1) Upgrade OpenSSL to \u22651.0.1g. (2) Revoke and reissue ALL TLS private keys/certificates \u2014 assume compromised. (3) Invalidate sessions and force password resets. (4) Also patch FileZilla Server (\u21920.9.44) and Splunk Enterprise 6.0.x (\u21926.0.3) if in scope.",
+        "recommended_action": "SSVC: Act \u2014 on CISA KEV (due 2022-05-25), EPSS ~100%, public exploits exist. Patch immediately: OpenSSL \u2192 1.0.1g+; FileZilla Server \u2192 0.9.44+; Splunk Enterprise \u2192 6.0.3+; Siemens ELAN \u2192 8.3.3+. After patching, rotate all TLS private keys, reissue certs, and invalidate sessions. Apply ATT&CK mitigations M1050 (Exploit Protection) and M1048 (App Isolation).",
         "cves": [
           {
             "cve_id": "CVE-2014-0160",
-            "summary": "Out-of-bounds memory read via crafted TLS/DTLS Heartbeat Extension packets in OpenSSL 1.0.1 through 1.0.1f. Allows unauthenticated remote attackers to read private keys, session tokens, and sensitive data from server process memory (Heartbleed).",
+            "summary": "Out-of-bounds read in OpenSSL 1.0.1 < 1.0.1g TLS/DTLS Heartbeat handler allows remote unauthenticated attackers to read process memory (including private keys) via crafted packets \u2014 the Heartbleed bug.",
             "cvss_v3_score": 7.5,
             "severity": "high",
             "exploits_public": true,
             "affected_products": [
-              "OpenSSL 1.0.1 through 1.0.1f",
+              "OpenSSL 1.0.1 < 1.0.1g",
               "FileZilla Server < 0.9.44",
-              "Splunk Enterprise 6.0.0\u20136.0.2",
-              "Siemens ELAN-8.2 < 8.3.3",
+              "Splunk Enterprise 6.0.0-6.0.2",
+              "Siemens ELAN < 8.3.3",
+              "Siemens SIMATIC S7-1500 fw 1.5",
               "Red Hat Enterprise Linux 6.0",
-              "Ubuntu Linux 12.04/12.10/13.10",
-              "Debian Linux 6.0/7.0/8.0",
-              "Mitel MiCollab 6.0\u20137.3"
+              "Debian Linux 6/7/8",
+              "Ubuntu 12.04/12.10/13.10",
+              "Fedora 19/20"
             ],
             "nvd_url": "https://nvd.nist.gov/vuln/detail/CVE-2014-0160",
             "in_kev_catalog": true,
@@ -168,13 +169,13 @@
           }
         ],
         "reasoning_chain": [
-          "cve_lookup(CVE-2014-0160) \u2192 CVSS 7.5 HIGH, CWE-125 (Out-of-bounds Read), affects OpenSSL 1.0.1\u20131.0.1f",
-          "exploit_check(CVE-2014-0160) \u2192 has_public_exploit=true, 4 Exploit-DB entries (32745, 32764, 32791, 32998)",
-          "kev_check(CVE-2014-0160) \u2192 in_catalog=true, added 2022-05-04, due 2022-05-25, known_ransomware_use=false",
-          "epss_score(CVE-2014-0160) \u2192 probability=0.99999, percentile=0.99997 \u2014 near-certain exploitation likelihood",
-          "patch_lookup(CVE-2014-0160) \u2192 fixed in OpenSSL 1.0.1g; also FileZilla Server 0.9.44, Splunk Enterprise 6.0.3, Siemens ELAN 8.3.3",
-          "attack_mapping([CWE-125]) \u2192 T1083 (Discovery) + T1203 (Execution)",
-          "SSVC Decision: Act \u2014 KEV + near-perfect EPSS + 4 public exploits = highest remediation urgency"
+          "cve_lookup(CVE-2014-0160) \u2192 CVSS v3 7.5 HIGH, CWE-125 (out-of-bounds read), affects OpenSSL 1.0.1 < 1.0.1g, broad CPE surface",
+          "exploit_check(CVE-2014-0160) \u2192 has_public_exploit=true; 4 Exploit-DB entries (32764, 32791, 32998, 32745) + GitHub PoCs",
+          "kev_check(CVE-2014-0160) \u2192 in_catalog=true; added 2022-05-04, due_date 2022-05-25, known_ransomware_use=false",
+          "epss_score(CVE-2014-0160) \u2192 probability=0.99999 (99.997th percentile) \u2014 essentially certain exploitation risk",
+          "patch_lookup(CVE-2014-0160) \u2192 fixed in OpenSSL 1.0.1g; FileZilla Server 0.9.44; Splunk Enterprise 6.0.3; Siemens ELAN 8.3.3",
+          "attack_mapping([CWE-125]) \u2192 T1083 (File and Directory Discovery, M1048) + T1203 (Exploitation for Client Execution, M1048/M1050/M1051)",
+          "All signals maximal: KEV + ~100% EPSS + public exploits \u2192 SSVC: Act"
         ],
         "ssvc": {
           "decision": "Act",
@@ -208,18 +209,28 @@
             "status": "found",
             "detail": null
           }
-        ]
+        ],
+        "grounding": {
+          "status": "grounded",
+          "claims_checked": 10,
+          "supported": 10,
+          "unbacked": 0,
+          "mismatched": 0,
+          "unverifiable": 0,
+          "findings": [],
+          "truncated": false
+        }
       },
-      "at_ms": 53262
+      "at_ms": 49694
     },
     {
       "event": "usage",
       "data": {
-        "input_tokens": 47572,
-        "output_tokens": 3546,
+        "input_tokens": 51756,
+        "output_tokens": 3582,
         "requests": 4
       },
-      "at_ms": 53262
+      "at_ms": 49694
     }
   ]
 }
