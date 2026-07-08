@@ -100,3 +100,18 @@ curl -s localhost:8000/v1/export/sarif \
 ```
 
 OpenVEX requires the purl(s) of the triaged product (`--product`, repeatable): product identity is never guessed, so a bare-CVE triage exports SARIF but refuses VEX.
+
+## SBOM gate
+
+`sec-recon-gate` chains the same tool logic in-process with no LLM anywhere: `sbom_ingest` -> `osv_lookup` per component -> KEV / EPSS / exploit enrichment per unique CVE -> a deterministic SSVC decision per finding -> a CI verdict.
+
+```bash
+uv run sec-recon-gate sbom.json --sarif gate.sarif --openvex gate.vex.json --report gate.json
+uv run sec-recon-gate requirements.txt --fail-on attend --strict
+```
+
+Exit codes are the CI contract: `0` the gate passed, `1` a finding met the `--fail-on` threshold (default `act`; `attend`, `track-star`, `never` available) or a coverage gap under `--strict`, `2` the gate could not run (unreadable/unusable SBOM, KEV catalog unreachable - a gate that cannot see the Act driver refuses to pass instead of going blind).
+
+Feed posture: the CISA KEV catalog and the ExploitDB index are downloaded once and cached on disk; EPSS is queried per unique CVE with bounded concurrency; the GitHub exploit-search arm runs only when `GITHUB_TOKEN` is set (findings are marked `degraded` otherwise, never silently downgraded) and is skipped entirely for CVEs already on KEV, whose decision is already Act. Components without a version, without a recognizable ecosystem, or outside OSV's seven supported ecosystems are listed in the report's `skipped` section with a reason - nothing is dropped silently. GHSA / PYSEC records aliasing the same CVE fold into one finding with the sibling ids preserved in `aliases`.
+
+The full `GateReport` JSON (findings, per-feed coverage, skipped components, aggregate SSVC, policy) goes to stdout or `--report`; `--sarif` and `--openvex` render through the same renderers as `sec-recon-export`, with every VEX statement bound to the affected component's own purl (synthesized only for PyPI components from requirements.txt, where the mapping is mechanical; other identity-less findings are excluded and reported, never guessed).

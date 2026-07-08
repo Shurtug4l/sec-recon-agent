@@ -122,6 +122,8 @@ The system prompt encodes one prioritization heuristic: CISA KEV membership > kn
 
 **Interchange exports.** A finished report renders into SARIF 2.1.0 (for GitHub code scanning) and OpenVEX v0.2.0 via `sec-recon-export` or the stateless `POST /v1/export/{sarif,openvex}` endpoints. The renderers are pure functions of the report: SARIF `level` maps each CVE's own severity while the SSVC verdict passes through verbatim, and OpenVEX statements require the triaged product's purl - product identity is never guessed, so a bare-CVE triage refuses to emit VEX instead of fabricating one.
 
+**SBOM gate.** `sec-recon-gate` runs the same tool chain with no LLM anywhere in the loop: parse an SBOM (CycloneDX / SPDX / requirements.txt), look up advisories on OSV.dev, enrich each CVE with KEV / EPSS / exploit signals, reduce every finding to a deterministic SSVC decision, and exit with a CI verdict (`--fail-on act` by default; `--strict` also fails on enrichment coverage gaps). Findings render to SARIF and OpenVEX through the shared renderers, with each VEX statement bound to the affected component's own purl. Reproducible, free, and injection-proof by construction - there is no prompt for a hostile SBOM to attack. Usage in [docs/running.md](docs/running.md#sbom-gate).
+
 ## Eval, red team, scorecard
 
 An end-to-end golden-set evaluation (`src/sec_recon_agent/eval/`) exercises the live HTTP API with 11 curated queries: named CVEs, fuzzy descriptions, an SBOM, degraded inputs. Assertions are soft (severity within +-1 step, expected CVE recall >= 0.5, KEV / ransomware flags honored) because the agent is probabilistic; the measured axes are the ones an engineering review actually asks about: latency p50/p95, tokens and $/triage, structured-output conformance, confidence calibration (ECE), and retrieval quality (hit-rate@k, MRR) for the semantic search index.
@@ -154,7 +156,7 @@ Every HIGH finding from an independent security review is mapped to the code cha
 
 ## Testing
 
-**492 tests (489 fast + 3 slow ChromaDB round-trip tests, excluded from the fast run)**, all network-mocked, no LLM billing. Coverage on the fast suite holds at ~90% with a soft 70% floor. CI matrix-tests Python 3.12 + 3.13.
+**555 tests (552 fast + 3 slow ChromaDB round-trip tests, excluded from the fast run)**, all network-mocked, no LLM billing. Coverage on the fast suite holds at ~90% with a soft 70% floor. CI matrix-tests Python 3.12 + 3.13.
 
 ```bash
 make test                        # full suite (includes the 3 slow tests)
@@ -181,7 +183,7 @@ Reports stream live over SSE, render the untrusted-content fence semantically (v
 
 ## Stack
 
-**Backend**: Python 3.12+, `uv`, `pydantic-ai`, `mcp` (FastMCP), FastAPI + `sse-starlette` + `slowapi`, ChromaDB (ONNX MiniLM embedder), `httpx` + `tenacity`, `defusedxml`, `pydantic-settings` (`SecretStr`), `structlog`, OpenTelemetry. **Frontend**: Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS, Radix primitives, Recharts. **Containers**: multi-stage Dockerfiles, Docker Compose, optional Jaeger profile. **Tests**: pytest, respx, Hypothesis, the OpenTelemetry SDK's `InMemorySpanExporter`.
+**Backend**: Python 3.12+, `uv`, `pydantic-ai`, `mcp` (FastMCP), FastAPI + `sse-starlette` + `slowapi`, ChromaDB (ONNX MiniLM embedder), `httpx` + `tenacity`, `defusedxml`, `cvss`, `pydantic-settings` (`SecretStr`), `structlog`, OpenTelemetry. **Frontend**: Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS, Radix primitives, Recharts. **Containers**: multi-stage Dockerfiles, Docker Compose, optional Jaeger profile. **Tests**: pytest, respx, Hypothesis, the OpenTelemetry SDK's `InMemorySpanExporter`.
 
 Observability: OTel tracing in both Python processes, stdout exporter by default, `make obs-up` for a Jaeger sidecar at `:16686`, W3C `traceparent` propagated from the frontend proxy through to the MCP server. Span attributes are allowlisted; user query text and vendor content are never recorded. Details in [docs/design.md](docs/design.md#observability).
 
@@ -195,6 +197,7 @@ sec-recon-agent/
 |  +- audit/          # SHA-256 hash-chain audit log + sec-recon-audit CLI
 |  +- eval/           # golden set, runner, scorer, metrics, cost, scorecard generator
 |  +- export/         # pure SARIF 2.1.0 / OpenVEX renderers + sec-recon-export CLI
+|  +- gate/           # deterministic no-LLM SBOM gate (OSV -> KEV/EPSS/exploit -> SSVC) + CLI
 |  +- redteam/        # injection payloads, scorer, CLI
 |  +- mcp_server/     # FastMCP server: 10 tools + models, errors, security, auth, nvd_client
 |  +- config.py, observability.py
