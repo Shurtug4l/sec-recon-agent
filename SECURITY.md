@@ -64,6 +64,10 @@ Findings that are interesting to receive:
   `uv.lock`, `frontend/package-lock.json`).
 - Audit-trail integrity issues (hash chain bypass, append-only trigger
   bypass, signature replay).
+- Logic errors that make the deterministic SBOM gate (`sec-recon-gate`)
+  return a false PASS: advisory folding, per-feed coverage accounting,
+  SSVC fail-on threshold evaluation, or a crafted SBOM that skips
+  components without them appearing in the report's `skipped` section.
 
 ## Out of scope
 
