@@ -44,3 +44,5 @@ Commit subjects follow Conventional Commits; the body explains *why*, not *what*
 ## Before touching behavior-bearing text
 
 The system prompt (`src/sec_recon_agent/agent/prompts.py`) and the MCP tool descriptions the LLM consumes are behavior-bearing: a wording change can shift tool-selection or output quality. Any edit there requires re-running `make eval` and `make redteam` before merge, and comparing against the current [SCORECARD.md](SCORECARD.md).
+
+This rule is partly enforced by CI: the replay gate (`tests/replay/`) hashes the LLM-visible surface (system prompt, MCP tool schemas, `TriageReport` schema) and hard-fails when it no longer matches the hash stamped in the committed cassettes. A PR that touches behavior-bearing text must ship re-recorded cassettes (`make record-cassettes`, bills the LLM against a live stack; see [docs/evaluation.md](docs/evaluation.md#record-replay-gate)).

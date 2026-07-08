@@ -135,6 +135,8 @@ make scorecard     # regenerate SCORECARD.md from stored result JSONs
 
 Both suites are deliberately out of CI: they need a live stack and bill the LLM provider. Run them before merging changes to the system prompt or the model. Results land in one stamped, reproducible [SCORECARD.md](SCORECARD.md); the scorecard baseline is measured on sonnet (the default haiku is cheaper but thrashes on multi-tool cases). Full commands, sample outputs, and the model-comparison mode are in [docs/evaluation.md](docs/evaluation.md).
 
+What CI does gate on is the **record-replay harness**: committed cassettes (`tests/cassettes/`, one frozen real trajectory per golden case) are replayed through the deterministic pipeline - trajectory extraction, grounding verification, SSVC, golden scorer - on every PR, asserting bit-exact agreement with the recorded outcomes at zero LLM cost. A staleness hash over the LLM-visible surface (system prompt, tool schemas, report schema) hard-fails the gate when behavior-bearing text changes without re-recording (`make record-cassettes`). Details in [docs/evaluation.md](docs/evaluation.md#record-replay-gate).
+
 ## Security posture
 
 Every HIGH finding from an independent security review is mapped to the code change that addressed it in [docs/design.md](docs/design.md#threat-model). Highlights:
@@ -150,7 +152,7 @@ Every HIGH finding from an independent security review is mapped to the code cha
 
 ## Testing
 
-**405 tests (402 fast + 3 slow ChromaDB round-trip tests, excluded from the fast run)**, all network-mocked, no LLM billing. Coverage on the fast suite holds at ~90% with a soft 70% floor. CI matrix-tests Python 3.12 + 3.13.
+**448 tests (445 fast + 3 slow ChromaDB round-trip tests, excluded from the fast run)**, all network-mocked, no LLM billing. Coverage on the fast suite holds at ~90% with a soft 70% floor. CI matrix-tests Python 3.12 + 3.13.
 
 ```bash
 make test                        # full suite (includes the 3 slow tests)
@@ -194,7 +196,8 @@ sec-recon-agent/
 |  +- mcp_server/     # FastMCP server: 10 tools + models, errors, security, auth, nvd_client
 |  +- config.py, observability.py
 +- frontend/          # Next.js 15 App Router, Slate Recon design system
-+- tests/             # agent, api, audit, eval, mcp_server, property, redteam, observability
++- tests/             # agent, api, audit, eval, mcp_server, property, redteam, replay, observability
+|  +- cassettes/      # frozen real trajectories replayed as the CI gate (make record-cassettes)
 +- docs/              # design, case study, tools, evaluation, running, frontend, governance mappings
 +- examples/          # real agent sessions captured live
 +- scripts/           # demo fixture capture
