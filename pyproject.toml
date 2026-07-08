@@ -52,6 +52,7 @@ sec-recon-mcp = "sec_recon_agent.mcp_server.server:main"
 sec-recon-api = "sec_recon_agent.api.stream:main"
 sec-recon-seed = "sec_recon_agent.mcp_server.tools.cve_search:seed_index"
 sec-recon-eval = "sec_recon_agent.eval.cli:main"
+sec-recon-export = "sec_recon_agent.export.cli:main"
 sec-recon-scorecard = "sec_recon_agent.eval.scorecard:main"
 sec-recon-audit = "sec_recon_agent.audit.cli:main"
 sec-recon-redteam = "sec_recon_agent.redteam.cli:main"
@@ -123,6 +124,7 @@ omit = [
     "src/sec_recon_agent/eval/retrieval.py",     # in-process against a live seeded ChromaDB index
     "src/sec_recon_agent/redteam/cli.py",
     "src/sec_recon_agent/audit/cli.py",
+    "src/sec_recon_agent/export/cli.py",         # CLI shell; the renderers underneath are unit-tested
 ]
 
 [tool.coverage.report]
