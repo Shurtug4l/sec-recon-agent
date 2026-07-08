@@ -1,0 +1,99 @@
+name: release-images
+
+# Publishes both container images to GHCR with BuildKit supply-chain
+# attestations (SLSA provenance mode=max + SBOM) attached to the image
+# index in-registry.
+#
+# Tag-triggered on purpose: a release is a deliberate act, not a side
+# effect of every merge. `latest` tracks the newest semver tag
+# (metadata-action latest=auto); workflow_dispatch runs publish a
+# sha-<short> tag only, for pre-release smoke tests without touching the
+# semver namespace.
+#
+# Multi-arch (amd64 + arm64 via QEMU): the GHCR channel exists to hand a
+# colleague `docker compose pull`, and Apple-silicon laptops are the
+# common case. The arm64 leg emulates the ONNX model bake, which is slow
+# but tag-rare; if it ever exceeds the timeout, dropping arm64 here is
+# the documented escape hatch.
+#
+# Verify what was published:
+#   docker buildx imagetools inspect ghcr.io/shurtug4l/sec-recon-agent:<tag>
+#   gh api /orgs|users/.../packages ... (or the Packages tab)
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: release-images-${{ github.ref }}
+  # Never cancel a half-pushed release: a re-run overwrites tags
+  # atomically, a cancellation can leave latest pointing at a partial
+  # multi-arch index.
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: publish ${{ matrix.image.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: backend
+            context: "."
+            dockerfile: "Dockerfile"
+            target: "runtime"
+            repository: "sec-recon-agent"
+          - name: frontend
+            context: "./frontend"
+            dockerfile: "frontend/Dockerfile"
+            target: ""
+            repository: "sec-recon-frontend"
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,enable=${{ github.event_name == 'workflow_dispatch' }}
+
+      - name: Build and push ${{ matrix.image.name }}
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.dockerfile }}
+          target: ${{ matrix.image.target }}
+          push: true
+          platforms: linux/amd64,linux/arm64
+          provenance: mode=max
+          sbom: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.image.name }}
+          cache-to: type=gha,scope=${{ matrix.image.name }},mode=max
