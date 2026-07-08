@@ -16,10 +16,11 @@ export interface RawSseFrame {
   at_ms: number;
 }
 
-// The persisted fixture shape (src/demo/fixtures/*.json). Real captures from the
-// live stack; see scripts/capture-fixtures.mjs and the session notes. `frames`
-// is the byte-faithful event sequence; the top-level fields are gallery
-// metadata + the deterministic verdict, denormalized for convenience.
+// The persisted fixture shape (src/demo/fixtures/*.json). Real captures from
+// the live stack, recorded with scripts/capture_fixtures.py (repo root; see
+// docs/frontend.md "Re-capturing the demo fixtures"). `frames` is the
+// byte-faithful event sequence; the top-level fields are gallery metadata +
+// the deterministic verdict, denormalized for convenience.
 export interface DemoFixture {
   slug: string;
   cve: string;

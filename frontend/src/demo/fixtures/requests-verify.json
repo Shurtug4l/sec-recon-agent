@@ -5,9 +5,9 @@
   "subtitle": "Session verify=False stickiness",
   "query": "Assess CVE-2024-35195 in the Python requests library and how urgently to patch.",
   "model": "sonnet",
-  "capturedAt": "2026-07-02",
+  "capturedAt": "2026-07-08",
   "decision": "Track",
-  "durationMs": 37537,
+  "durationMs": 38406,
   "frames": [
     {
       "event": "started",
@@ -15,89 +15,89 @@
         "query": "Assess CVE-2024-35195 in the Python requests library and how urgently to patch.",
         "model": "sonnet"
       },
-      "at_ms": 233
+      "at_ms": 45
     },
     {
       "event": "node",
       "data": {
         "node": "UserPromptNode"
       },
-      "at_ms": 245
+      "at_ms": 63
     },
     {
       "event": "node",
       "data": {
         "node": "ModelRequestNode"
       },
-      "at_ms": 245
+      "at_ms": 63
     },
     {
       "event": "node",
       "data": {
         "node": "CallToolsNode"
       },
-      "at_ms": 3264
+      "at_ms": 2704
     },
     {
       "event": "node",
       "data": {
         "node": "ModelRequestNode"
       },
-      "at_ms": 4158
+      "at_ms": 4977
     },
     {
       "event": "node",
       "data": {
         "node": "CallToolsNode"
       },
-      "at_ms": 6349
+      "at_ms": 6952
     },
     {
       "event": "node",
       "data": {
         "node": "ModelRequestNode"
       },
-      "at_ms": 6918
+      "at_ms": 7631
     },
     {
       "event": "node",
       "data": {
         "node": "CallToolsNode"
       },
-      "at_ms": 26564
+      "at_ms": 26460
     },
     {
       "event": "node",
       "data": {
         "node": "ModelRequestNode"
       },
-      "at_ms": 26565
+      "at_ms": 26469
     },
     {
       "event": "node",
       "data": {
         "node": "CallToolsNode"
       },
-      "at_ms": 37513
+      "at_ms": 38392
     },
     {
       "event": "node",
       "data": {
         "node": "End"
       },
-      "at_ms": 37515
+      "at_ms": 38396
     },
     {
       "event": "final",
       "data": {
-        "summary": "CVE-2024-35195 is a MEDIUM-severity (CVSS 5.6) flaw in Python `requests` &lt; 2.32.0. A Session that first calls a host with verify=False silently disables TLS cert verification for all subsequent connections to that host in the pool, enabling potential MitM attacks even if later requests set verify=True.",
+        "summary": "CVE-2024-35195 is a MEDIUM-severity (CVSS 5.6) logic flaw in the Python `requests` library (< 2.32.0). When a Session makes its first request with `verify=False`, TLS certificate verification is silently disabled for all subsequent requests to the same host \u2014 even if `verify` is later reset to `True` \u2014 enabling potential man-in-the-middle attacks. Fixed in requests 2.32.0.",
         "severity": "medium",
         "confidence": "high",
-        "recommended_action": "SSVC: Track* \u2014 No public exploits, not in CISA KEV, EPSS very low (0.34%, 26th percentile). Patch within standard update timelines: upgrade to requests>=2.32.0 (`pip install --upgrade requests`). Interim: audit Session usage for mixed verify= settings; never set verify=False on an early request in a shared session. Ref: GHSA-9wx4-h78v-vm56.",
+        "recommended_action": "SSVC: Track* \u2014 Upgrade requests to 2.32.0+ (`pip install --upgrade requests`). No public exploits, not in CISA KEV, EPSS is 0.34% (26th percentile). Patch within standard cycle; also audit Session code for any `verify=False` usage that could trigger this sticky-disable behavior.",
         "cves": [
           {
             "cve_id": "CVE-2024-35195",
-            "summary": "In Python `requests` < 2.32.0, a Session that first calls a host with verify=False disables TLS certificate verification for all subsequent connections to that host in the connection pool, silently overriding any later verify=True \u2014 enabling man-in-the-middle attacks.",
+            "summary": "In Python `requests` < 2.32.0, setting `verify=False` on the first Session request permanently disables TLS certificate verification for that host across the connection pool lifetime, silently exposing apps to MitM attacks even after `verify=True` is set.",
             "cvss_v3_score": 5.6,
             "severity": "medium",
             "exploits_public": false,
@@ -109,18 +109,18 @@
             "kev_due_date": null,
             "known_ransomware_use": null,
             "epss_probability": 0.0034,
-            "epss_percentile": 0.25971
+            "epss_percentile": 0.26009
           }
         ],
         "attack_techniques": [],
         "reasoning_chain": [
-          "cve_lookup(CVE-2024-35195) -> CVSS 5.6 MEDIUM, CWE-670 (Always-Incorrect Control Flow), affects requests < 2.32.0",
+          "cve_lookup(CVE-2024-35195) -> CVSS 5.6 MEDIUM, CWE-670 (Always-Incorrect Control Flow), affects requests < 2.32.0; verify=False stickiness bug in Session connection pool",
           "exploit_check(CVE-2024-35195) -> no public exploits on Exploit-DB or GitHub",
           "kev_check(CVE-2024-35195) -> not in CISA KEV catalog",
-          "epss_score(CVE-2024-35195) -> probability=0.0034 (0.34%), percentile=0.26 \u2014 very low exploitation likelihood",
-          "patch_lookup(CVE-2024-35195) -> NVD CPE entries absent, but CVE text and references confirm fix in requests 2.32.0",
-          "attack_mapping([CWE-670]) -> no matching ATT&CK technique in curated table",
-          "Decision: no KEV, no public exploit, low EPSS -> SSVC Track* (standard timelines); recommend upgrade to requests>=2.32.0"
+          "epss_score(CVE-2024-35195) -> probability 0.34%, 26th percentile; low active exploitation likelihood",
+          "patch_lookup(CVE-2024-35195) -> NVD has no CPE-bound fixed_entries; GitHub advisory and NVD description confirm fix in requests 2.32.0",
+          "attack_mapping([CWE-670]) -> no ATT&CK techniques mapped for CWE-670",
+          "Decision: SSVC Track* \u2014 no active exploitation signals; patch within standard cycle"
         ],
         "ssvc": {
           "decision": "Track",
@@ -135,6 +135,11 @@
             "detail": null
           },
           {
+            "feed": "exploit",
+            "status": "not_found",
+            "detail": null
+          },
+          {
             "feed": "kev",
             "status": "not_found",
             "detail": null
@@ -145,27 +150,32 @@
             "detail": null
           },
           {
-            "feed": "exploit",
-            "status": "not_found",
-            "detail": null
-          },
-          {
             "feed": "attack",
             "status": "not_found",
             "detail": null
           }
-        ]
+        ],
+        "grounding": {
+          "status": "grounded",
+          "claims_checked": 6,
+          "supported": 6,
+          "unbacked": 0,
+          "mismatched": 0,
+          "unverifiable": 0,
+          "findings": [],
+          "truncated": false
+        }
       },
-      "at_ms": 37537
+      "at_ms": 38403
     },
     {
       "event": "usage",
       "data": {
-        "input_tokens": 38159,
-        "output_tokens": 2244,
+        "input_tokens": 41977,
+        "output_tokens": 2214,
         "requests": 4
       },
-      "at_ms": 37537
+      "at_ms": 38405
     }
   ]
 }

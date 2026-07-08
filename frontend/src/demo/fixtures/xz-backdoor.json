@@ -5,9 +5,9 @@
   "subtitle": "liblzma supply-chain implant",
   "query": "Assess CVE-2024-3094 in xz-utils / liblzma and tell me how urgently to act.",
   "model": "sonnet",
-  "capturedAt": "2026-07-02",
-  "decision": "Attend",
-  "durationMs": 46711,
+  "capturedAt": "2026-07-08",
+  "decision": "Act",
+  "durationMs": 38521,
   "frames": [
     {
       "event": "started",
@@ -15,92 +15,92 @@
         "query": "Assess CVE-2024-3094 in xz-utils / liblzma and tell me how urgently to act.",
         "model": "sonnet"
       },
-      "at_ms": 40
+      "at_ms": 49
     },
     {
       "event": "node",
       "data": {
         "node": "UserPromptNode"
       },
-      "at_ms": 52
+      "at_ms": 68
     },
     {
       "event": "node",
       "data": {
         "node": "ModelRequestNode"
       },
-      "at_ms": 52
+      "at_ms": 69
     },
     {
       "event": "node",
       "data": {
         "node": "CallToolsNode"
       },
-      "at_ms": 2964
+      "at_ms": 2676
     },
     {
       "event": "node",
       "data": {
         "node": "ModelRequestNode"
       },
-      "at_ms": 3650
+      "at_ms": 3227
     },
     {
       "event": "node",
       "data": {
         "node": "CallToolsNode"
       },
-      "at_ms": 5816
+      "at_ms": 5983
     },
     {
       "event": "node",
       "data": {
         "node": "ModelRequestNode"
       },
-      "at_ms": 6391
+      "at_ms": 6430
     },
     {
       "event": "node",
       "data": {
         "node": "CallToolsNode"
       },
-      "at_ms": 31591
+      "at_ms": 28280
     },
     {
       "event": "node",
       "data": {
         "node": "ModelRequestNode"
       },
-      "at_ms": 31593
+      "at_ms": 28281
     },
     {
       "event": "node",
       "data": {
         "node": "CallToolsNode"
       },
-      "at_ms": 46698
+      "at_ms": 38513
     },
     {
       "event": "node",
       "data": {
         "node": "End"
       },
-      "at_ms": 46707
+      "at_ms": 38515
     },
     {
       "event": "final",
       "data": {
-        "summary": "CVE-2024-3094 is a CVSS 10.0 supply-chain backdoor planted in xz-utils / liblzma 5.6.0\u20135.6.1. The malicious build-process injection can intercept liblzma calls for any linked software, enabling potential unauthenticated RCE via OpenSSH on glibc Linux. EPSS probability is 86% (99.7th percentile) \u2014 top 0.3% of all scored CVEs.",
+        "summary": "CVE-2024-3094 is a deliberate supply-chain backdoor (CVSS 10.0 Critical) in xz-utils/liblzma 5.6.0\u20135.6.1. The tampered library intercepts linked software \u2014 notably OpenSSH \u2014 enabling potential unauthenticated RCE. EPSS is 86% probability at the 99.7th percentile and public detection PoCs exist.",
         "severity": "critical",
         "confidence": "high",
-        "recommended_action": "SSVC: Act \u2014 downgrade xz-utils/liblzma to 5.4.x immediately (last clean release); do not wait for a maintenance window. Audit all Linux systems for xz 5.6.0/5.6.1 (Fedora 41, Debian testing/sid, Arch, openSUSE Tumbleweed were affected). Restart sshd after downgrade; rotate SSH host keys. Treat impacted systems as potentially compromised and initiate incident response.",
+        "recommended_action": "SSVC: Attend (near Act) \u2014 86% EPSS, public exploits, CVSS 10.0, not yet on KEV. Immediately: (1) check `xz --version`; (2) downgrade to xz-utils \u22645.4.x via your distro's emergency package; (3) restart sshd; (4) audit SSH logs for anomalous auth. Follow your distro advisory for the exact fixed package version.",
         "cves": [
           {
             "cve_id": "CVE-2024-3094",
-            "summary": "Deliberate supply-chain backdoor in xz-utils/liblzma 5.6.0\u20135.6.1. A prebuilt malicious object injected at build time intercepts liblzma calls for all linked software, enabling potential unauthenticated RCE via OpenSSH on glibc Linux systems.",
+            "summary": "Malicious code deliberately embedded in xz-utils/liblzma 5.6.0\u20135.6.1 via supply-chain compromise. Tampered liblzma intercepts linked software (notably OpenSSH), enabling potential unauthenticated RCE.",
             "cvss_v3_score": 10.0,
             "severity": "critical",
-            "exploits_public": false,
+            "exploits_public": true,
             "affected_products": [
               "tukaani xz 5.6.0",
               "tukaani xz 5.6.1"
@@ -110,28 +110,33 @@
             "kev_due_date": null,
             "known_ransomware_use": null,
             "epss_probability": 0.85974,
-            "epss_percentile": 0.99702
+            "epss_percentile": 0.99703
           }
         ],
         "attack_techniques": [],
         "reasoning_chain": [
-          "cve_lookup(CVE-2024-3094) -> CVSS 10.0 CRITICAL, CWE-506 (Embedded Malicious Code), xz 5.6.0 and 5.6.1 affected, deliberate supply-chain backdoor targeting liblzma",
-          "exploit_check(CVE-2024-3094) -> has_public_exploit=false (no Exploit-DB or GitHub PoC; backdoor requires specific triggering conditions)",
-          "kev_check(CVE-2024-3094) -> in_catalog=false (not in CISA KEV at query time)",
-          "epss_score(CVE-2024-3094) -> probability=0.860, percentile=0.997 \u2014 top 0.3% of all scored CVEs",
-          "patch_lookup(CVE-2024-3094) -> no NVD CPE fix entries; remediation is downgrade to xz 5.4.x per vendor advisories",
-          "attack_mapping([CWE-506]) -> no curated ATT&CK mapping returned for Embedded Malicious Code",
-          "Decision: CVSS 10.0 + 86% EPSS + purposeful backdoor = Act urgency despite absence from CISA KEV"
+          "cve_lookup(CVE-2024-3094) \u2192 CVSS 10.0 Critical, CWE-506 (Embedded Malicious Code), affects xz 5.6.0 and 5.6.1 only",
+          "exploit_check(CVE-2024-3094) \u2192 has_public_exploit=true; GitHub PoC detection scripts found",
+          "kev_check(CVE-2024-3094) \u2192 in_catalog=false; not on CISA KEV",
+          "epss_score(CVE-2024-3094) \u2192 probability=0.860, percentile=0.997 \u2014 extremely high exploitation likelihood",
+          "patch_lookup(CVE-2024-3094) \u2192 has_fix=false in NVD CPE data; distro rollback to \u22645.4.x is the remediation path",
+          "attack_mapping([CWE-506]) \u2192 no curated ATT&CK mapping returned for CWE-506",
+          "Decision: SSVC Attend/near-Act \u2014 public exploit + 86% EPSS + Critical CVSS; immediate downgrade required"
         ],
         "ssvc": {
-          "decision": "Attend",
-          "rule": "high-epss",
-          "rationale": "SSVC decision Attend: CVE-2024-3094 EPSS predicts high near-term exploitation likelihood.",
+          "decision": "Act",
+          "rule": "public-exploit+high-epss",
+          "rationale": "SSVC decision Act: CVE-2024-3094 a public exploit is available and EPSS predicts high near-term exploitation.",
           "driving_cve": "CVE-2024-3094"
         },
         "signal_coverage": [
           {
             "feed": "nvd",
+            "status": "found",
+            "detail": null
+          },
+          {
+            "feed": "exploit",
             "status": "found",
             "detail": null
           },
@@ -146,27 +151,32 @@
             "detail": null
           },
           {
-            "feed": "exploit",
-            "status": "not_found",
-            "detail": null
-          },
-          {
             "feed": "attack",
             "status": "not_found",
             "detail": null
           }
-        ]
+        ],
+        "grounding": {
+          "status": "grounded",
+          "claims_checked": 6,
+          "supported": 6,
+          "unbacked": 0,
+          "mismatched": 0,
+          "unverifiable": 0,
+          "findings": [],
+          "truncated": false
+        }
       },
-      "at_ms": 46711
+      "at_ms": 38521
     },
     {
       "event": "usage",
       "data": {
-        "input_tokens": 40764,
-        "output_tokens": 2664,
+        "input_tokens": 44760,
+        "output_tokens": 2390,
         "requests": 4
       },
-      "at_ms": 46711
+      "at_ms": 38521
     }
   ]
 }
