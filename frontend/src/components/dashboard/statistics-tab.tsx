@@ -14,11 +14,7 @@ import {
 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  SeverityBarChart,
-  ToolLegend,
-  ToolsPieChart,
-} from "@/components/dashboard/charts";
+import { SeverityBarChart, ToolActivityBars } from "@/components/dashboard/charts";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { aggregate, formatDuration } from "@/lib/stats";
 import type { HistoryEntry } from "@/lib/types";
@@ -117,13 +113,8 @@ export function StatisticsTab({ entries }: { entries: HistoryEntry[] }) {
               per-call data lives in the OpenTelemetry traces (observability tab).
             </p>
           </CardHeader>
-          <CardContent className="flex items-center gap-6">
-            <div className="flex-1">
-              <ToolsPieChart data={stats.toolCalls} />
-            </div>
-            <div className="w-44 shrink-0">
-              <ToolLegend data={stats.toolCalls} />
-            </div>
+          <CardContent>
+            <ToolActivityBars data={stats.toolCalls} />
           </CardContent>
         </Card>
       </div>

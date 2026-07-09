@@ -27,9 +27,10 @@ export function KpiCard({ label, value, hint, icon: Icon, accent = "default" }: 
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
               {label}
             </p>
-            <p className={cn("text-2xl font-semibold tabular-nums", accentClass[accent])}>
-              {value}
-            </p>
+            {/* Proportional figures on purpose: tabular-nums pads a large
+                standalone value; it belongs to columns that align (tables,
+                axis ticks), not stat tiles. */}
+            <p className={cn("text-2xl font-semibold", accentClass[accent])}>{value}</p>
             {hint && <p className="text-[10px] text-muted-foreground">{hint}</p>}
           </div>
           {Icon && <Icon className="h-5 w-5 shrink-0 text-muted-foreground" />}

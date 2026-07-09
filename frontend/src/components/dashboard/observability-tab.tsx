@@ -21,6 +21,22 @@ const severityClass: Record<Severity, string> = {
   info: "severity-info",
 };
 
+// One fixed hue per node type (color follows the entity, never the segment
+// index), from the categorical chart tokens. Any two of these can touch in a
+// waterfall, so the 4-slot subset is validated all-pairs for CVD separation
+// in both themes (worst pair dE 18.1). Plain DOM: CSS vars resolve directly.
+const NODE_COLOR: Record<string, string> = {
+  UserPromptNode: "hsl(var(--chart-1))",
+  ModelRequestNode: "hsl(var(--chart-2))",
+  CallToolsNode: "hsl(var(--chart-3))",
+  End: "hsl(var(--chart-4))",
+};
+const NODE_COLOR_FALLBACK = "hsl(var(--severity-info))";
+
+function nodeColor(node: string): string {
+  return NODE_COLOR[node] ?? NODE_COLOR_FALLBACK;
+}
+
 export function ObservabilityTab({ entries }: { entries: HistoryEntry[] }) {
   const [selectedId, setSelectedId] = useState<string | null>(entries[0]?.id ?? null);
 
@@ -124,17 +140,32 @@ export function ObservabilityTab({ entries }: { entries: HistoryEntry[] }) {
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="relative h-8 w-full overflow-hidden rounded-md bg-muted">
-                  {waterfall.map((seg, i) => (
+                  {waterfall.map((seg) => (
                     <div
                       key={seg.index}
-                      className={cn(
-                        "absolute top-0 h-full border-r border-background",
-                        i % 2 === 0 ? "bg-primary/40" : "bg-primary/60",
-                      )}
-                      style={{ left: `${seg.startPct}%`, width: `${Math.max(seg.widthPct, 0.5)}%` }}
+                      className="absolute top-0 h-full border-r-2 border-background"
+                      style={{
+                        left: `${seg.startPct}%`,
+                        width: `${Math.max(seg.widthPct, 0.5)}%`,
+                        background: nodeColor(seg.node),
+                      }}
                       title={`${seg.label} · ${formatDuration(seg.durationMs)}`}
                     />
                   ))}
+                </div>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                  {[...new Map(waterfall.map((seg) => [seg.node, seg.label]))].map(
+                    ([node, label]) => (
+                      <span key={node} className="inline-flex items-center gap-1.5">
+                        <span
+                          className="h-2 w-2 rounded-full"
+                          style={{ background: nodeColor(node) }}
+                          aria-hidden
+                        />
+                        {label}
+                      </span>
+                    ),
+                  )}
                 </div>
                 <ol className="space-y-1.5 text-sm">
                   {waterfall.map((seg) => (
@@ -145,6 +176,11 @@ export function ObservabilityTab({ entries }: { entries: HistoryEntry[] }) {
                       <span className="select-none font-mono text-xs text-muted-foreground">
                         {(seg.index + 1).toString().padStart(2, "0")}
                       </span>
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{ background: nodeColor(seg.node) }}
+                        aria-hidden
+                      />
                       <span className="leading-relaxed">{seg.label}</span>
                       <span className="ml-auto font-mono text-xs tabular-nums text-muted-foreground">
                         {formatDuration(seg.durationMs)}
