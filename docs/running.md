@@ -85,6 +85,25 @@ With the token set, every HTTP request to the MCP server must carry `Authorizati
 
 The `agent-api` process needs no extra configuration: it talks to the MCP server over the in-process Pydantic AI client and is co-deployed with the secret. Standalone callers (third-party MCP clients, manual smoke from a separate host) must attach the header explicitly.
 
+## Egress allowlist (opt-in)
+
+Every tool host-locks its own outbound requests at the application layer (`*_TRUSTED_HOST` plus a post-redirect host check). The egress profile adds a network-level default-deny belt underneath that: a tinyproxy sidecar (`deploy/egress-proxy/`) that only permits outbound HTTPS to the feed hosts the tools legitimately need, with the app containers routing their egress through it.
+
+```bash
+make up-egress
+# or explicitly:
+docker compose -f docker-compose.yml -f docker-compose.egress.yml up -d
+```
+
+The allowlist lives in `deploy/egress-proxy/filter` (POSIX extended regex, default-deny): `services.nvd.nist.gov`, `api.first.org`, `cisa.gov`, `gitlab.com` (+ CDN subdomains), `api.github.com`, `api.osv.dev`, `api.anthropic.com`. Anything else is refused at the proxy, so a tool coerced into a different host (an SSRF via a crafted redirect, a compromised dependency reaching out) cannot connect. The override sets `HTTPS_PROXY`/`HTTP_PROXY` on `mcp-server` and `agent-api` (httpx honors them via `trust_env`) and `NO_PROXY` for loopback + the intra-compose hosts, so the agent still reaches the MCP server directly. Keep the filter in sync when a tool gains a new feed. Verify a denied host is actually blocked:
+
+```bash
+# Allowed -> connects (HTTP 200/4xx from the host itself):
+docker exec sec-recon-mcp python -c "import httpx; print(httpx.get('https://api.osv.dev/v1/query').status_code)"
+# Denied -> tinyproxy refuses the tunnel (ProxyError / 403 Filtered):
+docker exec sec-recon-mcp python -c "import httpx; httpx.get('https://example.com')"
+```
+
 ## Observability endpoints
 
 OpenTelemetry tracing is enabled in both Python processes. The default exporter writes spans to stdout (zero infrastructure required). Set `OTEL_EXPORTER_OTLP_ENDPOINT` (or use `make obs-up`) to ship spans to an OTLP/HTTP collector; the compose profile `observability` bundles a Jaeger sidecar at `http://localhost:16686`.

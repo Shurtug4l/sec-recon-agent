@@ -1,0 +1,20 @@
+# Egress allowlist (POSIX extended regex, matched against the destination host,
+# case-insensitive). FilterDefaultDeny Yes in tinyproxy.conf makes anything not
+# matched here a refused connection. Keep this in sync with the feed hosts the
+# MCP tools reach (mcp_server/tools/*, mcp_server/nvd_client.py) and the LLM
+# provider (agent-api).
+#
+# NVD (cve_lookup, seed): services.nvd.nist.gov
+^services\.nvd\.nist\.gov$
+# FIRST EPSS (epss_score): api.first.org
+^api\.first\.org$
+# CISA KEV catalog (kev_check): www.cisa.gov
+^(www\.)?cisa\.gov$
+# Exploit-DB CSV (exploit_check), may redirect to a gitlab.com CDN subdomain
+^([a-z0-9-]+\.)?gitlab\.com$
+# GitHub code search (exploit_check public PoC lookup): api.github.com
+^api\.github\.com$
+# OSV.dev advisories (osv_lookup): api.osv.dev
+^api\.osv\.dev$
+# Anthropic LLM (agent-api): api.anthropic.com
+^api\.anthropic\.com$
