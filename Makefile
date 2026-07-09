@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help build seed up down logs ps restart triage test lint eval eval-compare redteam scorecard clean
+.PHONY: help build seed up up-egress down logs ps restart triage test lint eval eval-compare redteam scorecard clean
 
 help:  ## Show this help.
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -13,6 +13,9 @@ seed:  ## One-shot: pull CVEs from NVD and populate ChromaDB on the shared volum
 
 up:  ## Start MCP server + agent API in the background.
 	docker compose up -d
+
+up-egress:  ## Start the stack with the opt-in egress allowlist proxy.
+	docker compose -f docker-compose.yml -f docker-compose.egress.yml up -d
 
 down:  ## Stop both services. The data volume is preserved.
 	docker compose down

@@ -1,0 +1,54 @@
+# Opt-in egress allowlist (S4 rail 3/3). Layer this override on top of the base
+# compose file to add a default-deny forward proxy and route the app
+# containers' outbound traffic through it, so they can only reach the known
+# feed hosts + the LLM provider:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.egress.yml up -d
+#   (or: make up-egress)
+#
+# This is a network-level belt over the application-level *_TRUSTED_HOST locks
+# already enforced per feed. The allowlist lives in deploy/egress-proxy/filter.
+
+services:
+  egress-proxy:
+    build:
+      context: ./deploy/egress-proxy
+    image: sec-recon-egress-proxy:0.1.0
+    container_name: sec-recon-egress
+    # No published port: reachable only on the internal compose network.
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+  mcp-server:
+    environment:
+      # httpx honors these (trust_env is on by default), so every outbound tool
+      # call tunnels through the allowlist. NO_PROXY keeps intra-compose traffic
+      # and loopback (the healthcheck) off the proxy.
+      HTTP_PROXY: "http://egress-proxy:8888"
+      HTTPS_PROXY: "http://egress-proxy:8888"
+      http_proxy: "http://egress-proxy:8888"
+      https_proxy: "http://egress-proxy:8888"
+      NO_PROXY: "localhost,127.0.0.1,mcp-server,agent-api"
+      no_proxy: "localhost,127.0.0.1,mcp-server,agent-api"
+    depends_on:
+      egress-proxy:
+        condition: service_started
+
+  agent-api:
+    environment:
+      HTTP_PROXY: "http://egress-proxy:8888"
+      HTTPS_PROXY: "http://egress-proxy:8888"
+      http_proxy: "http://egress-proxy:8888"
+      https_proxy: "http://egress-proxy:8888"
+      # mcp-server must bypass the proxy: it is an internal host the allowlist
+      # deliberately does not include, and the agent reaches it over the compose
+      # network, not the public internet.
+      NO_PROXY: "localhost,127.0.0.1,mcp-server,agent-api"
+      no_proxy: "localhost,127.0.0.1,mcp-server,agent-api"
+    depends_on:
+      egress-proxy:
+        condition: service_started
