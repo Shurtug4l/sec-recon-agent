@@ -17,7 +17,7 @@ Mitigations are layered, not perfect. A "mitigated" status means the project app
 | LLM07 | System Prompt Leakage | partial | system-prompt-extract payloads in red-team battery; prompt itself is not a secret |
 | LLM08 | Vector and Embedding Weaknesses | partial | local-only Chroma, no PII in queries (by default), corpus is public CVE data |
 | LLM09 | Misinformation | partial (grounding) | tools cite NVD/KEV/EPSS/ATT&CK directly; post-run grounding verifier stamps grounded/suspect on every report; confidence field constrains over-claiming |
-| LLM10 | Unbounded Consumption | mitigated | per-tool caps + opt-in API auth + opt-in per-IP rate limit + LLM token cost bounded by schema |
+| LLM10 | Unbounded Consumption | mitigated | per-tool caps + opt-in API auth + opt-in per-IP rate limit + per-run round cap + denial-of-wallet spend ceiling + kill-switch + LLM token cost bounded by schema |
 
 ## Detailed mappings
 
@@ -145,6 +145,8 @@ Since S3, compliance with the no-invention contract is also *checked*, not just 
 - **Per-tool resource caps**: Exploit-DB CSV 20 MB cap with streaming abort; KEV catalog 50 MB cap; EPSS response 4 MB cap; Nmap hostnames / ports per host capped at 50 / 200; cve_semantic_search query truncated at 2000 chars; seed pagination capped at 25 pages per severity. See `docs/design.md` "Bounded resource consumption".
 - **TriageRequest body size**: 100 KB (`api/stream.py::TriageRequest.query`) - generous enough for pasted SBOMs, hard cap against arbitrary blob uploads.
 - **API auth + rate limit (opt-in)**: `API_KEYS` and `RATE_LIMIT_PER_MINUTE` env switches close the unbounded-call exposure when the API is reachable beyond `localhost`. See `docs/design.md` "Why opt-in auth + rate limit".
+- **Denial-of-wallet budget cap (opt-in)**: `DENIAL_OF_WALLET_USD_PER_DAY` sets a hard ceiling on estimated LLM spend over a rolling 24h window, summed in-process across all triage runs; over it `/v1/triage` returns 503. The round cap bounds one run; this bounds the aggregate an attacker drives by repeating requests. See `docs/running.md` "Operational safety rails".
+- **Kill-switch**: `KILL_SWITCH` (env) or a sentinel file (`KILL_SWITCH_FILE`, checked per request) disables `/v1/triage` with 503 without a redeploy, so a runaway or an active abuse can be stopped live.
 - **Structured output bound on LLM cost**: TriageReport caps every list field (max 10 CVEs, max 20 attack techniques, etc.) so the model cannot emit unbounded payloads that drive token cost up.
 - **Sliding-window rate limit on NVD client**: shared between `cve_lookup` and the `cve_semantic_search` seed pipeline; race-free implementation that releases the lock before sleeping (a CRITICAL bug caught and fixed in the security review documented in `docs/design.md::threat-model`).
 

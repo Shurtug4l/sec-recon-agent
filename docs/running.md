@@ -45,6 +45,33 @@ curl -N -X POST http://localhost:8000/v1/triage \
 
 `API_KEYS` switches on `Authorization: Bearer` / `X-API-Key` enforcement on `/v1/triage` and `/v1/meta`. The auth dependency uses `hmac.compare_digest` for constant-time comparison, and the 429 body never echoes the configured limit. `/v1/health` remains open under any configuration: container orchestrators (Docker, Kubernetes) must be able to run liveness probes without holding a key.
 
+## Operational safety rails
+
+Two guards in front of `/v1/triage`, both default off, both refusing with `503` **before** the agent is built (a refused request spends nothing on the LLM). They exist because an LLM endpoint reachable beyond localhost is a denial-of-wallet target: the per-request round cap (`AGENT_REQUEST_LIMIT`) bounds a single run, but nothing otherwise bounds the aggregate an attacker drives by repeating requests.
+
+```bash
+# Denial-of-wallet: hard ceiling on estimated LLM spend over a rolling 24h
+# window, summed in-process from each run's token usage x the per-model price
+# table (eval/cost.py). Over it, /v1/triage returns 503 until older spend ages
+# out. The window is in memory, so it resets on restart -- that still bounds
+# spend between restarts, which is the threat; a restart-durable counter is the
+# production evolution.
+DENIAL_OF_WALLET_USD_PER_DAY=5
+
+# Kill-switch (two forms):
+KILL_SWITCH=1                                  # persistent off for the container's life
+KILL_SWITCH_FILE=/tmp/sec-recon-killswitch     # live toggle, checked per request
+```
+
+The file form disables the service without a redeploy and without a restart:
+
+```bash
+docker exec sec-recon-api touch /tmp/sec-recon-killswitch   # triage now 503s
+docker exec sec-recon-api rm    /tmp/sec-recon-killswitch   # back online
+```
+
+In docker-compose `KILL_SWITCH_FILE` defaults to a tmpfs path, so the file toggle is ready to use out of the box but clears on restart; use `KILL_SWITCH=1` when you want the service to come back up still disabled. The 503 bodies are deliberately generic (the ceiling and the switch mechanism are operational details that do not belong in client responses). Network egress restriction is a separate rail (see the egress-proxy compose profile).
+
 ## MCP transport authentication
 
 The MCP server (`:8001`) is the more powerful surface in the stack: direct tool access, no agent guardrails. By default it has no auth of its own and relies on docker-compose internal-network isolation (the port is **not** published to the host). Whenever the port is reachable beyond that perimeter, set a shared bearer secret:
