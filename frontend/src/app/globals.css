@@ -3,12 +3,21 @@
 @tailwind utilities;
 
 /*
- * Theme tokens. "Slate Recon": a cool blue-slate NOC/observability console
- * with a single cyan signal. Dark-only by design (a security triage console
- * reads dark-first); there is no light variant and no theme toggle. Values are
- * HSL channels so Tailwind's hsl(var(--token)) and the /alpha modifier keep
- * working. This is the ONE source of truth for color; charts.tsx mirrors the
- * severity + chart hexes because Recharts needs literal colors on SVG fills.
+ * Theme tokens. "Editorial instrument": one design system, two rendered
+ * voices on a single token source, switched by data-theme on <html> (stamped
+ * pre-paint by the inline script in layout.tsx, toggled at runtime).
+ *
+ *   - dark (default): the instrument. Cool near-black slate, hairline rules,
+ *     one refined cyan signal. Direct continuation of "Slate Recon".
+ *   - light: the technical paper. Warm off-white, near-black ink, the cyan
+ *     darkened to hold WCAG AA on paper.
+ *
+ * Values are HSL channels so Tailwind's hsl(var(--token)) and the /alpha
+ * modifier keep working. This is the ONE source of truth for color;
+ * charts.tsx mirrors the severity + chart hexes PER THEME because Recharts
+ * needs literal colors on SVG fills. All text tokens pass WCAG 2.2 AA
+ * (>= 4.5:1) against background and card in both themes; chart fills hold
+ * >= 3:1 (non-text). Verified with a contrast script at P0 time.
  */
 @layer base {
   :root {
@@ -38,6 +47,7 @@
     --input: 212 24% 22%;
     --ring: 234 89% 74%;               /* #818CF8 indigo — focus / secondary signal */
     --radius: 0.6rem;
+    --grain-opacity: 0.05;             /* film-grain strength, see body::after */
 
     /* Severity ramp: diverging (red -> orange -> gold -> blue -> grey), no
        red-vs-green dependence. Always paired with shape/label in the UI, never
@@ -59,6 +69,57 @@
     --chart-7: 225 60% 60%;   /* #5A78D6 */
     --chart-8: 49 30% 51%;    /* #A89A5E */
   }
+
+  /* Light "technical paper": same hue identities, lightness inverted and
+     saturation tuned so every text token clears AA on the warm paper. Only
+     the tokens that differ from dark are overridden. */
+  :root[data-theme="light"] {
+    color-scheme: light;
+
+    --background: 43 30% 95%;          /* #F7F5F0 warm paper */
+    --foreground: 220 32% 13%;         /* #161D2B near-black ink */
+    --card: 45 40% 98%;                /* #FCFBF8 sheet over the desk */
+    --card-foreground: 220 32% 13%;
+    --popover: 0 0% 100%;              /* #FFFFFF elevated */
+    --popover-foreground: 220 32% 13%;
+    --primary: 193 82% 31%;            /* #0E7490 cyan darkened for AA on paper */
+    --primary-foreground: 200 23% 97%; /* paper text on the cyan fill */
+    --secondary: 44 22% 90%;           /* #ECE9E1 warm gray surface */
+    --secondary-foreground: 220 32% 13%;
+    --muted: 42 22% 91%;               /* #EDEAE3 */
+    --muted-foreground: 210 16% 38%;   /* #51606F cool slate, 5.9:1 on paper */
+    --accent: 44 22% 90%;              /* hover surface */
+    --accent-foreground: 193 83% 25%;  /* #0B5D73 hover tints to the deep cyan */
+    --destructive: 354 70% 41%;        /* #B2202E */
+    --destructive-foreground: 200 23% 97%;
+    --warning: 29 100% 33%;            /* #A85200 */
+    --warning-foreground: 200 23% 97%;
+    --success: 157 84% 23%;            /* #096B45 */
+    --success-foreground: 200 23% 97%;
+    --border: 42 15% 83%;              /* #D9D5CC warm hairline */
+    --input: 40 14% 78%;               /* #CFCAC0 stronger form affordance */
+    --ring: 243 75% 59%;               /* #4F46E5 indigo darkened */
+    --grain-opacity: 0.035;
+
+    /* Severity ramp, ink-weight versions: same diverging order, dark enough
+       to be read as text on the tinted badges. */
+    --severity-critical: 354 70% 41%;  /* #B2202E */
+    --severity-high: 26 100% 35%;      /* #B34E00 */
+    --severity-medium: 44 100% 28%;    /* #8F6A00 */
+    --severity-low: 204 89% 34%;       /* #0A66A5 */
+    --severity-info: 215 12% 40%;      /* #5A6472 */
+
+    /* Categorical palette, ink-weight versions (same hue order as dark).
+       Mirrored as hex in dashboard/charts.tsx — keep them in sync. */
+    --chart-1: 204 66% 40%;   /* #2273A8 */
+    --chart-2: 35 91% 36%;    /* #B26A08 */
+    --chart-3: 263 51% 53%;   /* #7A4BC4 */
+    --chart-4: 347 54% 49%;   /* #C23A57 */
+    --chart-5: 55 84% 29%;    /* #877D0C */
+    --chart-6: 324 46% 45%;   /* #A63E7C */
+    --chart-7: 230 54% 54%;   /* #4A5FC9 */
+    --chart-8: 42 37% 40%;    /* #8A7440 */
+  }
 }
 
 @layer base {
@@ -69,16 +130,40 @@
     @apply bg-background text-foreground antialiased font-sans;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
+  /* Display voice: Martian Mono on the two top heading levels (plus anything
+   * opting in via font-display: verdicts, hero numerals). It is a wide
+   * instrument face, reserved for short strings; body copy stays Hanken
+   * Grotesk, telemetry stays IBM Plex Mono. */
+  h1,
+  h2 {
+    font-family: var(--font-display), ui-monospace, monospace;
+    letter-spacing: -0.02em;
+  }
   /* Telemetry reads as data: monospace numerals align in columns (CVE IDs,
    * ports, CVSS / EPSS scores, token counts). */
   .font-mono {
     font-variant-numeric: tabular-nums;
   }
+  /* Film-grain overlay: unifies surfaces and kills flat-panel banding on the
+   * large near-black / paper fields. Pure decoration: pointer-events none,
+   * 3.5-5% opacity per theme (--grain-opacity), monochrome SVG noise inlined
+   * as a data URI so no request leaves the page. */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity: var(--grain-opacity, 0.05);
+  }
 }
 
 /* Severity badge accents, driven by the severity ramp tokens. Critical/high
  * carry a solid fill (urgency), the rest a translucent tint + colored text.
- * Domain-semantic, kept off the generic UI tokens on purpose. */
+ * Domain-semantic, kept off the generic UI tokens on purpose. Theme-aware for
+ * free: the ramp tokens swap per theme, text on solid fills resolves to
+ * near-black on dark / paper on light via --background. */
 @layer utilities {
   .severity-critical {
     background-color: hsl(var(--severity-critical));
@@ -102,9 +187,9 @@
   }
 }
 
-/* Faint blueprint dot-grid for the hero backdrop (Vercel/Linear idiom). Dots
- * in the border tone, faded out with a radial mask so they never compete with
- * foreground content. */
+/* Faint blueprint dot-grid for the hero backdrop. Dots in the border tone,
+ * faded out with a radial mask so they never compete with foreground content.
+ * Theme-aware through --border. */
 @layer utilities {
   .blueprint-grid {
     background-image: radial-gradient(hsl(var(--border)) 1px, transparent 1px);
@@ -114,9 +199,69 @@
   }
 }
 
+/* Editorial hairlines and the hero scanline. The hairline fades at both ends
+ * instead of slamming into the container edge; the scanline overlay is
+ * reserved for the hero (applied in P1) and stays decorative-only. */
+@layer utilities {
+  .rule-hairline {
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      hsl(var(--border)) 10%,
+      hsl(var(--border)) 90%,
+      transparent
+    );
+  }
+  .scanline-overlay {
+    background-image: repeating-linear-gradient(
+      0deg,
+      hsl(var(--foreground) / 0.028) 0px,
+      hsl(var(--foreground) / 0.028) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+  }
+}
+
+/* Page-load reveal primitives, CSS-only (framer-motion was evaluated and
+ * rejected: TS strict conflicts, see docs/frontend.md decisions log). Stagger
+ * a sequence by setting --reveal-i per element; the prefers-reduced-motion
+ * block below neutralizes both without per-call-site work. */
+@layer utilities {
+  .reveal {
+    animation: reveal-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: calc(var(--reveal-i, 0) * 70ms);
+  }
+  .draw-in {
+    transform-origin: left center;
+    animation: draw-x 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: calc(var(--reveal-i, 0) * 70ms);
+  }
+}
+@keyframes reveal-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes draw-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
 /* Respect the OS reduced-motion preference: near-instant animations and
  * transitions, no auto scroll-smoothing. Covers the fade-in / pulse / ping /
- * spin used across the app without touching each call site. */
+ * spin / reveal / draw-in used across the app without touching each call
+ * site (animation-fill-mode: both lands them on their final frame). */
 @media (prefers-reduced-motion: reduce) {
   *,
   ::before,
@@ -139,6 +284,9 @@
   html, body {
     background: #ffffff !important;
     color: #111111 !important;
+  }
+  body::after {
+    display: none; /* no grain on paper */
   }
   body * {
     visibility: hidden;
