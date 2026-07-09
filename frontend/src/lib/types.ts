@@ -150,3 +150,42 @@ export interface AgentMeta {
   model: string;
   tools: ToolMeta[];
 }
+
+// /v1/audit response - the tamper-evident triage audit trail. Rows are the
+// digest-only projection of a TriageEvent (the opt-in plaintext fields are
+// never exposed over HTTP); mirrors AuditResponse / AuditRow in api/stream.py.
+export interface AuditRow {
+  event_id: string;
+  ts: string;
+  query_sha256: string;
+  query_length: number;
+  report_sha256: string;
+  severity: string | null;
+  confidence: string | null;
+  cves_count: number;
+  attack_techniques_count: number;
+  kev_hits: number;
+  ransomware_hits: number;
+  high_epss_hits: number;
+  ssvc_decision: string | null;
+  grounding_status: string | null;
+  model: string;
+  duration_ms: number;
+  outcome: string;
+  error_class: string | null;
+  prev_event_hash: string;
+  this_event_hash: string;
+}
+
+export interface AuditVerification {
+  ok: boolean;
+  verified_count: number;
+  broken_event_id: string | null;
+}
+
+export interface AuditTrail {
+  enabled: boolean;
+  count: number;
+  verification: AuditVerification;
+  events: AuditRow[];
+}

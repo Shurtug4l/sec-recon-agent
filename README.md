@@ -148,7 +148,7 @@ The system prompt encodes one prioritization heuristic: CISA KEV membership > kn
 
 - **Signal-coverage honesty.** Every report carries a per-feed coverage map: found, no entry, errored, or not queried. A triage that could not reach EPSS says so instead of silently omitting the signal, and the eval suite scores this honesty.
 - **Grounding verification.** The no-invention contract is not just instructed, it is *checked*: a pure server-side verifier (`agent/grounding.py`) re-checks every tool-derived claim in the report - CVE identity, CVSS, KEV, EPSS, exploit and ransomware flags, ATT&CK ids - against the tool returns captured from the run's own message history, and stamps a deterministic `grounded` / `suspect` / `not_evaluated` assessment with per-claim findings onto the report and into the audit chain. The frontend renders it as a badge next to the model's self-assessed confidence, so the operator sees what was verified, not just what was asserted.
-- **Hash-chained audit trail.** Every triage appends one row to an append-only SQLite log, sealed with `prev_event_hash` / `this_event_hash` over a canonical JSON serialization; `sec-recon-audit verify` walks the chain and exits non-zero on tamper. Digest-only by default: plain query text stays out unless explicitly enabled. Internals in [docs/design.md](docs/design.md#operational-notes).
+- **Hash-chained audit trail.** Every triage appends one row to an append-only SQLite log, sealed with `prev_event_hash` / `this_event_hash` over a canonical JSON serialization; `sec-recon-audit verify` walks the chain and exits non-zero on tamper, and the dashboard's audit-trail tab renders it live (`GET /v1/audit`, digest-only). Digest-only by default: plain query text stays out unless explicitly enabled. Internals in [docs/design.md](docs/design.md#operational-notes).
 - **Interchange exports.** A finished report renders into SARIF 2.1.0 (GitHub code scanning) and OpenVEX v0.2.0 via `sec-recon-export` or `POST /v1/export/{sarif,openvex}`. Pure functions of the report; product identity is never guessed, so a bare-CVE triage refuses to emit VEX instead of fabricating one.
 - **SBOM gate.** `sec-recon-gate` runs the same tool chain with no LLM anywhere in the loop: SBOM in, OSV advisories, KEV / EPSS / exploit enrichment, a deterministic SSVC decision per finding, and a CI exit code (`--fail-on act` by default; `--strict` also fails on enrichment coverage gaps). Reproducible, free, and injection-proof by construction - there is no prompt for a hostile SBOM to attack. Usage in [docs/running.md](docs/running.md#sbom-gate).
 
@@ -215,7 +215,7 @@ The browser is the primary interface, in a dual-theme "Editorial instrument" des
 
 - **Home (`/`)** - landing: SSVC ladder hero, design pillars, tool grid.
 - **Triage (`/triage`)** - query form with example chips, live SSE progress, the report view, and a localStorage history sidebar.
-- **Dashboard (`/dashboard`)** - statistics from local history, a measured per-node latency waterfall, and a transparency tab showing the literal system prompt and tool inventory from `GET /v1/meta`.
+- **Dashboard (`/dashboard`)** - statistics from local history, a measured per-node latency waterfall, a transparency tab showing the literal system prompt and tool inventory from `GET /v1/meta`, and an audit-trail tab that renders the tamper-evident hash chain from `GET /v1/audit` (chain-integrity status + digest-only rows).
 - **Scorecard (`/scorecard`)** - the reproducible scorecard rendered as tabbed bands.
 - **Case study (`/case-study`)** - the trust-boundary design narrative as a guided tour.
 - **Guide (`/guide`)** - one explainer per framework the agent grounds answers in (CVE / CVSS, KEV, EPSS, ATT&CK, ATLAS, SBOM, SSVC, MCP...).
@@ -235,7 +235,7 @@ Observability: OTel tracing in both Python processes, stdout exporter by default
 sec-recon-agent/
 +- src/sec_recon_agent/
 |  +- agent/          # Pydantic AI agent: prompts, TriageReport schema, deterministic SSVC (ssvc.py)
-|  +- api/            # FastAPI app: POST /v1/triage (SSE), /v1/meta, /v1/health, /v1/export/*
+|  +- api/            # FastAPI app: POST /v1/triage (SSE), /v1/meta, /v1/health, /v1/audit, /v1/export/*
 |  +- audit/          # SHA-256 hash-chain audit log + sec-recon-audit CLI
 |  +- eval/           # golden set, runner, scorer, metrics, cost, scorecard generator
 |  +- export/         # pure SARIF 2.1.0 / OpenVEX renderers + sec-recon-export CLI

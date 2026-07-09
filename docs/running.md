@@ -43,7 +43,14 @@ curl -N -X POST http://localhost:8000/v1/triage \
 # which attaches AGENT_API_KEY upstream server-side.
 ```
 
-`API_KEYS` switches on `Authorization: Bearer` / `X-API-Key` enforcement on `/v1/triage` and `/v1/meta`. The auth dependency uses `hmac.compare_digest` for constant-time comparison, and the 429 body never echoes the configured limit. `/v1/health` remains open under any configuration: container orchestrators (Docker, Kubernetes) must be able to run liveness probes without holding a key.
+`API_KEYS` switches on `Authorization: Bearer` / `X-API-Key` enforcement on `/v1/triage`, `/v1/meta`, `/v1/audit`, and the export endpoints. The auth dependency uses `hmac.compare_digest` for constant-time comparison, and the 429 body never echoes the configured limit. `/v1/health` remains open under any configuration: container orchestrators (Docker, Kubernetes) must be able to run liveness probes without holding a key.
+
+## Inspecting the audit trail
+
+Every triage seals one row into an append-only, hash-chained SQLite log (`AUDIT_DB_PATH`, default `./data/audit.db`). Inspect it two ways:
+
+- **CLI** (full access, local): `sec-recon-audit verify` walks the chain and exits non-zero on tamper; `sec-recon-audit tail --limit 20` prints recent rows; `sec-recon-audit count` prints the total. With `AUDIT_INCLUDE_QUERY=true` / `AUDIT_INCLUDE_SUMMARY=true` the CLI can see the retained plaintext.
+- **HTTP** (`GET /v1/audit?limit=50`, digest-only): returns the most recent rows plus a live hash-chain verification (`verification.ok`, and `broken_event_id` when a link is broken). It **never** returns the plaintext even when retention is on - retention on disk and exposure over HTTP are separate trust boundaries - so it is safe to wire into a UI (the dashboard's audit-trail tab reads exactly this). Auth-gated like `/v1/meta`.
 
 ## Operational safety rails
 
