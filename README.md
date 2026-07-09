@@ -242,7 +242,7 @@ sec-recon-agent/
 
 For an AI security / governance reviewer, the governance set answers three questions: what risks were considered, what an attacker would do against the agent itself, and what an AIMS-certified organization would need to point at.
 
-- [docs/case_study.md](docs/case_study.md) - the design narrative on the untrusted-data trust boundary: threat model, why the obvious defenses fail, the four-layer design, residual risk.
+- [docs/case_study.md](docs/case_study.md) - the design narrative on the untrusted-data trust boundary: threat model, why the obvious defenses fail, the six-layer design, residual risk. Also ships as an [interactive tour in the demo](https://shurtug4l.github.io/sec-recon-agent/case-study/).
 - [docs/owasp_llm_top10.md](docs/owasp_llm_top10.md) - OWASP LLM Top 10 (2025) mapping with status, controls, file:line citations, and the tests defending each invariant.
 - [docs/mitre_atlas.md](docs/mitre_atlas.md) - MITRE ATLAS mapping (AI-specific adversary tactics and techniques).
 - [docs/iso_42001.md](docs/iso_42001.md) - ISO/IEC 42001:2023 alignment matrix with explicit out-of-scope declarations.

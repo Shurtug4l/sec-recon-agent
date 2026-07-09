@@ -4,7 +4,7 @@ Companion to [`docs/design.md`](design.md), focused on the Next.js + React UI in
 
 ## What it is
 
-A Next.js 15 (App Router) application on React 19 + TypeScript strict + Tailwind, with six routes: `/` (landing), `/triage` (form + report), `/dashboard` (statistics / observability / transparency), `/scorecard` (the sonnet-baseline scorecard rendered statically from committed result JSONs), `/guide` (framework explainer), and `/r` (a self-contained shared-report viewer, not in the nav). The header nav carries five tabs: Home, Triage, Dashboard, Scorecard, Guide. It is the primary interface for the triage agent: the user types a query (free text, a CVE ID, a product description, or Nmap XML), the UI streams the agent's progress as it happens, and renders the final `TriageReport` as a structured card - the deterministic SSVC verdict (SSVC is CISA's remediation-urgency methodology: one of Act / Attend / Track* / Track, computed server-side, never by the LLM), per-feed signal coverage (whether each external feed returned data, had no entry, or errored), severity/confidence, and per-CVE detail.
+A Next.js 15 (App Router) application on React 19 + TypeScript strict + Tailwind, with seven routes: `/` (landing), `/triage` (form + report), `/dashboard` (statistics / observability / transparency), `/scorecard` (the sonnet-baseline scorecard rendered statically from committed result JSONs), `/case-study` (the design narrative as a guided tour, twin of `docs/case_study.md`), `/guide` (framework explainer), and `/r` (a self-contained shared-report viewer, not in the nav). The header nav carries six tabs: Home, Triage, Dashboard, Scorecard, Case study, Guide. It is the primary interface for the triage agent: the user types a query (free text, a CVE ID, a product description, or Nmap XML), the UI streams the agent's progress as it happens, and renders the final `TriageReport` as a structured card - the deterministic SSVC verdict (SSVC is CISA's remediation-urgency methodology: one of Act / Attend / Track* / Track, computed server-side, never by the LLM), per-feed signal coverage (whether each external feed returned data, had no entry, or errored), severity/confidence, and per-CVE detail.
 
 It is not a thin wrapper around the FastAPI surface; it adds:
 - A Next.js-side `/api/triage` proxy that lets the browser talk same-origin (no CORS opened on the backend).
@@ -23,6 +23,7 @@ frontend/src/
 │   ├── triage/page.tsx          # form + progress stream + report + history sidebar
 │   ├── dashboard/page.tsx       # ARIA tablist: statistics / observability / transparency
 │   ├── scorecard/page.tsx       # scorecard shell (title + provenance) around the tabbed bands
+│   ├── case-study/page.tsx      # design-narrative tour: hash-driven rail, 12 panels, 6-layer strip
 │   ├── guide/page.tsx           # master-detail explainer: hash-driven rail + one panel at a time
 │   ├── r/page.tsx               # shared-report viewer: decodes a report from the URL fragment
 │   ├── globals.css              # Tailwind directives + the dual-theme CSS-variable tokens
@@ -67,7 +68,7 @@ frontend/src/
     ├── scorecard.ts             # aggregations for /scorecard, mirrors eval/metrics.py
     ├── markdown-export.ts       # TriageReport -> Markdown / JSON download helpers
     ├── permalink.ts             # gzip+base64url a report into a shareable URL fragment
-    ├── commands.ts              # static 56-command registry for the palette
+    ├── commands.ts              # static 58-command registry for the palette
     ├── guide-data.ts            # guide SECTIONS (sections + external refs), shared with the palette
     ├── agent-meta.ts            # /v1/meta loader (demo snapshot or proxy fetch)
     ├── nav-events.ts            # cross-component window events (dashboard tab sync)
@@ -162,7 +163,7 @@ Every report card carries three exports plus a share link, all client-side with 
 
 ## Command palette
 
-`Cmd+K` (macOS) / `Ctrl+K` (elsewhere), or the Search button in the header, opens a command palette with 57 commands in 7 groups: report actions (copy link, export .md / JSON / PDF, show grounding verification - visible only while a report is on screen, PDF and grounding only where the report view is in the DOM), page navigation, dashboard tab jumps, the 7 demo triage runs (live mode submits the same query to the real backend), the 12 guide sections, the guide's 23 external references, and project actions (GitHub, copy system prompt).
+`Cmd+K` (macOS) / `Ctrl+K` (elsewhere), or the Search button in the header, opens a command palette with 58 commands in 7 groups: report actions (copy link, export .md / JSON / PDF, show grounding verification - visible only while a report is on screen, PDF and grounding only where the report view is in the DOM), page navigation, dashboard tab jumps, the 7 demo triage runs (live mode submits the same query to the real backend), the 12 guide sections, the guide's 23 external references, and project actions (GitHub, copy system prompt).
 
 The registry is a static module (`lib/commands.ts`); context-dependent commands gate through a `visible(ctx)` predicate rather than conditional construction, so the filter always sees a stable item set. Section and reference commands consume the same `lib/guide-data.ts` the guide page renders from - one source, no drift. The binding is platform-split on purpose: registering `Ctrl+K` on macOS too would hijack readline kill-line inside the triage textarea.
 
@@ -253,7 +254,7 @@ npm run build        # production build
 - **No service worker / PWA.** Out of scope for a single-tenant demo.
 - **No auth UI.** Backend is unauthenticated by design; adding a login screen here without backend auth would be theatre.
 - **No streaming React UI library (Vercel AI SDK, etc.).** Evaluated and dropped; the SSE wrapper is 50 lines and the agent's protocol does not fit the SDK's chat-completion shape.
-- **One deliberate dependency exception: `cmdk` + `@radix-ui/react-dialog` (both exact-pinned) for the command palette.** The bias stays "hand-roll small surfaces", but fuzzy ranking plus combobox accessibility plus focus management over 57 mixed nav/action items is where hand-rolling costs more than the dependency. radix-dialog was already in the tree transitively via cmdk; making it direct lets the dialog shell carry a proper hidden `DialogTitle`.
+- **One deliberate dependency exception: `cmdk` + `@radix-ui/react-dialog` (both exact-pinned) for the command palette.** The bias stays "hand-roll small surfaces", but fuzzy ranking plus combobox accessibility plus focus management over 58 mixed nav/action items is where hand-rolling costs more than the dependency. radix-dialog was already in the tree transitively via cmdk; making it direct lets the dialog shell carry a proper hidden `DialogTitle`.
 
 ## Decisions log
 
@@ -277,3 +278,4 @@ npm run build        # production build
 | Tool usage as single-hue sorted bars, plain DOM | One series over nominal categories is a magnitude comparison: every bar wears slot 1 and the row label carries identity, with counts at the bar end and an explicit "not called" footer. The donut it replaced cycled 8 hues across 10 tools (cycled pairs are indistinguishable under CVD) and asked the reader to compare close angular slices | Donut + color legend (status quo); coloring bars by their value (double-encodes what length already shows) |
 | Waterfall segments colored by node type, with a legend | Color follows the entity (prompt / model request / tool calls / final output), so the same phase reads as the same hue across runs; the 4-slot subset passes all-pairs CVD separation because any two node types can touch. 2px surface gaps separate segments instead of borders | Alternating opacity by segment index (status quo: index parity carries no meaning); per-segment hue cycling |
 | Chart tokens snapped to the validated palette (P2) | The P0 `--chart-*` sets passed contrast and worst-pair CVD but failed the OKLCH lightness band and chroma floor when actually computed (dark slot 5 at L 0.91, slot 8 below the chroma floor in both themes); colorblind-safety is computable, so it is computed - each failing slot moved in lightness/chroma only, hue held | Trusting the P0 eyeball ("looks balanced"); regenerating the palette from scratch (would repaint series the demo screenshots already teach) |
+| Case study as an in-app tour twin of `docs/case_study.md` | The design narrative is the hiring-signal core of the repo and was buried in a GitHub-only .md; the in-app version reuses the guide's hash-driven master-detail (12 panels, one viewport each, same palette/deep-link contract) and adds what a document cannot: every panel ends in a proof row linking the exact source, test, or live surface backing the claim, and the six defense layers render as a navigable strip. The .md stays the long-form essay; the two cross-link rather than duplicate | Rendering the .md verbatim in-app (a 250-line document wall, the idiom the guide refactor just killed); merging the case study into the guide (different job: the guide explains how to drive, the case study argues why the design holds) |
