@@ -7,7 +7,7 @@
 [![scorecard](https://img.shields.io/badge/scorecard-reproducible-blue)](SCORECARD.md)
 [![live demo](https://img.shields.io/badge/demo-live-22d3ee)](https://shurtug4l.github.io/sec-recon-agent/)
 
-**An LLM vulnerability-triage agent designed the way an AI Solutions Architect would build it and an AI Security Engineer would attack it.** Every answer is grounded in live authoritative feeds, the output is a schema-bounded `TriageReport`, the prioritization verdict is deterministic (not LLM-guessed), and the untrusted-data boundary is a first-class design concern with a falsifiable red-team battery. Built on Pydantic AI + a custom Model Context Protocol (MCP) server, behind a Next.js frontend.
+**An LLM vulnerability-triage agent designed the way an AI Solutions Architect would build it and an AI Security Engineer would attack it.** Every answer is grounded in live authoritative feeds, the output is a schema-bounded `TriageReport`, the prioritization verdict is deterministic (not LLM-guessed), every tool-derived claim is re-verified server-side against the actual tool output after the run, and the untrusted-data boundary is a first-class design concern with a falsifiable red-team battery. Built on Pydantic AI + a custom Model Context Protocol (MCP) server, behind a Next.js frontend.
 
 ![sec-recon-agent: a live Log4Shell triage from query to a typed TriageReport with CISA KEV, ransomware, and EPSS signals](docs/assets/demo.gif)
 
@@ -120,6 +120,8 @@ The system prompt encodes one prioritization heuristic: CISA KEV membership > kn
 
 **Signal-coverage honesty.** Every report carries a per-feed coverage map: found, no entry, errored, or not queried. A triage that could not reach EPSS says so instead of silently omitting the signal, and the eval suite scores this honesty.
 
+**Grounding verification.** The no-invention contract is not just instructed, it is *checked*. After every run a pure server-side verifier (`agent/grounding.py`) re-checks each tool-derived claim in the report - CVE identity, CVSS, KEV, EPSS, exploit and ransomware flags, ATT&CK ids - against the tool returns captured from the run's own message history, and stamps a deterministic `grounding` assessment (`grounded` / `suspect` / `not_evaluated`, with per-claim findings) onto the report and into the audit chain. A claim with no backing tool output, or one that contradicts what a tool actually returned, is surfaced as unbacked or mismatched. The frontend renders this as a badge next to the model's self-assessed confidence and a per-claim panel, so the operator sees what was verified, not just what was asserted.
+
 **Hash-chained audit trail.** Every triage appends one row to an append-only SQLite log: SHA-256 digests of query and report, aggregate counts, model, duration. Rows are sealed with `prev_event_hash` / `this_event_hash` over a canonical JSON serialization; `sec-recon-audit verify` walks the chain and exits non-zero on tamper. Digest-only by default: plain query text stays out unless explicitly enabled. Internals in [docs/design.md](docs/design.md#operational-notes).
 
 **Interchange exports.** A finished report renders into SARIF 2.1.0 (for GitHub code scanning) and OpenVEX v0.2.0 via `sec-recon-export` or the stateless `POST /v1/export/{sarif,openvex}` endpoints. The renderers are pure functions of the report: SARIF `level` maps each CVE's own severity while the SSVC verdict passes through verbatim, and OpenVEX statements require the triaged product's purl - product identity is never guessed, so a bare-CVE triage refuses to emit VEX instead of fabricating one.
@@ -166,10 +168,12 @@ Every HIGH finding from an independent security review is mapped to the code cha
 - **Trivy in CI** - both images scanned on dependency changes plus a weekly cron; CRITICAL findings block the merge, HIGH findings land as SARIF in the Security tab. Open findings are triaged with accept rationale in [docs/security_findings.md](docs/security_findings.md).
 - **SBOM gate in CI** - the repository's own dependency tree is scanned by the deterministic gate on dependency changes plus a weekly cron; an Act-grade advisory (KEV / ransomware / imminent exploitation) fails the run, findings land as SARIF, and non-PR runs attest the SBOM + gate report.
 - **Opt-in API auth and per-IP rate limiting**; the MCP port takes a bearer token whenever it is published beyond the compose network - setup in [docs/running.md](docs/running.md).
+- **Denial-of-wallet and kill-switch rails** - a per-request round cap already bounds one run; an opt-in rolling-24h spend ceiling (`DENIAL_OF_WALLET_USD_PER_DAY`) bounds the aggregate an attacker can drive by repeating requests, and a kill-switch (env flag or a per-request sentinel file) disables `/v1/triage` with 503 live, with no redeploy. Both refuse before the agent is built, so a refused request spends nothing.
+- **Opt-in egress allowlist** - a default-deny forward proxy (`make up-egress`) permits outbound HTTPS only to the known feed hosts + the LLM provider, a network-level belt under the per-feed application-level host locks: a tool coerced into a different host cannot connect.
 
 ## Testing
 
-**555 tests (552 fast + 3 slow ChromaDB round-trip tests, excluded from the fast run)**, all network-mocked, no LLM billing. Coverage on the fast suite holds at ~90% with a soft 70% floor. CI matrix-tests Python 3.12 + 3.13.
+**566 tests (563 fast + 3 slow ChromaDB round-trip tests, excluded from the fast run)**, all network-mocked, no LLM billing. Coverage on the fast suite holds at ~90% with a soft 70% floor. CI matrix-tests Python 3.12 + 3.13.
 
 ```bash
 make test                        # full suite (includes the 3 slow tests)
@@ -192,7 +196,7 @@ The browser is the primary interface, in a dark-only "Slate Recon" design system
 - **Guide (`/guide`)** - one explainer card per framework the agent grounds answers in (CVE / CVSS, KEV, EPSS, ATT&CK, ATLAS, SBOM, SSVC, MCP...).
 - **`/r`** - self-contained viewer for shared-report permalinks: the whole report is gzip-encoded in the URL fragment, decoded locally, never sent to a server.
 
-Reports stream live over SSE, render the untrusted-content fence semantically (vendor text is visibly quarantined), and export to Markdown, raw JSON, or print-to-PDF. Component map and SSE wire protocol in [docs/frontend.md](docs/frontend.md).
+Reports stream live over SSE, render the untrusted-content fence semantically (vendor text is visibly quarantined), surface the server-side grounding verification (a badge next to the model's self-assessed confidence plus a collapsible per-claim panel), and export to Markdown, raw JSON, or print-to-PDF. Component map and SSE wire protocol in [docs/frontend.md](docs/frontend.md).
 
 ## Stack
 

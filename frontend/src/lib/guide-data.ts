@@ -168,8 +168,8 @@ export const SECTIONS: Section[] = [
     what:
       "The OWASP Top 10 for Large Language Model Applications is a curated list of the most critical risks in production LLM systems. The 2025 edition covers LLM01 Prompt Injection, LLM02 Sensitive Information Disclosure, LLM03 Supply Chain, LLM04 Data and Model Poisoning, LLM05 Improper Output Handling, LLM06 Excessive Agency, LLM07 System Prompt Leakage, LLM08 Vector & Embedding Weaknesses, LLM09 Misinformation, LLM10 Unbounded Consumption.",
     whyHere:
-      "The mapping is documented in docs/owasp_llm_top10.md with file:line citations to the actual mitigations in the codebase. The system prompt has an explicit untrusted-content fence (LLM01), the audit trail does not persist plaintext queries unless opt-in (LLM02), and the output schema enforces structure to prevent prompt-injection effects from leaking into downstream consumers (LLM05).",
-    used: ["TriageReport schema", "untrusted-content fence", "audit privacy"],
+      "The mapping is documented in docs/owasp_llm_top10.md with file:line citations to the actual mitigations in the codebase. The system prompt has an explicit untrusted-content fence (LLM01), the audit trail does not persist plaintext queries unless opt-in (LLM02), and the output schema enforces structure to prevent prompt-injection effects from leaking into downstream consumers (LLM05). A post-run grounding verifier re-checks every tool-derived claim against the actual tool output and stamps the report grounded or suspect (LLM09 Misinformation), and Unbounded Consumption (LLM10) is bounded by a per-request round cap plus opt-in denial-of-wallet spend ceiling, kill-switch, and egress allowlist.",
+    used: ["TriageReport schema", "untrusted-content fence", "grounding verifier", "denial-of-wallet + kill-switch"],
     refs: [
       { label: "OWASP LLM Top 10 (2025)", href: "https://genai.owasp.org/llm-top-10/" },
     ],
