@@ -50,8 +50,8 @@ const PILLARS = [
     body: "Pydantic AI, the typed Python agent framework, validates every model output against a declared schema at the model boundary. The LLM never returns free text; it returns a TriageReport or it fails.",
   },
   {
-    title: "Grounded, never invented",
-    body: "Every severity, CVSS score, exploit claim, and patch version is sourced from a typed tool call. The reasoning chain is the audit log.",
+    title: "Grounded, and verified grounded",
+    body: "Every severity, CVSS score, exploit claim, and patch version is sourced from a typed tool call. After the run, a server-side verifier re-checks each claim against the actual tool output and stamps the report grounded or suspect. The reasoning chain is the audit log.",
   },
   {
     title: "Adversary-aware",
