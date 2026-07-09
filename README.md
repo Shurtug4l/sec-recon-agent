@@ -187,7 +187,7 @@ The per-area breakdown - tool contracts, adversarial corpus, API, audit hash cha
 
 ## Frontend
 
-The browser is the primary interface, in a dark-only "Slate Recon" design system. Five tabs plus a permalink route:
+The browser is the primary interface, in a dual-theme "Editorial instrument" design system (dark instrument by default, light technical paper via the header toggle). Five tabs plus a permalink route:
 
 - **Home (`/`)** - landing: architecture pipeline, design pillars, tool grid.
 - **Triage (`/triage`)** - query form with example chips, live SSE progress, the report view, and a localStorage history sidebar.
@@ -218,7 +218,7 @@ sec-recon-agent/
 |  +- redteam/        # injection payloads, scorer, CLI
 |  +- mcp_server/     # FastMCP server: 10 tools + models, errors, security, auth, nvd_client
 |  +- config.py, observability.py
-+- frontend/          # Next.js 15 App Router, Slate Recon design system
++- frontend/          # Next.js 15 App Router, dual-theme editorial-instrument design system
 +- tests/             # agent, api, audit, eval, mcp_server, property, redteam, replay, observability
 |  +- cassettes/      # frozen real trajectories replayed as the CI gate (make record-cassettes)
 +- docs/              # design, case study, tools, evaluation, running, frontend, governance mappings

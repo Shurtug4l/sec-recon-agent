@@ -9,7 +9,7 @@ A Next.js 15 (App Router) application on React 19 + TypeScript strict + Tailwind
 It is not a thin wrapper around the FastAPI surface; it adds:
 - A Next.js-side `/api/triage` proxy that lets the browser talk same-origin (no CORS opened on the backend).
 - Provider-hoisted run state so a triage started on one route keeps streaming across navigation, plus a `localStorage`-backed history sidebar (last 30 runs).
-- A dark-only "Slate Recon" design system (no theme toggle) on a single CSS-variable token source.
+- A dual-theme "Editorial instrument" design system (dark instrument / light technical paper) on a single CSS-variable token source, with a hydration-safe theme toggle.
 - Report exports (Markdown, JSON, print-to-PDF) and a zero-infra shareable permalink (the whole report gzip-encoded into the URL fragment).
 - Strip + display of the `<UNTRUSTED_CONTENT>...</UNTRUSTED_CONTENT>` markers as a styled quote block, so the operator sees the security fence semantically without raw XML-tag clutter.
 
@@ -18,21 +18,22 @@ It is not a thin wrapper around the FastAPI surface; it adds:
 ```
 frontend/src/
 ├── app/
-│   ├── layout.tsx               # root layout; loads Inter + JetBrains Mono via next/font
+│   ├── layout.tsx               # root layout; three fonts via next/font + pre-paint theme script
 │   ├── page.tsx                 # landing: split hero (copy + pipeline diagram), pillars, tools
 │   ├── triage/page.tsx          # form + progress stream + report + history sidebar
 │   ├── dashboard/page.tsx       # ARIA tablist: statistics / observability / transparency
 │   ├── scorecard/page.tsx       # static scorecard: sonnet baseline from committed JSONs
 │   ├── guide/page.tsx           # framework explainer with sticky TOC
 │   ├── r/page.tsx               # shared-report viewer: decodes a report from the URL fragment
-│   ├── globals.css              # Tailwind directives + the Slate Recon CSS-variable tokens
+│   ├── globals.css              # Tailwind directives + the dual-theme CSS-variable tokens
 │   └── api/
 │       ├── triage/route.ts      # SSE proxy to http://agent-api:8000/v1/triage
 │       └── meta/route.ts        # proxy to /v1/meta (transparency view)
 │
 ├── components/
 │   ├── providers.tsx            # client wrapper mounting TriageProvider + CommandPaletteProvider
-│   ├── header.tsx               # sticky macro-tab nav + palette trigger + GitHub link
+│   ├── header.tsx               # sticky macro-tab nav + palette trigger + theme toggle + GitHub link
+│   ├── theme-toggle.tsx         # flips data-theme on <html>, persists to localStorage
 │   ├── command-palette.tsx      # Cmd+K provider: keydown listener, command rendering, triage ctx
 │   ├── demo-banner.tsx          # demo-mode banner naming the capture model
 │   ├── triage-form.tsx          # textarea + example chips + Triage/Stop buttons
@@ -53,7 +54,8 @@ frontend/src/
 │
 ├── hooks/
 │   ├── use-triage.tsx           # Provider-backed run state machine, SSE driver, abort, history patch
-│   └── use-history.ts           # localStorage CRUD with quota safety (newest-first, cap 30)
+│   ├── use-history.ts           # localStorage CRUD with quota safety (newest-first, cap 30)
+│   └── use-theme.ts             # subscribes to <html data-theme> (useSyncExternalStore)
 │
 └── lib/
     ├── types.ts                 # mirrors src/sec_recon_agent/agent/schema.py
@@ -69,7 +71,7 @@ frontend/src/
     └── utils.ts                 # cn() class-name merger
 ```
 
-There is no `theme-toggle.tsx`: the app is dark-only (see [Theming](#theming)).
+Theme state deliberately has no React context: `<html data-theme>` is the runtime source of truth and `use-theme.ts` subscribes to the attribute itself, so anything can flip it (see [Theming](#theming)).
 
 ## State model
 
@@ -165,15 +167,27 @@ Fuzzy matching and combobox accessibility come from `cmdk`; the dialog shell is 
 
 ## Theming
 
-**"Slate Recon" - dark-only.** A security triage console reads dark-first, so the app ships one tuned palette instead of a light/dark toggle. It is a cool blue-slate NOC surface with a single cyan signal (`#22D3EE`, main CTA / interactive) and an indigo focus accent (`#818CF8`), in the idiom of Grafana / Datadog / Vercel. It replaced the earlier Catppuccin Latte/Macchiato dual theme.
+**"Editorial instrument" - one design system, two themes.** The dark default is the *instrument*: the cool blue-slate NOC surface inherited from "Slate Recon", with a single cyan signal (`#22D3EE`, main CTA / interactive) and an indigo focus accent (`#818CF8`). The light theme is the *technical paper*: warm off-white (`#F7F5F0`), near-black ink, the cyan darkened to `#0E7490` so it holds contrast on paper. This reverses the earlier dark-only decision (see the decisions log).
 
-All color lives in **one source**: CSS variables in `src/app/globals.css` (HSL channels, so Tailwind's `hsl(var(--token))` and the `/alpha` modifier keep working). There is no `.dark` toggle and no light token set; `color-scheme: dark` is set on `:root`. The categorical chart palette and the diverging severity ramp are also tokens (`--chart-*`, `--severity-*`).
+`data-theme` on `<html>` switches the theme. An inline pre-paint script in `layout.tsx` stamps the stored preference before first paint (falling back to `prefers-color-scheme`, then dark), so there is no theme flash; the header toggle (`theme-toggle.tsx`) flips the attribute and persists to `localStorage`. The toggle renders both icons and lets CSS on `[data-theme]` pick one, so the prerendered HTML is theme-agnostic and hydration never mismatches. `hooks/use-theme.ts` exposes the current theme via `useSyncExternalStore` over an attribute `MutationObserver` - the attribute is the single runtime source of truth, no provider needed.
 
-The severity ramp (`red -> orange -> gold -> blue -> grey`) is deliberately **not** red-vs-green, and every severity/coverage indicator in the UI pairs hue with a shape/icon + text label, so nothing depends on color alone (colorblind- and print-safe). Domain severity classes (`.severity-critical`, ...) resolve from the ramp tokens.
+All color lives in **one source**: CSS variables in `src/app/globals.css` (HSL channels, so Tailwind's `hsl(var(--token))` and the `/alpha` modifier keep working); the light theme overrides the same token names under `:root[data-theme="light"]`. The categorical chart palette and the diverging severity ramp are also tokens (`--chart-*`, `--severity-*`), with ink-weight light variants. Every text token clears WCAG 2.2 AA (>= 4.5:1) against background and card in both themes, and chart fills hold >= 3:1 (verified with a contrast script at P0 time).
 
-One deliberate duplication: `components/dashboard/charts.tsx` holds the severity + categorical colors as literal hex because Recharts writes them onto SVG `fill` attributes, where CSS custom properties do not resolve. Those literals mirror the `--severity-*` / `--chart-*` tokens; `globals.css` is the canonical source and the two are kept in sync by hand (noted in the file).
+The severity ramp (`red -> orange -> gold -> blue -> grey`) is deliberately **not** red-vs-green, and every severity/coverage indicator in the UI pairs hue with a shape/icon + text label, so nothing depends on color alone (colorblind- and print-safe). Domain severity classes (`.severity-critical`, ...) resolve from the ramp tokens and are theme-aware for free.
 
-Fonts are loaded via `next/font` (Inter for sans, JetBrains Mono for mono) and exposed as `--font-sans` / `--font-mono`; the Tailwind `fontFamily` tokens point at those variables. Telemetry (CVE IDs, ports, scores, token counts) renders in JetBrains Mono with `tabular-nums`.
+One deliberate duplication: `components/dashboard/charts.tsx` holds the severity + categorical colors as literal hex, one set per theme, because Recharts writes them onto SVG `fill` attributes, where CSS custom properties do not resolve. Those literals mirror the `--severity-*` / `--chart-*` tokens; `globals.css` is the canonical source and the sets are kept in sync by hand (noted in the file). Charts re-render on theme flips through `use-theme.ts`.
+
+### Type, texture, motion
+
+Three typographic voices, all self-hosted via `next/font` (no request leaves the page):
+
+- **Hanken Grotesk** (`--font-sans`): body and UI copy.
+- **IBM Plex Mono** (`--font-mono`): the telemetry voice - CVE IDs, ports, CVSS / EPSS scores, token counts - with `tabular-nums` so numerals align in columns.
+- **Martian Mono** (`--font-display`): the display voice on `h1`/`h2` (base rule in `globals.css`, pages inherit it) and opt-in via the `font-display` utility for verdicts and hero numerals. A wide instrument face, reserved for short strings.
+
+The type scale is perfect-fourth (ratio 1.333) from `text-xl` up, where hierarchy lives; `xs`-`lg` keep Tailwind defaults because the telemetry-dense UI (tables, badges, coverage strips) depends on them.
+
+Texture and motion are token-level primitives in `globals.css`: a monochrome SVG film grain inlined as a data URI overlays the page at 3.5-5% opacity per theme (`--grain-opacity`); `.rule-hairline` and `.scanline-overlay` are the editorial hairline / scanline surfaces (the scanline is reserved for the hero); `.reveal` and `.draw-in` are CSS-only staggered page-load primitives (`--reveal-i` sets the stagger index). All of it is neutralized by the `prefers-reduced-motion` block without per-call-site work.
 
 ## Build
 
@@ -242,12 +256,13 @@ npm run build        # production build
 |---|---|---|
 | Next.js 15 App Router | Same React/TS stack the target roles cite, plus a built-in API route for the SSE proxy | Vite SPA (no native API route) |
 | shadcn-style primitives (Radix + CVA, copied) | Small bundle, design tokens flow into Tailwind via CSS variables | Component libraries (MUI / Mantine) - too heavy, design lock-in |
-| Dark-only "Slate Recon" on one token source | A security console is dark-first; one tuned palette beats a maintained light/dark pair, and single-source kills the earlier three-way color drift | Catppuccin dual theme + toggle - dev-dotfiles read, colors fragmented across CSS / charts / diagram |
+| Dark-only "Slate Recon" on one token source *(superseded 2026-07-09)* | A security console is dark-first; one tuned palette beats a maintained light/dark pair, and single-source kills the earlier three-way color drift | Catppuccin dual theme + toggle - dev-dotfiles read, colors fragmented across CSS / charts / diagram |
+| Dual-theme "Editorial instrument" foundation (reverses dark-only) | The audience reads in both contexts and a light "technical paper" voice fits the report-heavy surfaces; distinctive type (Martian Mono / IBM Plex Mono / Hanken Grotesk) breaks the generic dark-dashboard idiom; the single token source survives the reversal (light overrides the same variables, charts mirror per theme), so the color drift dark-only killed stays dead | Staying dark-only (stock Grafana/Vercel read, no light-context readability); `next-themes` (a dependency for what a 6-line pre-paint script + one `useSyncExternalStore` hook do) |
 | Real node waterfall from client-timestamped `node` events | Honest measured timing on a transparency-thesis project; zero backend change | Even-split synthesis by `reasoning_chain` length - fabricated, retired |
 | Permalink via URL fragment (`#r=`, gzip+base64url) | Shareable report with no backend, no storage; the fragment never reaches the server | Server-side share links - would require a DB, an ID scheme, and a leak surface |
 | Plain Tailwind animations, `prefers-reduced-motion` guard | Type-safe, zero runtime cost, respects the OS motion preference | framer-motion 11.x - TS strict mode conflicts with motion.* + onClick |
 | `localStorage` history | Demo scope, no backend persistence needed | Server-side history - would require a DB and auth |
 | `fetch()` + ReadableStream for SSE | EventSource does not support POST body; the parser is 50 lines | Vercel AI SDK - wrong protocol shape |
 | `output: "standalone"` Docker | ~150 MB image, no separate nginx | Static export - loses the `/api/triage` route (used only for the keyless demo build, where the routes are stashed) |
-| `cmdk` command palette, exact-pinned | Fuzzy ranking + combobox a11y over 57 items beats hand-rolling; unstyled, so Slate Recon tokens apply untouched | Hand-rolled listbox + filter (a11y/focus surface too large for the payoff); kbar (heavier, animation dep); cmdk's built-in `Command.Dialog` (no `DialogTitle`, trips Radix's a11y console error - dialog shell composed from radix-dialog directly instead) |
+| `cmdk` command palette, exact-pinned | Fuzzy ranking + combobox a11y over 57 items beats hand-rolling; unstyled, so the design tokens apply untouched | Hand-rolled listbox + filter (a11y/focus surface too large for the payoff); kbar (heavier, animation dep); cmdk's built-in `Command.Dialog` (no `DialogTitle`, trips Radix's a11y console error - dialog shell composed from radix-dialog directly instead) |
 | Grounding render = badge + findings-only panel | The wire already carries a bounded assessment (counters + non-supported claims); rendering exactly that keeps the UI honest about what the server verified, and the badge/panel split mirrors the SSVC authority pattern | Raw tool-payload evidence viewer - per-tool payloads never reach the SSE stream by design (bounded payload); shipping them to the browser would be a second provenance channel to secure and size |
