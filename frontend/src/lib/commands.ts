@@ -9,6 +9,7 @@ import {
   ExternalLink,
   FileSearch,
   Home,
+  Library,
   MessageSquare,
   Play,
   Printer,
@@ -176,7 +177,8 @@ const PAGES: PaletteCommand[] = [
   { href: "/dashboard", label: "Dashboard", icon: BarChart3, keywords: ["metrics", "charts"] },
   { href: "/scorecard", label: "Scorecard", icon: ClipboardCheck, keywords: ["eval", "golden", "redteam"] },
   { href: "/case-study", label: "Case study", icon: FileSearch, keywords: ["narrative", "design", "threat model", "injection"] },
-  { href: "/guide", label: "Guide", icon: BookOpen, keywords: ["glossary", "docs", "help"] },
+  { href: "/docs", label: "Docs", icon: Library, keywords: ["documentation", "design", "reference", "governance", "manual"] },
+  { href: "/guide", label: "Guide", icon: BookOpen, keywords: ["glossary", "help"] },
 ].map(({ href, label, icon, keywords }) => ({
   id: `page:${href}`,
   label: `Go to ${label}`,

@@ -43,6 +43,16 @@ jobs:
         # peers a React 19 RC tag that GA satisfies in practice.
         run: npm ci --no-audit --no-fund --legacy-peer-deps
 
+      - name: Docs corpus is fresh
+        # The /docs route renders from src/lib/docs-generated.json, generated
+        # from docs/*.md at build time and committed (the Docker build context
+        # is frontend/ only, so it cannot regenerate). Regenerate here — where
+        # the full repo is checked out — and fail if the committed copy drifted.
+        run: |
+          npm run generate:docs
+          git diff --exit-code src/lib/docs-generated.json \
+            || { echo "::error::docs-generated.json is stale — run 'npm run generate:docs' in frontend/ and commit"; exit 1; }
+
       - name: Lint (ESLint flat config)
         run: npm run lint
 
