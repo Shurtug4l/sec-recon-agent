@@ -15,6 +15,7 @@ import {
 
 import { useCommandPalette } from "@/components/command-palette";
 import { GithubLogo } from "@/components/icons/github-logo";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -78,6 +79,7 @@ export function Header() {
               </kbd>
             )}
           </button>
+          <ThemeToggle />
           <a
             href="https://github.com/Shurtug4l/sec-recon-agent"
             target="_blank"

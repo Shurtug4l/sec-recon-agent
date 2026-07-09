@@ -12,34 +12,58 @@ import {
   YAxis,
 } from "recharts";
 
+import { useTheme, type Theme } from "@/hooks/use-theme";
 import { cn } from "@/lib/utils";
 
-// Slate Recon severity + categorical palette. Kept as literal hex here because
-// Recharts writes SVG `fill` attributes, where CSS custom properties do not
-// resolve. These MIRROR the --severity-* and --chart-* tokens in globals.css;
-// keep the two in sync (globals.css is the canonical source).
-const SEVERITY_COLORS: Record<string, string> = {
-  critical: "#FF5964",
-  high: "#FF8A3D",
-  medium: "#FFC24B",
-  low: "#4CC3FF",
-  info: "#8592A6",
+// Severity + categorical palette, one set per theme. Kept as literal hex here
+// because Recharts writes SVG `fill` attributes, where CSS custom properties
+// do not resolve. These MIRROR the --severity-* and --chart-* tokens in
+// globals.css; keep them in sync per theme (globals.css is the canonical
+// source). useTheme() re-renders the charts when <html data-theme> flips.
+const SEVERITY_COLORS: Record<Theme, Record<string, string>> = {
+  dark: {
+    critical: "#FF5964",
+    high: "#FF8A3D",
+    medium: "#FFC24B",
+    low: "#4CC3FF",
+    info: "#8592A6",
+  },
+  light: {
+    critical: "#B2202E",
+    high: "#B34E00",
+    medium: "#8F6A00",
+    low: "#0A66A5",
+    info: "#5A6472",
+  },
 };
 
-const FALLBACK_COLOR = "#8592A6";
+const FALLBACK_COLOR: Record<Theme, string> = { dark: "#8592A6", light: "#5A6472" };
 
-const TOOL_COLORS = [
-  "#5CB8EE",
-  "#E39A38",
-  "#9A5CEA",
-  "#E8566E",
-  "#ECE87A",
-  "#B85E93",
-  "#5A78D6",
-  "#A89A5E",
-];
+const TOOL_COLORS: Record<Theme, string[]> = {
+  dark: [
+    "#5CB8EE",
+    "#E39A38",
+    "#9A5CEA",
+    "#E8566E",
+    "#ECE87A",
+    "#B85E93",
+    "#5A78D6",
+    "#A89A5E",
+  ],
+  light: [
+    "#2273A8",
+    "#B26A08",
+    "#7A4BC4",
+    "#C23A57",
+    "#877D0C",
+    "#A63E7C",
+    "#4A5FC9",
+    "#8A7440",
+  ],
+};
 
 export function SeverityBarChart({ data }: { data: Array<{ severity: string; count: number }> }) {
+  const { theme } = useTheme();
   return (
     <ResponsiveContainer width="100%" height={220}>
       <BarChart
@@ -75,7 +99,7 @@ export function SeverityBarChart({ data }: { data: Array<{ severity: string; cou
           {data.map((entry) => (
             <Cell
               key={entry.severity}
-              fill={SEVERITY_COLORS[entry.severity] ?? FALLBACK_COLOR}
+              fill={SEVERITY_COLORS[theme][entry.severity] ?? FALLBACK_COLOR[theme]}
             />
           ))}
         </Bar>
@@ -85,6 +109,7 @@ export function SeverityBarChart({ data }: { data: Array<{ severity: string; cou
 }
 
 export function ToolsPieChart({ data }: { data: Array<{ tool: string; count: number }> }) {
+  const { theme } = useTheme();
   const nonZero = data.filter((d) => d.count > 0);
   if (nonZero.length === 0) {
     return (
@@ -109,7 +134,7 @@ export function ToolsPieChart({ data }: { data: Array<{ tool: string; count: num
           strokeWidth={2}
         >
           {nonZero.map((entry, i) => (
-            <Cell key={entry.tool} fill={TOOL_COLORS[i % TOOL_COLORS.length]} />
+            <Cell key={entry.tool} fill={TOOL_COLORS[theme][i % TOOL_COLORS[theme].length]} />
           ))}
         </Pie>
         <Tooltip
@@ -127,6 +152,7 @@ export function ToolsPieChart({ data }: { data: Array<{ tool: string; count: num
 }
 
 export function ToolLegend({ data }: { data: Array<{ tool: string; count: number }> }) {
+  const { theme } = useTheme();
   const nonZero = data.filter((d) => d.count > 0);
   if (nonZero.length === 0) return null;
   return (
@@ -135,7 +161,7 @@ export function ToolLegend({ data }: { data: Array<{ tool: string; count: number
         <li key={entry.tool} className="flex items-center gap-2">
           <span
             className="inline-block h-2.5 w-2.5 rounded-full"
-            style={{ background: TOOL_COLORS[i % TOOL_COLORS.length] }}
+            style={{ background: TOOL_COLORS[theme][i % TOOL_COLORS[theme].length] }}
           />
           <span className="font-mono">{entry.tool}</span>
           <span className={cn("ml-auto tabular-nums text-muted-foreground")}>{entry.count}</span>
