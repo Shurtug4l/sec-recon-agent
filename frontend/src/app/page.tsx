@@ -26,10 +26,17 @@ import {
 
 import { Header } from "@/components/header";
 import { GithubLogo } from "@/components/icons/github-logo";
+import { SsvcLadderHero } from "@/components/ssvc-ladder-hero";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+
+// Stagger index for the hero's page-load reveal (P0 `.reveal` primitive;
+// neutralized under prefers-reduced-motion).
+function reveal(i: number): React.CSSProperties {
+  return { "--reveal-i": i } as React.CSSProperties;
+}
 
 const TOOLS = [
   { name: "cve_lookup", icon: FileSearch, blurb: "Full NVD record (CVSS, CWE, CPE) for a known CVE." },
@@ -100,7 +107,9 @@ export default function Landing() {
     <div className="flex min-h-screen flex-col bg-background">
       <Header />
       <main className="flex-1">
-        {/* Hero - split: copy + a real signature (the live pipeline diagram) */}
+        {/* Hero - split: copy + the signature moment (the SSVC ladder reading
+            real captured verdicts). The pipeline diagram moved to its own
+            "How it works" section below. */}
         <section className="relative overflow-hidden border-b border-border/60">
           <div
             aria-hidden
@@ -109,15 +118,23 @@ export default function Landing() {
           <div className="container relative max-w-6xl py-14 md:py-20">
             <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-14">
               <div>
-                <Badge variant="secondary" className="mb-4 font-mono text-[10px]">
-                  Pydantic AI · MCP · 10 typed tools
-                </Badge>
-                <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">
+                <div className="reveal" style={reveal(0)}>
+                  <Badge variant="secondary" className="mb-4 font-mono text-[10px]">
+                    Pydantic AI · MCP · 10 typed tools
+                  </Badge>
+                </div>
+                <h1
+                  className="reveal text-4xl font-semibold tracking-tight md:text-5xl"
+                  style={reveal(1)}
+                >
                   Security triage that
                   <br />
                   cites its sources.
                 </h1>
-                <p className="mt-6 max-w-xl text-base leading-relaxed text-muted-foreground">
+                <p
+                  className="reveal mt-6 max-w-xl text-base leading-relaxed text-muted-foreground"
+                  style={reveal(2)}
+                >
                   <span className="font-mono text-foreground">sec-recon-agent</span>{" "}
                   is an LLM agent that answers vulnerability questions by calling
                   a fixed surface of typed tools (NVD, CISA KEV, FIRST EPSS,
@@ -129,7 +146,7 @@ export default function Landing() {
                   No hallucinated CVSS scores, no invented patches, no free-text
                   bypass.
                 </p>
-                <div className="mt-8 flex flex-wrap items-center gap-3">
+                <div className="reveal mt-8 flex flex-wrap items-center gap-3" style={reveal(3)}>
                   <Button asChild size="lg">
                     <Link href="/triage">
                       Start a triage <ArrowRight className="h-4 w-4" />
@@ -150,16 +167,36 @@ export default function Landing() {
                     </a>
                   </Button>
                 </div>
-                <HeroStats />
+                <div className="reveal" style={reveal(4)}>
+                  <HeroStats />
+                </div>
               </div>
-              <div className="lg:pl-2">
-                <ArchitectureDiagram />
-                <p className="mt-3 text-center text-[11px] leading-relaxed text-muted-foreground">
-                  Cross-process W3C <code className="font-mono">traceparent</code>{" "}
-                  · browser talks only to the same-origin proxy · SHA-256
-                  hash-chained, tamper-evident audit.
-                </p>
+              <div className="reveal lg:pl-2" style={reveal(2)}>
+                <SsvcLadderHero />
               </div>
+            </div>
+          </div>
+        </section>
+
+        {/* How it works - the pipeline diagram, promoted from the hero to its
+            own skimmable section. */}
+        <section className="border-b border-border/60">
+          <div className="container max-w-5xl py-12 md:py-16">
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              How it works
+            </h2>
+            <p className="mt-4 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+              The browser streams one triage over SSE through a same-origin
+              proxy; the agent fans out across the typed tool surface and the
+              verdict comes back schema-bound, audited, and grounded.
+            </p>
+            <div className="mx-auto max-w-3xl">
+              <ArchitectureDiagram />
+              <p className="mt-3 text-center text-[11px] leading-relaxed text-muted-foreground">
+                Cross-process W3C <code className="font-mono">traceparent</code>{" "}
+                · browser talks only to the same-origin proxy · SHA-256
+                hash-chained, tamper-evident audit.
+              </p>
             </div>
           </div>
         </section>
@@ -338,7 +375,7 @@ function HeroStats() {
     <dl className="mt-10 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-4">
       {HERO_STATS.map((stat) => (
         <div key={stat.label} className="bg-card px-3 py-3">
-          <dt className="font-mono text-lg font-semibold tabular-nums text-primary">
+          <dt className="font-display text-lg font-semibold tabular-nums text-primary">
             {stat.value}
           </dt>
           <dd className="mt-0.5 text-[11px] leading-tight text-muted-foreground">
