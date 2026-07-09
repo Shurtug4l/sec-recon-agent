@@ -4,8 +4,6 @@ import {
   Bar,
   BarChart,
   Cell,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -13,13 +11,14 @@ import {
 } from "recharts";
 
 import { useTheme, type Theme } from "@/hooks/use-theme";
-import { cn } from "@/lib/utils";
 
-// Severity + categorical palette, one set per theme. Kept as literal hex here
-// because Recharts writes SVG `fill` attributes, where CSS custom properties
-// do not resolve. These MIRROR the --severity-* and --chart-* tokens in
-// globals.css; keep them in sync per theme (globals.css is the canonical
-// source). useTheme() re-renders the charts when <html data-theme> flips.
+// Severity ramp, one hex set per theme. Kept as literal hex here because
+// Recharts writes SVG `fill` attributes, where CSS custom properties do not
+// resolve. These MIRROR the --severity-* tokens in globals.css; keep them in
+// sync per theme (globals.css is the canonical source). useTheme() re-renders
+// the chart when <html data-theme> flips. Plain-DOM charts (ToolActivityBars,
+// the observability waterfall) consume hsl(var(--chart-*)) directly and need
+// no mirror.
 const SEVERITY_COLORS: Record<Theme, Record<string, string>> = {
   dark: {
     critical: "#FF5964",
@@ -38,29 +37,6 @@ const SEVERITY_COLORS: Record<Theme, Record<string, string>> = {
 };
 
 const FALLBACK_COLOR: Record<Theme, string> = { dark: "#8592A6", light: "#5A6472" };
-
-const TOOL_COLORS: Record<Theme, string[]> = {
-  dark: [
-    "#5CB8EE",
-    "#E39A38",
-    "#9A5CEA",
-    "#E8566E",
-    "#ECE87A",
-    "#B85E93",
-    "#5A78D6",
-    "#A89A5E",
-  ],
-  light: [
-    "#2273A8",
-    "#B26A08",
-    "#7A4BC4",
-    "#C23A57",
-    "#877D0C",
-    "#A63E7C",
-    "#4A5FC9",
-    "#8A7440",
-  ],
-};
 
 export function SeverityBarChart({ data }: { data: Array<{ severity: string; count: number }> }) {
   const { theme } = useTheme();
@@ -95,7 +71,10 @@ export function SeverityBarChart({ data }: { data: Array<{ severity: string; cou
           itemStyle={{ color: "hsl(var(--popover-foreground))" }}
           cursor={{ fill: "hsl(var(--accent))", opacity: 0.3 }}
         />
-        <Bar dataKey="count" radius={[6, 6, 0, 0]} isAnimationActive={false}>
+        {/* Mark spec: thin bars (cap 24px), 4px rounded data-end, square at
+            the baseline. The x-axis label carries identity; the severity hue
+            is redundant reinforcement, never the only channel. */}
+        <Bar dataKey="count" maxBarSize={24} radius={[4, 4, 0, 0]} isAnimationActive={false}>
           {data.map((entry) => (
             <Cell
               key={entry.severity}
@@ -108,65 +87,53 @@ export function SeverityBarChart({ data }: { data: Array<{ severity: string; cou
   );
 }
 
-export function ToolsPieChart({ data }: { data: Array<{ tool: string; count: number }> }) {
-  const { theme } = useTheme();
-  const nonZero = data.filter((d) => d.count > 0);
-  if (nonZero.length === 0) {
+// Tool usage is one series over nominal categories (the tools), so every bar
+// wears the same slot-1 hue and the row label carries identity: a magnitude
+// comparison, not a part-to-whole. This replaced the former donut, which
+// cycled 8 hues across 10 tools (indistinguishable pairs under CVD) and asked
+// the reader to compare close angular slices. Plain DOM, so the fill reads
+// hsl(var(--chart-1)) straight from the theme tokens.
+export function ToolActivityBars({ data }: { data: Array<{ tool: string; count: number }> }) {
+  const active = data
+    .filter((d) => d.count > 0)
+    .sort((a, b) => b.count - a.count || a.tool.localeCompare(b.tool));
+  const unused = data.filter((d) => d.count === 0).map((d) => d.tool);
+
+  if (active.length === 0) {
     return (
       <div className="flex h-[220px] items-center justify-center text-xs text-muted-foreground">
         No tool calls yet.
       </div>
     );
   }
-  return (
-    <ResponsiveContainer width="100%" height={220}>
-      <PieChart>
-        <Pie
-          data={nonZero}
-          dataKey="count"
-          nameKey="tool"
-          cx="50%"
-          cy="50%"
-          outerRadius={80}
-          innerRadius={40}
-          paddingAngle={2}
-          stroke="hsl(var(--background))"
-          strokeWidth={2}
-        >
-          {nonZero.map((entry, i) => (
-            <Cell key={entry.tool} fill={TOOL_COLORS[theme][i % TOOL_COLORS[theme].length]} />
-          ))}
-        </Pie>
-        <Tooltip
-          contentStyle={{
-            background: "hsl(var(--popover))",
-            border: "1px solid hsl(var(--border))",
-            borderRadius: "var(--radius)",
-            color: "hsl(var(--popover-foreground))",
-            fontSize: 12,
-          }}
-        />
-      </PieChart>
-    </ResponsiveContainer>
-  );
-}
 
-export function ToolLegend({ data }: { data: Array<{ tool: string; count: number }> }) {
-  const { theme } = useTheme();
-  const nonZero = data.filter((d) => d.count > 0);
-  if (nonZero.length === 0) return null;
+  const max = active[0].count;
   return (
-    <ul className="space-y-1.5 text-xs">
-      {nonZero.map((entry, i) => (
-        <li key={entry.tool} className="flex items-center gap-2">
-          <span
-            className="inline-block h-2.5 w-2.5 rounded-full"
-            style={{ background: TOOL_COLORS[theme][i % TOOL_COLORS[theme].length] }}
-          />
-          <span className="font-mono">{entry.tool}</span>
-          <span className={cn("ml-auto tabular-nums text-muted-foreground")}>{entry.count}</span>
-        </li>
-      ))}
-    </ul>
+    <div className="space-y-3">
+      <ol className="space-y-2">
+        {active.map((d) => (
+          <li
+            key={d.tool}
+            className="grid grid-cols-[9.5rem_1fr_2.5rem] items-center gap-x-3 text-xs"
+          >
+            <span className="truncate font-mono text-muted-foreground" title={d.tool}>
+              {d.tool}
+            </span>
+            <span className="border-l border-border py-0.5">
+              <span
+                className="block h-2 rounded-r-[4px] bg-[hsl(var(--chart-1))]"
+                style={{ width: `${(d.count / max) * 100}%`, minWidth: "3px" }}
+              />
+            </span>
+            <span className="text-right font-mono tabular-nums text-foreground">{d.count}</span>
+          </li>
+        ))}
+      </ol>
+      {unused.length > 0 && (
+        <p className="text-[10px] leading-relaxed text-muted-foreground">
+          Not called in this history: {unused.join(", ")}.
+        </p>
+      )}
+    </div>
   );
 }

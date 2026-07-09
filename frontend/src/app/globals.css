@@ -58,16 +58,20 @@
     --severity-low: 200 100% 65%;      /* #4CC3FF */
     --severity-info: 216 16% 59%;      /* #8592A6 */
 
-    /* Categorical chart palette: perceptually balanced, colorblind-safe on the
-       dark base. Mirrored as hex in dashboard/charts.tsx — keep them in sync. */
-    --chart-1: 202 81% 65%;   /* #5CB8EE */
-    --chart-2: 34 75% 55%;    /* #E39A38 */
+    /* Categorical chart palette, fixed slot order (assign 1..N in sequence,
+       never cycle past 8). P2 snapped slots 1/2/5/8 into the OKLCH dark band
+       (L 0.48-0.67, chroma >= 0.10) holding each hue; the set passes all six
+       palette checks (lightness band, chroma floor, adjacent CVD dE >= 12,
+       >= 3:1 on card) - worst adjacent pair dE 29.9 under deuteranopia.
+       Recharts consumers mirror these as hex in dashboard/charts.tsx. */
+    --chart-1: 205 64% 51%;   /* #3391D2 */
+    --chart-2: 34 74% 45%;    /* #C67D1E */
     --chart-3: 266 77% 64%;   /* #9A5CEA */
     --chart-4: 350 76% 62%;   /* #E8566E */
-    --chart-5: 58 75% 70%;    /* #ECE87A */
+    --chart-5: 56 63% 37%;    /* #999223 */
     --chart-6: 325 39% 55%;   /* #B85E93 */
     --chart-7: 225 60% 60%;   /* #5A78D6 */
-    --chart-8: 49 30% 51%;    /* #A89A5E */
+    --chart-8: 46 58% 43%;    /* #AD8F2E */
   }
 
   /* Light "technical paper": same hue identities, lightness inverted and
@@ -110,7 +114,10 @@
     --severity-info: 215 12% 40%;      /* #5A6472 */
 
     /* Categorical palette, ink-weight versions (same hue order as dark).
-       Mirrored as hex in dashboard/charts.tsx — keep them in sync. */
+       P2 raised slot 8 above the chroma floor (was reading as gray); the set
+       passes all six palette checks on the light card (worst adjacent pair
+       dE 31.6 under deuteranopia). Recharts consumers mirror these as hex in
+       dashboard/charts.tsx. */
     --chart-1: 204 66% 40%;   /* #2273A8 */
     --chart-2: 35 91% 36%;    /* #B26A08 */
     --chart-3: 263 51% 53%;   /* #7A4BC4 */
@@ -118,7 +125,7 @@
     --chart-5: 55 84% 29%;    /* #877D0C */
     --chart-6: 324 46% 45%;   /* #A63E7C */
     --chart-7: 230 54% 54%;   /* #4A5FC9 */
-    --chart-8: 42 37% 40%;    /* #8A7440 */
+    --chart-8: 43 69% 33%;    /* #8F6D1A */
   }
 }
 

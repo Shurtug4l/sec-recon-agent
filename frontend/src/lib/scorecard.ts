@@ -200,6 +200,23 @@ export function calibrationMetrics(): CalibrationMetrics {
   return { bins, ece };
 }
 
+export interface CaseEfficiency {
+  id: string;
+  seconds: number;
+  costUsd: number | null;
+}
+
+// Per-case latency and cost for the efficiency strip: the same 11 runs the
+// p50/p95 aggregates are computed from, exposed individually so the page can
+// show the distribution instead of two opaque percentiles.
+export function perCaseEfficiency(): CaseEfficiency[] {
+  return evalCases.map((c) => ({
+    id: c.id,
+    seconds: c.elapsed_seconds,
+    costUsd: c.usage.cost_usd,
+  }));
+}
+
 export function redteamMetrics(): RedteamSnapshot {
   return redteam;
 }
