@@ -43,7 +43,7 @@ export default function SharedReportPage() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <Header />
-      <main className="container max-w-3xl flex-1 py-8">
+      <main id="main-content" tabIndex={-1} className="container max-w-3xl flex-1 py-8 focus-visible:outline-none">
         {status === "loading" && (
           <p className="py-16 text-center text-sm text-muted-foreground">
             Decoding shared report...

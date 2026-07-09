@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -10,9 +10,11 @@ import {
   FileSearch,
   Home,
   Library,
+  Menu,
   MessageSquare,
   Search,
   ShieldAlert,
+  X,
 } from "lucide-react";
 
 import { useCommandPalette } from "@/components/command-palette";
@@ -30,26 +32,84 @@ const TABS = [
   { href: "/guide", label: "Guide", icon: BookOpen, match: (p: string) => p.startsWith("/guide") },
 ];
 
+// Focus ring shared by every interactive element in the bar.
+const RING =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+
 export function Header() {
   const pathname = usePathname();
   const { openPalette } = useCommandPalette();
   // Set after mount so the prerendered HTML (no kbd) matches the first
   // client render; the platform is only knowable client-side.
   const [modKey, setModKey] = useState<string | null>(null);
+  // Seven routes never fit a phone bar inline; below lg they collapse behind
+  // this disclosure. A non-modal menu (no focus trap): Escape and outside
+  // click close it, navigation closes it, focus returns to the trigger.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
   useEffect(() => {
     setModKey(/Mac|iP(hone|ad|od)/.test(navigator.platform) ? "⌘" : "Ctrl");
   }, []);
+
+  // Close on route change (a link in the panel navigated).
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
+
+  // Escape + outside-click dismissal while open.
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setMenuOpen(false);
+        triggerRef.current?.focus();
+      }
+    }
+    function onPointer(e: MouseEvent) {
+      const t = e.target as Node;
+      if (
+        panelRef.current &&
+        !panelRef.current.contains(t) &&
+        triggerRef.current &&
+        !triggerRef.current.contains(t)
+      ) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onPointer);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onPointer);
+    };
+  }, [menuOpen]);
+
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-14 items-center justify-between gap-4">
-        <Link href="/" className="flex items-center gap-2 shrink-0">
+      {/* Keyboard bypass for the repeated nav block (WCAG 2.4.1). */}
+      <a
+        href="#main-content"
+        className={cn(
+          "sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-2.5 focus:z-50 focus:rounded-md focus:bg-primary focus:px-3 focus:py-1.5 focus:text-sm focus:font-medium focus:text-primary-foreground",
+          RING,
+        )}
+      >
+        Skip to content
+      </a>
+      <div className="container flex h-14 items-center justify-between gap-3">
+        <Link href="/" className="flex shrink-0 items-center gap-2" aria-label="sec-recon-agent home">
           <ShieldAlert className="h-5 w-5 text-primary" />
-          <span className="font-mono text-sm font-semibold">sec-recon-agent</span>
-          <span className="hidden text-xs text-muted-foreground md:inline">
-            · Pydantic AI + MCP security triage
+          <span className="hidden font-mono text-sm font-semibold sm:inline">sec-recon-agent</span>
+          <span className="hidden text-xs text-muted-foreground xl:inline">
+            &middot; Pydantic AI + MCP security triage
           </span>
         </Link>
-        <nav className="flex items-center gap-1">
+
+        {/* Desktop primary nav: labelled tabs from lg up (they need the room;
+            below lg the disclosure carries them). */}
+        <nav aria-label="Primary" className="hidden items-center gap-1 lg:flex">
           {TABS.map(({ href, label, icon: Icon, match }) => {
             const active = match(pathname);
             return (
@@ -57,31 +117,35 @@ export function Header() {
                 key={href}
                 href={href}
                 aria-current={active ? "page" : undefined}
-                // Icon-only below md so seven tabs + search + toggle + repo fit
-                // a phone width; the label is the accessible name throughout.
-                aria-label={label}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background md:px-3",
+                  "inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors xl:px-3",
+                  RING,
                   active
                     ? "bg-accent text-accent-foreground"
                     : "text-muted-foreground hover:bg-accent hover:text-foreground",
                 )}
               >
-                <Icon className="h-3.5 w-3.5" />
-                <span className="hidden md:inline">{label}</span>
+                <Icon className="h-3.5 w-3.5 shrink-0" />
+                {label}
               </Link>
             );
           })}
+        </nav>
+
+        <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={openPalette}
             aria-label="Open command palette"
-            className="ml-1 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+              RING,
+            )}
           >
             <Search className="h-3.5 w-3.5" />
-            <span className="hidden md:inline">Search...</span>
+            <span className="hidden lg:inline">Search...</span>
             {modKey && (
-              <kbd className="hidden rounded border border-border bg-muted px-1.5 font-mono text-[10px] text-muted-foreground md:inline">
+              <kbd className="hidden rounded border border-border bg-muted px-1.5 font-mono text-[10px] text-muted-foreground lg:inline">
                 {modKey}K
               </kbd>
             )}
@@ -92,12 +156,61 @@ export function Header() {
             target="_blank"
             rel="noopener noreferrer"
             aria-label="GitHub repository"
-            className="ml-2 inline-flex items-center justify-center rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className={cn(
+              "inline-flex items-center justify-center rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+              RING,
+            )}
           >
             <GithubLogo className="h-4 w-4" />
           </a>
-        </nav>
+          <button
+            ref={triggerRef}
+            type="button"
+            onClick={() => setMenuOpen((o) => !o)}
+            aria-label={menuOpen ? "Close menu" : "Open menu"}
+            aria-expanded={menuOpen}
+            aria-controls="mobile-nav"
+            className={cn(
+              "inline-flex items-center justify-center rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:hidden",
+              RING,
+            )}
+          >
+            {menuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+          </button>
+        </div>
       </div>
+
+      {/* Disclosure panel: the same seven routes stacked, below lg only. */}
+      {menuOpen && (
+        <div
+          ref={panelRef}
+          id="mobile-nav"
+          className="border-t border-border bg-background/95 backdrop-blur lg:hidden"
+        >
+          <nav aria-label="Primary" className="container flex flex-col gap-0.5 py-2">
+            {TABS.map(({ href, label, icon: Icon, match }) => {
+              const active = match(pathname);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "inline-flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
+                    RING,
+                    active
+                      ? "bg-accent text-accent-foreground"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                  )}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  {label}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+      )}
     </header>
   );
 }

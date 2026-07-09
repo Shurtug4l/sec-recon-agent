@@ -64,9 +64,10 @@ export function HistorySidebar({ entries, selectedId, onSelect, onClear }: Props
               <button
                 key={entry.id}
                 type="button"
+                aria-pressed={selectedId === entry.id}
                 onClick={() => onSelect(entry.id)}
                 className={cn(
-                  "w-full animate-fade-in rounded-md p-3 text-left transition-colors hover:bg-accent",
+                  "w-full animate-fade-in rounded-md p-3 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   selectedId === entry.id && "bg-accent",
                 )}
               >

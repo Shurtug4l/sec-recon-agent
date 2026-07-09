@@ -328,7 +328,7 @@ export default function GuidePage() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <Header />
-      <main className="flex-1">
+      <main id="main-content" tabIndex={-1} className="flex-1 focus-visible:outline-none">
         <div className="container max-w-6xl py-8">
           <div className="mb-6">
             <Badge variant="secondary" className="mb-3 font-mono text-[10px]">
@@ -428,7 +428,7 @@ function RailLink({ item, active }: { item: GuideItem; active: boolean }) {
         "shrink-0 whitespace-nowrap rounded-full border border-border px-3 py-1.5 text-xs transition-colors",
         "lg:block lg:rounded-none lg:border-0 lg:border-l-2 lg:px-3 lg:py-1.5",
         active
-          ? "border-primary bg-primary/10 text-primary lg:border-l-primary lg:bg-transparent"
+          ? "border-primary bg-primary/10 text-foreground lg:border-l-primary lg:bg-transparent lg:text-primary"
           : "text-muted-foreground hover:border-primary/40 hover:text-foreground lg:border-l-transparent lg:hover:border-l-border",
       )}
     >

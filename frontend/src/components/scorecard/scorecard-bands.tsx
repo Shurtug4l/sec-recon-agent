@@ -394,7 +394,12 @@ function DetectionBand({ golden }: { golden: ReturnType<typeof goldenMetrics> })
               <p className="mt-1 font-semibold">{golden.meanCveRecall.toFixed(2)}</p>
             </div>
           </div>
-          <div className="overflow-x-auto">
+          <div
+            tabIndex={0}
+            role="region"
+            aria-label="Golden-set per-case results, scrollable"
+            className="overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border text-left text-muted-foreground">
@@ -636,7 +641,12 @@ function EfficiencyBand({
         <summary className="cursor-pointer select-none p-3 text-xs font-medium text-muted-foreground hover:text-foreground">
           Per-case table (the values behind the dots)
         </summary>
-        <div className="overflow-x-auto border-t border-border">
+        <div
+          tabIndex={0}
+          role="region"
+          aria-label="Per-case latency and cost, scrollable"
+          className="overflow-x-auto border-t border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-border text-left text-muted-foreground">

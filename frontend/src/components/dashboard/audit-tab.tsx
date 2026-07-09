@@ -76,7 +76,7 @@ export function AuditTab() {
 
   if (error) {
     return (
-      <Card className="border-destructive">
+      <Card role="alert" className="border-destructive">
         <CardContent className="flex items-start gap-2 p-4 text-sm">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
           <div>
@@ -152,7 +152,12 @@ export function AuditTab() {
           </CardContent>
         </Card>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border">
+        <div
+          tabIndex={0}
+          role="region"
+          aria-label="Audit trail table, scrollable"
+          className="overflow-x-auto rounded-lg border border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
           <table className="w-full border-collapse text-xs">
             <thead>
               <tr className="border-b border-border bg-muted/50 text-left">

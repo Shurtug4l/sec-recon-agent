@@ -94,7 +94,7 @@ export default function DocsPage() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <Header />
-      <main className="flex-1">
+      <main id="main-content" tabIndex={-1} className="flex-1 focus-visible:outline-none">
         <div className="container max-w-7xl py-8">
           <div className="mb-6">
             <Badge variant="secondary" className="mb-3 font-mono text-[10px]">
@@ -110,7 +110,7 @@ export default function DocsPage() {
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[248px_minmax(0,1fr)] lg:gap-8 xl:grid-cols-[248px_minmax(0,1fr)_216px]">
             {/* Master rail: search + grouped doc list (lg+), chip row below. */}
-            <aside className="lg:sticky lg:top-20 lg:self-start">
+            <aside aria-label="Documentation index" className="lg:sticky lg:top-20 lg:self-start">
               <div className="relative mb-3">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 <input
@@ -155,7 +155,7 @@ export default function DocsPage() {
                             "shrink-0 whitespace-nowrap rounded-full border border-border px-3 py-1.5 text-left text-xs transition-colors",
                             "lg:block lg:w-full lg:rounded-none lg:border-0 lg:border-l-2 lg:px-3 lg:py-1.5",
                             d.slug === activeSlug
-                              ? "border-primary bg-primary/10 text-primary lg:border-l-primary lg:bg-transparent"
+                              ? "border-primary bg-primary/10 text-foreground lg:border-l-primary lg:bg-transparent lg:text-primary"
                               : "text-muted-foreground hover:border-primary/40 hover:text-foreground lg:border-l-transparent lg:hover:border-l-border",
                           )}
                         >
@@ -203,7 +203,7 @@ export default function DocsPage() {
             </article>
 
             {/* On-page table of contents (xl+), scroll-spy tracked. */}
-            <aside className="hidden xl:block">
+            <aside aria-label="Table of contents" className="hidden xl:block">
               <div className="sticky top-20 self-start">
                 <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
                   On this page

@@ -64,9 +64,10 @@ export function ObservabilityTab({ entries }: { entries: HistoryEntry[] }) {
             <button
               key={entry.id}
               type="button"
+              aria-pressed={selected.id === entry.id}
               onClick={() => setSelectedId(entry.id)}
               className={cn(
-                "w-full rounded-md p-2.5 text-left transition-colors hover:bg-accent",
+                "w-full rounded-md p-2.5 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 selected.id === entry.id && "bg-accent",
               )}
             >
@@ -116,7 +117,7 @@ export function ObservabilityTab({ entries }: { entries: HistoryEntry[] }) {
         </Card>
 
         {selected.error && (
-          <Card className="border-destructive">
+          <Card role="alert" className="border-destructive">
             <CardContent className="flex items-start gap-2 p-4 text-sm">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
               <span className="font-mono text-xs">{selected.error}</span>
