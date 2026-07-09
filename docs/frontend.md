@@ -19,7 +19,7 @@ It is not a thin wrapper around the FastAPI surface; it adds:
 frontend/src/
 ├── app/
 │   ├── layout.tsx               # root layout; three fonts via next/font + pre-paint theme script
-│   ├── page.tsx                 # landing: split hero (copy + pipeline diagram), pillars, tools
+│   ├── page.tsx                 # landing: hero (copy + animated SSVC ladder), how-it-works, pillars, tools
 │   ├── triage/page.tsx          # form + progress stream + report + history sidebar
 │   ├── dashboard/page.tsx       # ARIA tablist: statistics / observability / transparency
 │   ├── scorecard/page.tsx       # static scorecard: sonnet baseline from committed JSONs
@@ -34,6 +34,7 @@ frontend/src/
 │   ├── providers.tsx            # client wrapper mounting TriageProvider + CommandPaletteProvider
 │   ├── header.tsx               # sticky macro-tab nav + palette trigger + theme toggle + GitHub link
 │   ├── theme-toggle.tsx         # flips data-theme on <html>, persists to localStorage
+│   ├── ssvc-ladder-hero.tsx     # landing signature: SSVC ladder cycling four real verdicts
 │   ├── command-palette.tsx      # Cmd+K provider: keydown listener, command rendering, triage ctx
 │   ├── demo-banner.tsx          # demo-mode banner naming the capture model
 │   ├── triage-form.tsx          # textarea + example chips + Triage/Stop buttons
@@ -266,3 +267,4 @@ npm run build        # production build
 | `output: "standalone"` Docker | ~150 MB image, no separate nginx | Static export - loses the `/api/triage` route (used only for the keyless demo build, where the routes are stashed) |
 | `cmdk` command palette, exact-pinned | Fuzzy ranking + combobox a11y over 57 items beats hand-rolling; unstyled, so the design tokens apply untouched | Hand-rolled listbox + filter (a11y/focus surface too large for the payoff); kbar (heavier, animation dep); cmdk's built-in `Command.Dialog` (no `DialogTitle`, trips Radix's a11y console error - dialog shell composed from radix-dialog directly instead) |
 | Grounding render = badge + findings-only panel | The wire already carries a bounded assessment (counters + non-supported claims); rendering exactly that keeps the UI honest about what the server verified, and the badge/panel split mirrors the SSVC authority pattern | Raw tool-payload evidence viewer - per-tool payloads never reach the SSE stream by design (bounded payload); shipping them to the browser would be a second provenance channel to secure and size |
+| Hero signature = SSVC ladder cycling four real captured verdicts | The ladder is the project's conceptual core and the hero teaches the exact visual language the report speaks (same rung styling as SsvcVerdict); cases, rules and rationales are verbatim from the server-stamped fixtures, so the marketing surface stays as honest as the product; hover/focus pauses, a rung click jumps, prefers-reduced-motion disables the cycle | A staged/fabricated animation (violates the honesty thesis); interactive-only ladder (hides three quarters of the scale by default); keeping the pipeline diagram in the hero (moved to its own "How it works" section, content intact) |
