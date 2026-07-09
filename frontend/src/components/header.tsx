@@ -9,6 +9,7 @@ import {
   ClipboardCheck,
   FileSearch,
   Home,
+  Library,
   MessageSquare,
   Search,
   ShieldAlert,
@@ -25,6 +26,7 @@ const TABS = [
   { href: "/dashboard", label: "Dashboard", icon: BarChart3, match: (p: string) => p.startsWith("/dashboard") },
   { href: "/scorecard", label: "Scorecard", icon: ClipboardCheck, match: (p: string) => p.startsWith("/scorecard") },
   { href: "/case-study", label: "Case study", icon: FileSearch, match: (p: string) => p.startsWith("/case-study") },
+  { href: "/docs", label: "Docs", icon: Library, match: (p: string) => p.startsWith("/docs") },
   { href: "/guide", label: "Guide", icon: BookOpen, match: (p: string) => p.startsWith("/guide") },
 ];
 
@@ -55,15 +57,18 @@ export function Header() {
                 key={href}
                 href={href}
                 aria-current={active ? "page" : undefined}
+                // Icon-only below md so seven tabs + search + toggle + repo fit
+                // a phone width; the label is the accessible name throughout.
+                aria-label={label}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                  "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background md:px-3",
                   active
                     ? "bg-accent text-accent-foreground"
                     : "text-muted-foreground hover:bg-accent hover:text-foreground",
                 )}
               >
                 <Icon className="h-3.5 w-3.5" />
-                {label}
+                <span className="hidden md:inline">{label}</span>
               </Link>
             );
           })}

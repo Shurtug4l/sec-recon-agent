@@ -323,3 +323,207 @@
     break-inside: avoid;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* /docs in-app documentation: prose, code highlighting, diagrams.     */
+/* The HTML is generated + sanitized at build time (scripts/gen-docs). */
+/* All colors resolve through the design tokens, so both themes work   */
+/* with no per-theme rules here.                                       */
+/* ------------------------------------------------------------------ */
+.docs-prose {
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  color: hsl(var(--foreground) / 0.92);
+}
+.docs-prose > :first-child {
+  margin-top: 0;
+}
+.docs-prose h2 {
+  font-size: 1.5rem;
+  line-height: 1.25;
+  margin: 2.5rem 0 1rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid hsl(var(--border));
+  scroll-margin-top: 5rem;
+}
+.docs-prose h3 {
+  font-size: 1.175rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 2rem 0 0.6rem;
+  scroll-margin-top: 5rem;
+}
+.docs-prose h4 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 1.5rem 0 0.5rem;
+  scroll-margin-top: 5rem;
+}
+.docs-prose p {
+  margin: 0.9rem 0;
+}
+.docs-prose ul,
+.docs-prose ol {
+  margin: 0.9rem 0;
+  padding-left: 1.5rem;
+}
+.docs-prose ul {
+  list-style: disc;
+}
+.docs-prose ol {
+  list-style: decimal;
+}
+.docs-prose li {
+  margin: 0.35rem 0;
+}
+.docs-prose li::marker {
+  color: hsl(var(--muted-foreground));
+}
+.docs-prose a {
+  color: hsl(var(--primary));
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.docs-prose a:hover {
+  text-decoration: underline;
+}
+.docs-prose strong {
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+.docs-prose blockquote {
+  margin: 1rem 0;
+  padding: 0.2rem 0 0.2rem 1rem;
+  border-left: 2px solid hsl(var(--primary) / 0.4);
+  color: hsl(var(--muted-foreground));
+}
+.docs-prose hr {
+  margin: 2rem 0;
+  border: 0;
+  border-top: 1px solid hsl(var(--border));
+}
+/* Inline code: quiet tint, monospace, does not wrap mid-token in tables. */
+.docs-prose :not(pre) > code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.85em;
+  padding: 0.1em 0.35em;
+  border-radius: 0.25rem;
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+.docs-prose pre {
+  margin: 1.1rem 0;
+  padding: 1rem 1.1rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.5rem;
+  background: hsl(var(--card));
+  overflow-x: auto;
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+.docs-prose pre code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  background: none;
+  padding: 0;
+  color: hsl(var(--foreground) / 0.9);
+}
+/* Wide tables scroll inside their own box (a11y + horizontal layout). */
+.docs-table-scroll {
+  margin: 1.1rem 0;
+  overflow-x: auto;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.5rem;
+}
+.docs-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.docs-prose th,
+.docs-prose td {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid hsl(var(--border));
+}
+.docs-prose thead th {
+  background: hsl(var(--muted) / 0.6);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.docs-prose tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* Mermaid: the source text is the progressive-enhancement fallback (readable
+ * if the client render never runs); once rendered it is swapped for the SVG. */
+.docs-mermaid {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.5rem;
+  background: hsl(var(--card));
+  overflow-x: auto;
+}
+.docs-mermaid:not([data-rendered]) {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  white-space: pre;
+  color: hsl(var(--muted-foreground));
+}
+.docs-mermaid[data-rendered] svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+/* highlight.js token theme, mapped onto the validated chart tokens so it is
+ * colorblind-considerate and theme-aware for free. */
+.docs-prose .hljs-comment,
+.docs-prose .hljs-quote {
+  color: hsl(var(--muted-foreground));
+  font-style: italic;
+}
+.docs-prose .hljs-keyword,
+.docs-prose .hljs-selector-tag,
+.docs-prose .hljs-literal,
+.docs-prose .hljs-section,
+.docs-prose .hljs-doctag {
+  color: hsl(var(--chart-3));
+}
+.docs-prose .hljs-string,
+.docs-prose .hljs-regexp,
+.docs-prose .hljs-addition {
+  color: hsl(var(--chart-5));
+}
+.docs-prose .hljs-number,
+.docs-prose .hljs-built_in,
+.docs-prose .hljs-literal,
+.docs-prose .hljs-type {
+  color: hsl(var(--chart-2));
+}
+.docs-prose .hljs-title,
+.docs-prose .hljs-title.function_,
+.docs-prose .hljs-title.class_,
+.docs-prose .hljs-name {
+  color: hsl(var(--chart-1));
+}
+.docs-prose .hljs-attr,
+.docs-prose .hljs-attribute,
+.docs-prose .hljs-variable,
+.docs-prose .hljs-template-variable,
+.docs-prose .hljs-symbol,
+.docs-prose .hljs-bullet {
+  color: hsl(var(--chart-6));
+}
+.docs-prose .hljs-meta {
+  color: hsl(var(--muted-foreground));
+}
+.docs-prose .hljs-emphasis {
+  font-style: italic;
+}
+.docs-prose .hljs-strong {
+  font-weight: 600;
+}

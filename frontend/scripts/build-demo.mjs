@@ -27,6 +27,14 @@ async function main() {
   // Recover from an interrupted previous run before doing anything.
   await restore();
 
+  // Regenerate the docs corpus first (this script bypasses the `prebuild`
+  // hook by calling `next build` directly). No-op when docs/ is out of context.
+  const gen = spawnSync("node", ["scripts/gen-docs.mjs"], { cwd: root, stdio: "inherit" });
+  if (gen.status !== 0) {
+    process.exitCode = gen.status ?? 1;
+    return;
+  }
+
   const hadApi = existsSync(API_DIR);
   if (hadApi) await rename(API_DIR, STASH_DIR);
 
