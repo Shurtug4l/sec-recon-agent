@@ -38,7 +38,9 @@ from starlette.responses import JSONResponse
 from sec_recon_agent.agent.prompts import SYSTEM_PROMPT
 from sec_recon_agent.agent.schema import TriageReport
 from sec_recon_agent.agent.triage import build_agent, export_anthropic_api_key_to_env
+from sec_recon_agent.api.budget import budget_tracker
 from sec_recon_agent.config import settings
+from sec_recon_agent.eval.cost import estimate_cost_usd
 from sec_recon_agent.export.openvex import DEFAULT_AUTHOR, ProductIdentityError, to_openvex
 from sec_recon_agent.export.sarif import to_sarif
 from sec_recon_agent.mcp_server.errors import CveNotFoundError
@@ -140,6 +142,42 @@ async def _rate_limit_exceeded_handler(_request: Request, _exc: RateLimitExceede
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
         content={"detail": "rate limit exceeded"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Operational safety rails (S4)
+# ---------------------------------------------------------------------------
+# Two guards in front of /v1/triage, both refusing with 503 *before* the agent
+# is built (no LLM spend on a refused request):
+# - Kill-switch: an env flag OR a sentinel file, checked per request, so an
+#   operator can disable the service live without a redeploy.
+# - Denial-of-wallet: a rolling-window cap on estimated LLM spend (api/budget).
+# The messages are deliberately generic; the configured ceiling and the switch
+# mechanism are operational details that do not belong in client responses.
+
+
+def _kill_switch_engaged() -> bool:
+    if settings.kill_switch:
+        return True
+    path = settings.kill_switch_file
+    return bool(path and path.exists())
+
+
+async def enforce_operational_limits() -> None:
+    """Dependency guarding the triage endpoint. Raises 503 when the service is
+    disabled or the rolling budget is exhausted."""
+    if _kill_switch_engaged():
+        log.warning("triage_refused_kill_switch")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Triage is temporarily disabled.",
+        )
+    if await budget_tracker.would_block():
+        log.warning("triage_refused_budget_exhausted")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Triage is temporarily unavailable; try again later.",
+        )
 
 
 class TriageRequest(BaseModel):
@@ -316,7 +354,10 @@ async def export_openvex(body: ExportOpenVexRequest) -> JSONResponse:
     return JSONResponse(content=doc)
 
 
-@app.post("/v1/triage", dependencies=[Depends(verify_api_key)])
+@app.post(
+    "/v1/triage",
+    dependencies=[Depends(verify_api_key), Depends(enforce_operational_limits)],
+)
 @limiter.limit(_rate_limit_string)
 async def triage(request: Request, req: TriageRequest) -> EventSourceResponse:
     """Run the triage agent and stream progress as SSE events."""
@@ -374,6 +415,9 @@ async def triage(request: Request, req: TriageRequest) -> EventSourceResponse:
             yield {"event": "final", "data": result_json}
             if usage is not None:
                 yield {"event": "usage", "data": usage}
+                # Charge this run against the denial-of-wallet window. No-ops
+                # when the guard is disabled or the model is unpriced.
+                await _record_run_cost(req.model, usage)
         except UsageLimitExceeded as exc:
             # Expected control-flow bound, not a crash: the agent hit the round
             # cap. Log at warning (not exception) and return a clear, safe
@@ -551,6 +595,24 @@ def _extract_usage(run: object) -> str | None:
     except Exception:
         log.warning("usage_extract_failed", exc_info=True)
         return None
+
+
+async def _record_run_cost(model_override: str | None, usage_json: str) -> None:
+    """Add one completed run's estimated USD cost to the denial-of-wallet
+    window. Best-effort: a malformed usage payload or an unpriced model simply
+    records nothing (the tracker treats None cost as "unknown, do not count")."""
+    import json
+
+    try:
+        payload = json.loads(usage_json)
+    except (json.JSONDecodeError, TypeError):
+        return
+    cost = estimate_cost_usd(
+        model=model_override or settings.llm_model,
+        input_tokens=payload.get("input_tokens"),
+        output_tokens=payload.get("output_tokens"),
+    )
+    await budget_tracker.record(cost)
 
 
 def _extract_messages(run: object) -> list[Any] | None:

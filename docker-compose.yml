@@ -80,6 +80,16 @@ services:
       # Auth + rate limit. Empty values disable the controls.
       API_KEYS: "${API_KEYS:-}"
       RATE_LIMIT_PER_MINUTE: "${RATE_LIMIT_PER_MINUTE:-}"
+      # Operational safety rails (S4). Empty values disable each control.
+      # DENIAL_OF_WALLET_USD_PER_DAY caps estimated LLM spend over a rolling
+      # 24h window (in-process); over it /v1/triage returns 503.
+      DENIAL_OF_WALLET_USD_PER_DAY: "${DENIAL_OF_WALLET_USD_PER_DAY:-}"
+      # Kill-switch: KILL_SWITCH=1 disables triage for the container's life;
+      # `docker exec sec-recon-api touch $KILL_SWITCH_FILE` disables it live and
+      # removing the file re-enables it, no restart. The file sits on the tmpfs,
+      # so a restart clears it (use KILL_SWITCH=1 for a persistent off).
+      KILL_SWITCH: "${KILL_SWITCH:-}"
+      KILL_SWITCH_FILE: "${KILL_SWITCH_FILE:-/tmp/sec-recon-killswitch}"
       AUDIT_LOG_ENABLED: "${AUDIT_LOG_ENABLED:-true}"
       AUDIT_INCLUDE_QUERY: "${AUDIT_INCLUDE_QUERY:-false}"
       AUDIT_INCLUDE_SUMMARY: "${AUDIT_INCLUDE_SUMMARY:-false}"
