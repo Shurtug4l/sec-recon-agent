@@ -7,6 +7,7 @@ import {
   BarChart3,
   BookOpen,
   ClipboardCheck,
+  FileSearch,
   Home,
   MessageSquare,
   Search,
@@ -23,6 +24,7 @@ const TABS = [
   { href: "/triage", label: "Triage", icon: MessageSquare, match: (p: string) => p.startsWith("/triage") },
   { href: "/dashboard", label: "Dashboard", icon: BarChart3, match: (p: string) => p.startsWith("/dashboard") },
   { href: "/scorecard", label: "Scorecard", icon: ClipboardCheck, match: (p: string) => p.startsWith("/scorecard") },
+  { href: "/case-study", label: "Case study", icon: FileSearch, match: (p: string) => p.startsWith("/case-study") },
   { href: "/guide", label: "Guide", icon: BookOpen, match: (p: string) => p.startsWith("/guide") },
 ];
 
