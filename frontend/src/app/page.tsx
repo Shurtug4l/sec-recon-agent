@@ -304,9 +304,17 @@ export default function Landing() {
         {/* Pillars */}
         <section className="border-b border-border/60">
           <div className="container max-w-5xl py-12 md:py-16">
-            <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              Design pillars
-            </h2>
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                Design pillars
+              </h2>
+              <Link
+                href="/case-study"
+                className="text-xs text-primary hover:underline"
+              >
+                Why these hold together: the case study &rarr;
+              </Link>
+            </div>
             <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
               {PILLARS.map((p) => (
                 <Card key={p.title}>
