@@ -61,7 +61,7 @@ export default function TriagePage() {
           onSelect={(id) => selectEntry(id)}
           onClear={clearHistory}
         />
-        <main className="flex-1">
+        <main id="main-content" tabIndex={-1} className="flex-1 focus-visible:outline-none">
           <div className="container max-w-4xl space-y-6 py-8">
             <section>
               <h1 className="mb-2 text-2xl font-semibold tracking-tight">Security triage</h1>
@@ -98,7 +98,7 @@ export default function TriagePage() {
                 />
 
                 {displayState.error && !displayState.isRunning && (
-                  <Card className="border-destructive">
+                  <Card role="alert" className="border-destructive">
                     <CardContent className="flex items-start gap-3 p-4">
                       <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
                       <div>

@@ -41,7 +41,7 @@ export function TransparencyTab() {
 
   if (error) {
     return (
-      <Card className="border-destructive">
+      <Card role="alert" className="border-destructive">
         <CardContent className="flex items-start gap-2 p-4 text-sm">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
           <div>
@@ -99,7 +99,12 @@ export function TransparencyTab() {
           </p>
         </CardHeader>
         <CardContent>
-          <pre className="max-h-[400px] overflow-auto whitespace-pre-wrap rounded-md bg-muted/50 p-4 font-mono text-xs leading-relaxed">
+          <pre
+            tabIndex={0}
+            role="region"
+            aria-label="System prompt text, scrollable"
+            className="max-h-[400px] overflow-auto whitespace-pre-wrap rounded-md bg-muted/50 p-4 font-mono text-xs leading-relaxed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
             {meta.system_prompt}
           </pre>
         </CardContent>

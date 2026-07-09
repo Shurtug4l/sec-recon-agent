@@ -106,7 +106,7 @@ export default function Landing() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <Header />
-      <main className="flex-1">
+      <main id="main-content" tabIndex={-1} className="flex-1 focus-visible:outline-none">
         {/* Hero - split: copy + the signature moment (the SSVC ladder reading
             real captured verdicts). The pipeline diagram moved to its own
             "How it works" section below. */}
@@ -273,7 +273,7 @@ export default function Landing() {
                 href="https://github.com/Shurtug4l/sec-recon-agent/blob/main/SCORECARD.md"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary hover:underline"
+                className="text-primary underline underline-offset-2 hover:decoration-2"
               >
                 reproducible scorecard
               </a>

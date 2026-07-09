@@ -74,7 +74,11 @@ const SCHEMA = {
   attributes: {
     ...defaultSchema.attributes,
     "*": [...(defaultSchema.attributes?.["*"] || []), "className", "id"],
-    div: [...(defaultSchema.attributes?.div || []), "className", "dataMermaid"],
+    // tabIndex lets the scroll-container divs (docs-mermaid, docs-table-scroll)
+    // and code blocks take keyboard focus so a wide diagram/table/code line
+    // stays reachable without a mouse (WCAG 2.1.1, scrollable-region-focusable).
+    div: [...(defaultSchema.attributes?.div || []), "className", "dataMermaid", "tabIndex"],
+    pre: [...(defaultSchema.attributes?.pre || []), "tabIndex"],
   },
 };
 
@@ -107,7 +111,7 @@ function rehypeMermaid() {
       parent.children[index] = {
         type: "element",
         tagName: "div",
-        properties: { className: ["docs-mermaid"] },
+        properties: { className: ["docs-mermaid"], tabIndex: 0 },
         children: [{ type: "text", value: source }],
       };
     });
@@ -124,9 +128,23 @@ function rehypeWrapTables() {
       parent.children[index] = {
         type: "element",
         tagName: "div",
-        properties: { className: ["docs-table-scroll"] },
+        properties: { className: ["docs-table-scroll"], tabIndex: 0 },
         children: [node],
       };
+    });
+  };
+}
+
+// rehype plugin: make code blocks keyboard-focusable. A long code line scrolls
+// horizontally inside its <pre>; without a tab stop a mouseless reader cannot
+// reach the hidden text (WCAG 2.1.1). Runs after mermaid replacement, so the
+// only <pre> left are real code blocks.
+function rehypeFocusableCode() {
+  return (tree) => {
+    visit(tree, "element", (node) => {
+      if (node.tagName === "pre") {
+        node.properties = { ...node.properties, tabIndex: 0 };
+      }
     });
   };
 }
@@ -169,6 +187,7 @@ async function renderDoc(slug, raw) {
     .use(rehypeMermaid)
     .use(rehypeWrapTables)
     .use(rehypeHighlight, { detect: false, ignoreMissing: true })
+    .use(rehypeFocusableCode)
     .use(rehypeSanitize, SCHEMA)
     .use(collectSections, store)
     .use(rehypeStringify)

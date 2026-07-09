@@ -13,7 +13,7 @@ export default function ScorecardPage() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <Header />
-      <main className="container max-w-5xl flex-1 py-8">
+      <main id="main-content" tabIndex={-1} className="container max-w-5xl flex-1 py-8 focus-visible:outline-none">
         {/* Title + provenance stamp */}
         <div className="mb-6">
           <div className="flex flex-wrap items-center gap-2">

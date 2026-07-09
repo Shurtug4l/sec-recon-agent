@@ -83,7 +83,7 @@ export default function DashboardPage() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <Header />
-      <main className="container max-w-6xl flex-1 py-8">
+      <main id="main-content" tabIndex={-1} className="container max-w-6xl flex-1 py-8 focus-visible:outline-none">
         <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
           <div className="flex flex-col gap-1">
             <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
@@ -122,17 +122,18 @@ export default function DashboardPage() {
                 id={`tab-${key}`}
                 aria-selected={active}
                 aria-controls={`panel-${key}`}
+                aria-label={label}
                 tabIndex={active ? 0 : -1}
                 onClick={() => selectTab(key)}
                 className={cn(
-                  "flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                  "flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:px-4",
                   active
                     ? "border-primary text-primary"
                     : "border-transparent text-muted-foreground hover:text-foreground",
                 )}
               >
-                <Icon className="h-4 w-4" />
-                {label}
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="hidden sm:inline">{label}</span>
               </button>
             );
           })}

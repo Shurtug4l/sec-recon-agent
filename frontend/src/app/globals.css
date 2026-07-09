@@ -109,7 +109,9 @@
        to be read as text on the tinted badges. */
     --severity-critical: 354 70% 41%;  /* #B2202E */
     --severity-high: 26 100% 35%;      /* #B34E00 */
-    --severity-medium: 44 100% 28%;    /* #8F6A00 */
+    --severity-medium: 44 100% 22%;    /* #705200 - darkened from #8F6A00 so the
+                                          .severity-medium tint chip clears WCAG
+                                          AA text on card/muted (was ~3.8:1) */
     --severity-low: 204 89% 34%;       /* #0A66A5 */
     --severity-info: 215 12% 40%;      /* #5A6472 */
 
@@ -379,13 +381,18 @@
 .docs-prose li::marker {
   color: hsl(var(--muted-foreground));
 }
+/* Inline prose links carry a persistent underline: the primary hue alone does
+ * not clear the 3:1 non-text separation from surrounding body copy that WCAG
+ * 1.4.1 (Use of Color) requires, so color must not be the only signal. */
 .docs-prose a {
   color: hsl(var(--primary));
-  text-decoration: none;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  text-decoration-thickness: from-font;
   overflow-wrap: anywhere;
 }
 .docs-prose a:hover {
-  text-decoration: underline;
+  text-decoration-thickness: 2px;
 }
 .docs-prose strong {
   font-weight: 600;
@@ -427,12 +434,25 @@
   padding: 0;
   color: hsl(var(--foreground) / 0.9);
 }
+/* Code blocks are keyboard-focusable (tabIndex from gen-docs) so a wide line
+ * stays scrollable without a mouse; show that focus. */
+.docs-prose pre:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
 /* Wide tables scroll inside their own box (a11y + horizontal layout). */
 .docs-table-scroll {
   margin: 1.1rem 0;
   overflow-x: auto;
   border: 1px solid hsl(var(--border));
   border-radius: 0.5rem;
+}
+/* The scroll containers are keyboard-focusable (tabIndex from gen-docs) so a
+ * mouseless reader can scroll a wide table/diagram; show that focus. */
+.docs-table-scroll:focus-visible,
+.docs-mermaid:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
 }
 .docs-prose table {
   width: 100%;
@@ -477,6 +497,16 @@
   max-width: 100%;
   height: auto;
   margin: 0 auto;
+}
+/* Mermaid edge labels: the preset ('dark'/'neutral') paints them on a faint
+ * plate that fails WCAG 1.4.3 on our surfaces. Re-plate them on the card token
+ * with ink-weight text so they clear AA in both themes (theme-aware via the
+ * tokens; overrides the inline styles mermaid emits, hence !important). */
+.docs-mermaid[data-rendered] .edgeLabel,
+.docs-mermaid[data-rendered] .edgeLabel p,
+.docs-mermaid[data-rendered] .edgeLabel .labelBkg {
+  background-color: hsl(var(--card)) !important;
+  color: hsl(var(--foreground)) !important;
 }
 
 /* highlight.js token theme, mapped onto the validated chart tokens so it is
@@ -526,4 +556,20 @@
 }
 .docs-prose .hljs-strong {
   font-weight: 600;
+}
+/* Light-theme text-contrast floor for syntax tokens. The chart tokens are
+ * validated for graphics (>= 3:1), but syntax highlighting is text (>= 4.5:1);
+ * on the light card chart-2 (#B26A08) and chart-5 (#877D0C) land at ~4.1:1.
+ * Darken just those two token groups in light; dark theme keeps the bright
+ * chart hues, which clear AA on the dark card. */
+:root[data-theme="light"] .docs-prose .hljs-number,
+:root[data-theme="light"] .docs-prose .hljs-built_in,
+:root[data-theme="light"] .docs-prose .hljs-literal,
+:root[data-theme="light"] .docs-prose .hljs-type {
+  color: hsl(35 95% 28%); /* #8B5304, 6.1:1 on the light card */
+}
+:root[data-theme="light"] .docs-prose .hljs-string,
+:root[data-theme="light"] .docs-prose .hljs-regexp,
+:root[data-theme="light"] .docs-prose .hljs-addition {
+  color: hsl(55 90% 22%); /* #6B6206, 6.0:1 on the light card */
 }

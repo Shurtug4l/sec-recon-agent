@@ -30,7 +30,7 @@ const SEVERITY_COLORS: Record<Theme, Record<string, string>> = {
   light: {
     critical: "#B2202E",
     high: "#B34E00",
-    medium: "#8F6A00",
+    medium: "#705200",
     low: "#0A66A5",
     info: "#5A6472",
   },
