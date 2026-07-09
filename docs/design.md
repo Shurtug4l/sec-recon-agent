@@ -17,41 +17,21 @@ Built as a portfolio piece, not a production deployment. The design choices are 
 
 ## System architecture
 
-```
-Browser
-   |
-   | HTTP                          (only same-origin; no CORS opened on backend)
-   v
-+------------------------------+
-|  Frontend (Next.js 15)       |  :3000
-|  React 19 + Tailwind         |
-|  /api/triage  ──── proxy ────┐
-+------------------------------+│
-                                │  HTTP+SSE
-                                v
-                       +------------------------------+
-                       |  Agent API (FastAPI)         |  :8000
-                       |  Pydantic AI agent           |
-                       |  POST /v1/triage  (SSE)      |
-                       |  GET  /v1/health             |
-                       +-------------+----------------+
-                                     |  MCPToolset (HTTP+SSE)
-                                     v
-                       +------------------------------+
-                       |  MCP Server (FastMCP)        |  :8001
-                       |  10 typed tools              |
-                       +--------------+---------------+
-                                      |
-        cve_lookup ........ NVD CVE 2.0 (httpx, rate-limited, retry)
-        cve_semantic_search ChromaDB dense (ONNX MiniLM-L6) + BM25, RRF-fused
-        patch_lookup ...... NVD CPE versionEndExcluding (shared rate limit)
-        exploit_check ..... Exploit-DB CSV + GitHub Code Search (parallel fan-out)
-        kev_check ......... CISA KEV catalog (24h disk cache, host-locked)
-        epss_score ........ FIRST EPSS API (single-shot)
-        osv_lookup ........ OSV.dev advisories (package + version)
-        attack_mapping .... MITRE ATT&CK from CWE (bundled JSON)
-        nmap_parse_xml .... defusedxml, forbid_dtd (XXE-safe)
-        sbom_ingest ....... CycloneDX / SPDX / requirements.txt parser
+```mermaid
+flowchart TD
+    B(["Browser"]) -->|"HTTP, same origin - no CORS opened on the backend"| FE
+    FE["frontend - Next.js 15 + React 19 - :3000<br/>/api/triage proxies the SSE stream byte-for-byte"] -->|"HTTP+SSE"| API
+    API["agent-api - FastAPI - :8000<br/>POST /v1/triage (SSE) - GET /v1/meta - GET /v1/health - POST /v1/export/*<br/>Pydantic AI agent - stamps ssvc + grounding - audit hook"] -->|"LLM calls, allowlisted models"| ANTH["Anthropic API"]
+    API -->|"MCPToolset (HTTP+SSE)"| MCP["mcp-server - FastMCP - :8001<br/>10 typed tools"]
+    MCP -->|"cve_lookup - async, rate-limited, retry"| NVD["NVD CVE 2.0 API"]
+    MCP -->|"patch_lookup - shared NVD rate budget"| CPE["NVD CPE configurations"]
+    MCP -->|"kev_check - 24h disk cache, host-locked"| KEV["CISA KEV catalog"]
+    MCP -->|"epss_score - single-shot"| EPSS["FIRST EPSS API"]
+    MCP -->|"osv_lookup - package at version"| OSV["OSV.dev"]
+    MCP -->|"exploit_check - parallel fan-out"| EXP["Exploit-DB CSV + GitHub Code Search"]
+    MCP -->|"cve_semantic_search - dense + BM25, RRF-fused"| CHROMA[("ChromaDB<br/>ONNX MiniLM-L6")]
+    MCP -->|"attack_mapping - bundled JSON, in-process"| ATTACK["MITRE ATT&CK mapping"]
+    MCP -->|"sbom_ingest / nmap_parse_xml - local parse, no network"| PARSE["CycloneDX / SPDX / requirements.txt<br/>defusedxml, forbid_dtd"]
 ```
 
 Three processes, deliberately. The frontend, the agent API, and the MCP server are independent containers; each restarts without taking the others down. The browser only ever sees `:3000` - the agent API has no CORS opened and stays single-tenant; the Next.js `/api/triage` route forwards the SSE stream byte-for-byte upstream. The MCP transport between agent and MCP server is HTTP+SSE, the same protocol the agent exposes to its own clients, so the dataflow is symmetric.
@@ -84,74 +64,45 @@ Three processes, deliberately. The frontend, the agent API, and the MCP server a
 
 One named-CVE query, every code boundary it touches, and where untrusted content gets fenced before reaching the LLM.
 
-```
-[browser]                                       [Next.js]                                    [agent-api]                                      [mcp-server]                                  [external]
-   |                                                |                                             |                                                |                                              |
-   | POST /api/triage  body={"query":"CVE-2021-41773"}
-   |----------------------------------------------->|
-   |                                                |  app/api/triage/route.ts                    |
-   |                                                |  fetch(AGENT_API_URL+"/v1/triage")          |
-   |                                                |  (server-side; no CORS exposed)             |
-   |                                                |-------------------------------------------->|
-   |                                                |                                             | api/stream.py::triage()
-   |                                                |                                             | yield 'started' SSE event
-   |                                                |                                             | agent = build_agent()
-   |                                                |                                             | agent.iter(query)
-   |                                                |                                             |   v
-   |                                                |                                             | Pydantic AI loop:
-   |                                                |                                             |   - LLM call (Anthropic Haiku)
-   |                                                |                                             |   - chooses tools per system prompt
-   |                                                |                                             |   - MCPToolset over HTTP+SSE
-   |                                                |                                             |   - each node -> yield 'node' SSE (streamed live;
-   |                                                |                                             |     feeds the frontend waterfall)
-   |                                                |                                             |---------------------------------------------->|
-   |                                                |                                             |                                                | tool dispatch (FastMCP)
-   |                                                |                                             |                                                |   v
-   |                                                |                                             |                                                | cve_lookup(CVE-2021-41773):
-   |                                                |                                             |                                                |   httpx -> NVD CVE 2.0 API ------------------>|
-   |                                                |                                             |                                                |   <---- vendor description, CVSS, CWEs <------|
-   |                                                |                                             |                                                |   fence_untrusted(description)
-   |                                                |                                             |                                                |   CVEDetail(...) -> agent context
-   |                                                |                                             |                                                |
-   |                                                |                                             |                                                | exploit_check(CVE-2021-41773):  [parallel]
-   |                                                |                                             |                                                |   Exploit-DB CSV (cached 7d)   --------------->|
-   |                                                |                                             |                                                |   GitHub Code Search (if token) -------------->|
-   |                                                |                                             |                                                |
-   |                                                |                                             |                                                | kev_check(CVE-2021-41773):      [parallel]
-   |                                                |                                             |                                                |   cisa.gov KEV catalog (cached 24h) --------->|
-   |                                                |                                             |                                                |   fence_untrusted(vulnerability_name,
-   |                                                |                                             |                                                |                   required_action, notes)
-   |                                                |                                             |                                                |
-   |                                                |                                             |                                                | epss_score(CVE-2021-41773):     [parallel]
-   |                                                |                                             |                                                |   api.first.org EPSS API -------------------->|
-   |                                                |                                             |                                                |
-   |                                                |                                             |                                                | attack_mapping(CWEs):           [post-join]
-   |                                                |                                             |                                                |   bundled MITRE ATT&CK JSON (in-process)
-   |                                                |                                             |                                                |
-   |                                                |                                             | <-------- aggregated tool results ------------|
-   |                                                |                                             | LLM synthesizes (leaves ssvc, grounding = null):
-   |                                                |                                             |   - severity, confidence
-   |                                                |                                             |   - recommended_action (echoes the SSVC verdict)
-   |                                                |                                             |   - signal_coverage (per-feed found/not_found)
-   |                                                |                                             |   - reasoning_chain (audit log of calls)
-   |                                                |                                             | Pydantic validates -> TriageReport
-   |                                                |                                             | server stamps ssvc = assess_ssvc(cves):
-   |                                                |                                             |   deterministic Act/Attend/Track*/Track over
-   |                                                |                                             |   KEV/EPSS/exploit/ransomware (agent/ssvc.py),
-   |                                                |                                             | server stamps grounding = verify_grounding(...):
-   |                                                |                                             |   every tool-derived claim re-checked against
-   |                                                |                                             |   the captured tool returns (agent/grounding.py),
-   |                                                |                                             |   model_copy -> the authoritative, audited form
-   |                                                |                                             | yield 'final' SSE (ssvc + grounding stamped)
-   |                                                | <-- 'final' SSE ----------------------------|
-   | <-- 'final' SSE (byte-for-byte proxy) ---------|                                             |
-   |                                                |                                             | yield 'usage' SSE (input/output tokens, requests)
-   |                                                | <-- 'usage' SSE ----------------------------|
-   | <-- 'usage' SSE -------------------------------|                                             |
-   |                                                |                                             | finally: audit hook appends a hash-chained row
-   |                                                |                                             |                                                |
-   render: SSVC verdict card (Act/Attend/Track*/Track) + severity/KEV/ransomware/EPSS
-           badges + signal_coverage strip + ATT&CK techniques + node waterfall + tokens
+```mermaid
+sequenceDiagram
+    autonumber
+    participant B as Browser
+    participant FE as Next.js proxy<br/>app/api/triage
+    participant API as agent-api<br/>api/stream.py
+    participant MCP as mcp-server<br/>FastMCP
+    participant EXT as External feeds
+
+    B->>FE: POST /api/triage {"query": "CVE-2021-41773"}
+    FE->>API: fetch POST /v1/triage (server-side, no CORS exposed)
+    API-->>B: SSE started (every SSE event below is proxied byte-for-byte through Next.js)
+    Note over API: agent = build_agent() -> agent.iter(query)
+    loop Pydantic AI loop - each node streams a live SSE node event (feeds the frontend waterfall)
+        API->>MCP: tool calls chosen by the LLM, via MCPToolset (HTTP+SSE)
+        par cve_lookup
+            MCP->>EXT: NVD CVE 2.0 API
+            EXT-->>MCP: vendor description, CVSS, CWEs
+            Note over MCP: fence_untrusted(description) -> CVEDetail
+        and kev_check
+            MCP->>EXT: CISA KEV catalog (cached 24h)
+            Note over MCP: fence_untrusted(vulnerability_name, required_action, notes)
+        and epss_score
+            MCP->>EXT: FIRST EPSS API
+        and exploit_check
+            MCP->>EXT: Exploit-DB CSV (cached 7d) + GitHub Code Search (if token)
+        and patch_lookup
+            MCP->>EXT: NVD CPE configurations
+        end
+        MCP-->>API: typed results, aggregated into the agent context
+        Note over MCP: attack_mapping runs post-join on the CWE union (bundled JSON, in-process)
+    end
+    Note over API: LLM synthesizes severity, confidence, recommended_action,<br/>signal_coverage, reasoning_chain - leaves ssvc + grounding null.<br/>Pydantic validates -> TriageReport
+    Note over API: server stamps ssvc = assess_ssvc(cves):<br/>deterministic Act / Attend / Track* / Track<br/>over KEV / EPSS / exploit / ransomware (agent/ssvc.py)
+    Note over API: server stamps grounding = verify_grounding(...):<br/>every tool-derived claim re-checked against the captured<br/>tool returns (agent/grounding.py), model_copy -> the authoritative form
+    API-->>B: SSE final (ssvc + grounding stamped)
+    API-->>B: SSE usage (input/output tokens, requests)
+    Note over API: finally: audit hook appends a hash-chained row
+    Note over B: render: SSVC verdict card + severity/KEV/ransomware/EPSS badges<br/>+ signal_coverage strip + ATT&CK techniques + node waterfall + tokens
 ```
 
 Every span emitted on the path carries a stable attribute set (no free text, no secrets). W3C `traceparent` flows through httpx auto-instrumentation, so a single trace ID covers the full path.
@@ -232,7 +183,35 @@ Every span emitted on the path carries a stable attribute set (no free text, no 
 
 ## Threat model
 
-The agent consumes untrusted content from at least four sources. Treating each as adversarial.
+The agent consumes untrusted content from at least four sources. Treating each as adversarial. The diagram places each boundary control on the untrusted-data path; the table that follows gives the field-level detail.
+
+```mermaid
+flowchart LR
+    subgraph SRC["untrusted and semi-trusted sources"]
+        UQ["user query + tool args<br/>API client, via LLM tool calls"]
+        VTXT["vendor free text<br/>NVD descriptions - KEV name/action/notes<br/>OSV summaries - Nmap banners"]
+        XML["Nmap XML<br/>attacker-shaped input"]
+        FEEDS["semi-trusted feeds<br/>Exploit-DB CSV - GitHub results - EPSS numerics"]
+    end
+    subgraph CTL["boundary controls (mcp_server)"]
+        VAL["Pydantic validation<br/>CveIdStr regex - ge/le bounds<br/>max_length double caps"]
+        FENCE["fence_untrusted<br/>UNTRUSTED_CONTENT markers<br/>at the code boundary"]
+        XXE["defusedxml<br/>forbid_dtd=True"]
+        NET["host locks - size caps<br/>post-redirect host checks"]
+    end
+    LLM["LLM context<br/>fenced content is data, never instructions"]
+    subgraph AUTH["server-side authority (agent-api) - the LLM cannot alter these"]
+        SCHEMA["TriageReport schema validation"]
+        SSVC["deterministic SSVC verdict<br/>agent/ssvc.py"]
+        GROUND["grounding verifier vs the captured trajectory<br/>agent/grounding.py"]
+        AUDIT["hash-chained audit row"]
+    end
+    UQ --> VAL --> LLM
+    VTXT --> FENCE --> LLM
+    XML --> XXE --> LLM
+    FEEDS --> NET --> LLM
+    LLM -->|"model output: trusted contract, adversarial content"| SCHEMA --> SSVC --> GROUND --> AUDIT
+```
 
 ### Inputs and trust boundaries
 

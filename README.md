@@ -7,20 +7,84 @@
 [![scorecard](https://img.shields.io/badge/scorecard-reproducible-blue)](SCORECARD.md)
 [![live demo](https://img.shields.io/badge/demo-live-22d3ee)](https://shurtug4l.github.io/sec-recon-agent/)
 
-**An LLM vulnerability-triage agent designed the way an AI Solutions Architect would build it and an AI Security Engineer would attack it.** Every answer is grounded in live authoritative feeds, the output is a schema-bounded `TriageReport`, the prioritization verdict is deterministic (not LLM-guessed), every tool-derived claim is re-verified server-side against the actual tool output after the run, and the untrusted-data boundary is a first-class design concern with a falsifiable red-team battery. Built on Pydantic AI + a custom Model Context Protocol (MCP) server, behind a Next.js frontend.
+**An LLM vulnerability-triage agent designed the way an AI Solutions Architect would build it and an AI Security Engineer would attack it.** Built on Pydantic AI + a custom Model Context Protocol (MCP) server, behind a Next.js frontend.
+
+- **Grounded** - every answer is built from live authoritative feeds (NVD, CISA KEV, FIRST EPSS, OSV.dev, Exploit-DB) through ten typed MCP tools, into a schema-bounded `TriageReport`.
+- **Deterministic where it matters** - the prioritization verdict (SSVC) is computed server-side from the collected signals and stamped onto the report, never LLM-guessed.
+- **Verified, not just instructed** - after every run a server-side verifier re-checks each tool-derived claim in the report against what the tools actually returned.
+- **Adversary-aware** - the untrusted-data boundary is a first-class design concern, exercised by a falsifiable 18-payload red-team battery and sealed into a hash-chained audit trail.
 
 ![sec-recon-agent: a live Log4Shell triage from query to a typed TriageReport with CISA KEV, ransomware, and EPSS signals](docs/assets/demo.gif)
 
 **[Try the live demo](https://shurtug4l.github.io/sec-recon-agent/)** - it replays real captured triages across the full SSVC ladder right in the browser, with a reproducible [scorecard](https://shurtug4l.github.io/sec-recon-agent/scorecard/). No API key, no setup: the runs are genuine captures, not mock data.
 
-Feed it a CVE ID, a product version, raw Nmap XML, or an SBOM (a machine-readable software inventory: CycloneDX, SPDX, or requirements.txt). The agent grounds its answer through ten typed MCP tools covering CVE lookup and semantic search, exploit and patch availability, KEV / EPSS / OSV feeds, SBOM and Nmap ingestion, and MITRE ATT&CK mapping. It returns a schema-validated `TriageReport`: severity, exploit availability, operational signals, prioritization verdict, recommended action with a concrete fixed version when one exists, and the full reasoning chain. Two design choices carry the whole project:
+**In:** a CVE ID, a product version, a fuzzy description, raw Nmap XML, or an SBOM (a machine-readable software inventory: CycloneDX, SPDX, or requirements.txt).
+**Out:** a schema-validated `TriageReport` - severity, exploit availability, KEV / EPSS / ransomware signals, a deterministic SSVC verdict, a recommended action with the concrete fixed version when one exists, per-feed signal coverage, and the full reasoning chain.
 
-- **The verdict is deterministic.** Prioritization follows SSVC (Stakeholder-Specific Vulnerability Categorization, CISA's decision framework), a four-step urgency ladder: **Act / Attend / Track\* / Track**, where Track\* is Track with closer monitoring. The verdict is computed server-side from the collected signals and stamped onto the report, never produced by the LLM: same signals in, same verdict out.
-- **Coverage is honest.** The signals are named and sourced: CISA KEV (the US government catalog of vulnerabilities confirmed exploited in the wild), EPSS (FIRST.org's estimated probability of exploitation within 30 days), public-exploit availability, and CVSS (the standard 0-10 severity score). Each feed is reported per triage as found, no entry, errored, or not queried - the report never papers over a feed it could not reach.
+The signals are named and sourced: CISA KEV is the US government catalog of vulnerabilities confirmed exploited in the wild, EPSS is FIRST.org's estimated probability of exploitation within 30 days, CVSS is the standard 0-10 severity score. Coverage is honest: each feed is reported per triage as found, no entry, errored, or not queried - the report never papers over a feed it could not reach.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    B(["Browser"]) -->|"same-origin HTTP"| FE
+    subgraph compose["docker compose - every port bound to 127.0.0.1"]
+        FE["frontend<br/>Next.js 15 - :3000"] -->|"/api/triage proxy - SSE"| API
+        API["agent-api<br/>FastAPI + Pydantic AI - :8000<br/>stamps SSVC + grounding<br/>hash-chained audit"] -->|"MCPToolset - HTTP+SSE"| MCP
+        MCP["mcp-server<br/>FastMCP - :8001<br/>10 typed tools"]
+    end
+    API -->|"LLM calls"| LLM["Anthropic API"]
+    MCP --> NVD["NVD CVE 2.0 + CPE"]
+    MCP --> KEV["CISA KEV catalog"]
+    MCP --> EPSS["FIRST EPSS"]
+    MCP --> OSV["OSV.dev"]
+    MCP --> EXPDB["Exploit-DB CSV + GitHub code search"]
+    MCP --> LOCAL["in-process: ChromaDB hybrid index<br/>ATT&CK mapping - SBOM / Nmap parsers"]
+```
+
+Three processes, one trust design: the browser only ever sees `:3000` (no CORS opened on the backend), the Next.js route proxies the SSE stream byte-for-byte, and the agent API stamps the deterministic verdict, the grounding assessment, and the audit row after the model returns. For one named CVE, five tools fan out in parallel; `attack_mapping` runs once at the end on the union of CWE IDs; `cve_semantic_search` runs only when the input is a fuzzy description rather than a CVE ID. Every free-text vendor field crossing a tool boundary is fenced as `<UNTRUSTED_CONTENT>` before it reaches the LLM. The full sequence diagram and the field-level trust map are in [docs/design.md](docs/design.md#triage-end-to-end); the trust boundary is the subject of [docs/case_study.md](docs/case_study.md).
+
+## The verdict is deterministic
+
+Prioritization follows SSVC (Stakeholder-Specific Vulnerability Categorization, CISA's decision framework), a four-step urgency ladder: **Act / Attend / Track\* / Track**, where Track\* is Track with closer monitoring. The verdict is a pure server-side function (`agent/ssvc.py`) of the signals the tools collected - same signals in, same verdict out. The LLM echoes the decision in prose; it cannot change it.
+
+```mermaid
+flowchart TD
+    S(["signals for one CVE:<br/>KEV - ransomware - public exploit - EPSS - CVSS"]) --> Q1{"known<br/>ransomware use?"}
+    Q1 -->|yes| A1["Act<br/>ransomware"]
+    Q1 -->|no| Q2{"in CISA KEV?"}
+    Q2 -->|yes| A2["Act<br/>kev-active-exploitation"]
+    Q2 -->|no| Q3{"public exploit<br/>AND high EPSS?"}
+    Q3 -->|yes| A3["Act<br/>public-exploit+high-epss"]
+    Q3 -->|no| Q4{"public exploit?"}
+    Q4 -->|yes| B1["Attend<br/>public-exploit"]
+    Q4 -->|no| Q5{"high EPSS?"}
+    Q5 -->|yes| B2["Attend<br/>high-epss"]
+    Q5 -->|no| Q6{"EPSS >= 0.10?"}
+    Q6 -->|yes| C1["Track*<br/>elevated-epss"]
+    Q6 -->|no| Q7{"CVSS critical<br/>or high?"}
+    Q7 -->|yes| C2["Track*<br/>high-severity-no-exploitation"]
+    Q7 -->|no| D1["Track<br/>baseline"]
+
+    classDef act fill:#B2202E,stroke:#B2202E,color:#F7F9FA
+    classDef attend fill:#A85200,stroke:#A85200,color:#F7F9FA
+    classDef trackstar fill:#8F6A00,stroke:#8F6A00,color:#F7F9FA
+    classDef track fill:#5A6472,stroke:#5A6472,color:#F7F9FA
+    class A1,A2,A3 act
+    class B1,B2 attend
+    class C1,C2 trackstar
+    class D1 track
+```
+
+Rules are evaluated most-urgent first; the first match wins, and each outcome carries the stable rule id shown above, recorded on the report and in the audit trail together with the driving CVE (the report-level verdict is the most urgent per-CVE decision). High EPSS means probability >= 0.5 or percentile >= 0.95. Scope honesty: this is SSVC-informed, not a certified implementation - deployment-specific mission context is out of scope for a stateless tool, and the module docstring says so.
 
 ## What it is, and what it is not
 
-Deciding whether a CVE deserves an all-hands response or a slot in next sprint is judgment work, done today across ten browser tabs: NVD for the CVSS, CISA KEV for active exploitation, FIRST EPSS for probability, Exploit-DB and GitHub for public PoCs. A general-purpose LLM goes faster and confidently hands you a CVSS that does not exist. This agent runs the entire fusion across live feeds in under two minutes and returns a deterministic verdict with a hash-chained audit of exactly how it got there. It is useful to vulnerability and AppSec engineers (a defensible, prioritized queue), SOC engineers (every report pivots CWE weakness classes into ATT&CK techniques, the language detections are written in), and teams building or vetting LLM agents (a working reference for a grounded, type-safe, adversary-aware agent).
+Deciding whether a CVE deserves an all-hands response or a slot in next sprint is judgment work, done today across ten browser tabs: NVD for the CVSS, CISA KEV for active exploitation, FIRST EPSS for probability, Exploit-DB and GitHub for public PoCs. A general-purpose LLM goes faster and confidently hands you a CVSS that does not exist. This agent runs the entire fusion across live feeds in under two minutes and returns a deterministic verdict with a hash-chained audit of exactly how it got there. Who it is for:
+
+- **vulnerability / AppSec engineers** - a defensible, prioritized queue instead of tab archaeology;
+- **SOC engineers** - every report pivots CWE weakness classes into ATT&CK techniques, the language detections are written in;
+- **teams building or vetting LLM agents** - a working reference for a grounded, type-safe, adversary-aware agent.
 
 It is deliberately **not**:
 
@@ -35,40 +99,6 @@ It is deliberately **not**:
 | Output | Grounded `TriageReport` + deterministic SSVC verdict | List of vulnerable packages + fixed versions | Dashboards, dedup, workflow / tickets |
 | Signal fusion | KEV + EPSS + exploit + ransomware + ATT&CK in one verdict | CVSS / severity from the advisory | whatever the wired scanners emit |
 | Adversarial posture | Untrusted-data boundary + red-team battery are first-class | trusted-input tooling | trusted-input aggregation |
-
-## Architecture
-
-```
-+--------------------------+
-|  Frontend - Next.js 15   |  :3000   <- user types a query in the browser
-|  React 19 + Tailwind     |
-+------------+-------------+
-             |  /api/triage (Next.js proxy)
-             v
-+--------------------------+
-|  Agent API - FastAPI     |  :8000   <- SSE stream of node events + final TriageReport
-|  Pydantic AI agent       |
-+------------+-------------+
-             |  MCPToolset (HTTP+SSE)
-             v
-+--------------------------+
-|  MCP Server - FastMCP    |  :8001
-|  10 typed tools          |
-+------------+-------------+
-             |
-             +-- NVD CVE 2.0 API           (cve_lookup, async + rate-limited)
-             +-- ChromaDB MiniLM-L6 + BM25 (cve_semantic_search, hybrid RRF-fused)
-             +-- Exploit-DB CSV + GitHub   (exploit_check, parallel fan-out)
-             +-- CISA KEV catalog          (kev_check, "patch now" signal + ransomware flag)
-             +-- FIRST EPSS API            (epss_score, 30-day exploitation probability)
-             +-- CycloneDX / SPDX / PEP 508 (sbom_ingest, no-network, deterministic)
-             +-- NVD CPE configurations    (patch_lookup, fixed_in / version range extraction)
-             +-- OSV.dev API               (osv_lookup, package + version -> advisories)
-             +-- defusedxml                (nmap_parse_xml, XXE-safe)
-             +-- MITRE ATT&CK mapping      (attack_mapping, CWE -> techniques + mitigations)
-```
-
-For one named CVE, five tools fan out in parallel; `attack_mapping` runs once at the end on the union of CWE IDs; `cve_semantic_search` runs only when the input is a fuzzy description rather than a CVE ID. Every free-text vendor field crossing a tool boundary is fenced as `<UNTRUSTED_CONTENT>` before it reaches the LLM. The full sequence diagram and the field-level trust map are in [docs/design.md](docs/design.md#triage-end-to-end); the trust boundary is the subject of [docs/case_study.md](docs/case_study.md).
 
 ## Quick start
 
@@ -116,19 +146,13 @@ The system prompt encodes one prioritization heuristic: CISA KEV membership > kn
 
 ## Determinism, honesty, audit
 
-**Deterministic SSVC.** The prioritization verdict is computed by a pure server-side function (`agent/ssvc.py`) over the collected signals and stamped onto the final report. The LLM can reason about it but cannot change it. A safety-relevant verdict should not depend on sampling temperature.
+- **Signal-coverage honesty.** Every report carries a per-feed coverage map: found, no entry, errored, or not queried. A triage that could not reach EPSS says so instead of silently omitting the signal, and the eval suite scores this honesty.
+- **Grounding verification.** The no-invention contract is not just instructed, it is *checked*: a pure server-side verifier (`agent/grounding.py`) re-checks every tool-derived claim in the report - CVE identity, CVSS, KEV, EPSS, exploit and ransomware flags, ATT&CK ids - against the tool returns captured from the run's own message history, and stamps a deterministic `grounded` / `suspect` / `not_evaluated` assessment with per-claim findings onto the report and into the audit chain. The frontend renders it as a badge next to the model's self-assessed confidence, so the operator sees what was verified, not just what was asserted.
+- **Hash-chained audit trail.** Every triage appends one row to an append-only SQLite log, sealed with `prev_event_hash` / `this_event_hash` over a canonical JSON serialization; `sec-recon-audit verify` walks the chain and exits non-zero on tamper. Digest-only by default: plain query text stays out unless explicitly enabled. Internals in [docs/design.md](docs/design.md#operational-notes).
+- **Interchange exports.** A finished report renders into SARIF 2.1.0 (GitHub code scanning) and OpenVEX v0.2.0 via `sec-recon-export` or `POST /v1/export/{sarif,openvex}`. Pure functions of the report; product identity is never guessed, so a bare-CVE triage refuses to emit VEX instead of fabricating one.
+- **SBOM gate.** `sec-recon-gate` runs the same tool chain with no LLM anywhere in the loop: SBOM in, OSV advisories, KEV / EPSS / exploit enrichment, a deterministic SSVC decision per finding, and a CI exit code (`--fail-on act` by default; `--strict` also fails on enrichment coverage gaps). Reproducible, free, and injection-proof by construction - there is no prompt for a hostile SBOM to attack. Usage in [docs/running.md](docs/running.md#sbom-gate).
 
-**Signal-coverage honesty.** Every report carries a per-feed coverage map: found, no entry, errored, or not queried. A triage that could not reach EPSS says so instead of silently omitting the signal, and the eval suite scores this honesty.
-
-**Grounding verification.** The no-invention contract is not just instructed, it is *checked*. After every run a pure server-side verifier (`agent/grounding.py`) re-checks each tool-derived claim in the report - CVE identity, CVSS, KEV, EPSS, exploit and ransomware flags, ATT&CK ids - against the tool returns captured from the run's own message history, and stamps a deterministic `grounding` assessment (`grounded` / `suspect` / `not_evaluated`, with per-claim findings) onto the report and into the audit chain. A claim with no backing tool output, or one that contradicts what a tool actually returned, is surfaced as unbacked or mismatched. The frontend renders this as a badge next to the model's self-assessed confidence and a per-claim panel, so the operator sees what was verified, not just what was asserted.
-
-**Hash-chained audit trail.** Every triage appends one row to an append-only SQLite log: SHA-256 digests of query and report, aggregate counts, model, duration. Rows are sealed with `prev_event_hash` / `this_event_hash` over a canonical JSON serialization; `sec-recon-audit verify` walks the chain and exits non-zero on tamper. Digest-only by default: plain query text stays out unless explicitly enabled. Internals in [docs/design.md](docs/design.md#operational-notes).
-
-**Interchange exports.** A finished report renders into SARIF 2.1.0 (for GitHub code scanning) and OpenVEX v0.2.0 via `sec-recon-export` or the stateless `POST /v1/export/{sarif,openvex}` endpoints. The renderers are pure functions of the report: SARIF `level` maps each CVE's own severity while the SSVC verdict passes through verbatim, and OpenVEX statements require the triaged product's purl - product identity is never guessed, so a bare-CVE triage refuses to emit VEX instead of fabricating one.
-
-**SBOM gate.** `sec-recon-gate` runs the same tool chain with no LLM anywhere in the loop: parse an SBOM (CycloneDX / SPDX / requirements.txt), look up advisories on OSV.dev, enrich each CVE with KEV / EPSS / exploit signals, reduce every finding to a deterministic SSVC decision, and exit with a CI verdict (`--fail-on act` by default; `--strict` also fails on enrichment coverage gaps). Findings render to SARIF and OpenVEX through the shared renderers, with each VEX statement bound to the affected component's own purl. Reproducible, free, and injection-proof by construction - there is no prompt for a hostile SBOM to attack. Usage in [docs/running.md](docs/running.md#sbom-gate).
-
-The gate ships as a composite GitHub Action at the repo root, and this repository dogfoods it: `ci-sbom-gate.yml` scans the project's own dependency tree (uv.lock + frontend lockfile via syft) on dependency changes and a weekly cron, uploads SARIF to the Security tab, and attests the SBOM + gate report with GitHub artifact attestations on non-PR runs.
+The gate ships as a composite GitHub Action at the repo root, and this repository dogfoods it: `ci-sbom-gate.yml` scans the project's own dependency tree on dependency changes and a weekly cron, uploads SARIF to the Security tab, and attests the SBOM + gate report on non-PR runs.
 
 ```yaml
 - uses: Shurtug4l/sec-recon-agent@main
@@ -140,9 +164,9 @@ The gate ships as a composite GitHub Action at the repo root, and this repositor
 
 ## Eval, red team, scorecard
 
-An end-to-end golden-set evaluation (`src/sec_recon_agent/eval/`) exercises the live HTTP API with 11 curated queries: named CVEs, fuzzy descriptions, an SBOM, degraded inputs. Assertions are soft (severity within +-1 step, expected CVE recall >= 0.5, KEV / ransomware flags honored) because the agent is probabilistic; the measured axes are the ones an engineering review actually asks about: latency p50/p95, tokens and $/triage, structured-output conformance, confidence calibration (ECE), and retrieval quality (hit-rate@k, MRR) for the semantic search index.
+An end-to-end golden-set evaluation (`src/sec_recon_agent/eval/`) exercises the live HTTP API with 11 curated queries: named CVEs, fuzzy descriptions, an SBOM, degraded inputs. Assertions are soft (severity within +-1 step, expected CVE recall >= 0.5, KEV / ransomware flags honored) because the agent is probabilistic; the measured axes are the ones an engineering review actually asks about: latency p50/p95, tokens and $/triage, structured-output conformance, confidence calibration (ECE), and retrieval quality (hit-rate@k, MRR).
 
-A red-team battery of 18 prompt-injection payloads across six categories (direct override, role-play, fake authority, marker forgery, system-prompt extraction, indirect injection via tool output) applies falsifiable resistance checks to the returned report. Every payload is tagged with the MITRE ATLAS technique it exercises, and the CLI reports per-technique resistance rates.
+A red-team battery of 18 prompt-injection payloads across six categories (direct override, role-play, fake authority, marker forgery, system-prompt extraction, indirect injection via tool output) applies falsifiable resistance checks to the returned report, with per-MITRE-ATLAS-technique resistance rates.
 
 ```bash
 make up
@@ -151,13 +175,13 @@ make redteam       # injection battery; bills the LLM
 make scorecard     # regenerate SCORECARD.md from stored result JSONs
 ```
 
-Both suites are deliberately out of CI: they need a live stack and bill the LLM provider. Run them before merging changes to the system prompt or the model. Results land in one stamped, reproducible [SCORECARD.md](SCORECARD.md); the scorecard baseline is measured on sonnet (the default haiku is cheaper but thrashes on multi-tool cases). Full commands, sample outputs, and the model-comparison mode are in [docs/evaluation.md](docs/evaluation.md).
+Both suites are deliberately out of CI: they need a live stack and bill the LLM provider. Results land in one stamped, reproducible [SCORECARD.md](SCORECARD.md); the baseline is measured on sonnet (the default haiku is cheaper but thrashes on multi-tool cases). Full commands and the model-comparison mode are in [docs/evaluation.md](docs/evaluation.md).
 
-What CI does gate on is the **record-replay harness**: committed cassettes (`tests/cassettes/`, one frozen real trajectory per golden case) are replayed through the deterministic pipeline - trajectory extraction, grounding verification, SSVC, golden scorer - on every PR, asserting bit-exact agreement with the recorded outcomes at zero LLM cost. A staleness hash over the LLM-visible surface (system prompt, tool schemas, report schema) hard-fails the gate when behavior-bearing text changes without re-recording (`make record-cassettes`). Details in [docs/evaluation.md](docs/evaluation.md#record-replay-gate).
+What CI does gate on is the **record-replay harness**: committed cassettes (`tests/cassettes/`, one frozen real trajectory per golden case) are replayed through the deterministic pipeline - trajectory extraction, grounding verification, SSVC, golden scorer - on every PR, asserting bit-exact agreement with the recorded outcomes at zero LLM cost. A staleness hash over the LLM-visible surface hard-fails the gate when behavior-bearing text changes without re-recording (`make record-cassettes`). Details in [docs/evaluation.md](docs/evaluation.md#record-replay-gate).
 
 ## Security posture
 
-Every HIGH finding from an independent security review is mapped to the code change that addressed it in [docs/design.md](docs/design.md#threat-model). Highlights:
+Every HIGH finding from an independent security review is mapped to the code change that addressed it in [docs/design.md](docs/design.md#threat-model), including a diagram of where each control sits on the untrusted-data path. Highlights:
 
 - **Strict typing at the model boundary** - every tool I/O is a Pydantic model; `mypy --strict` enforced.
 - **Untrusted-content fencing** - every free-text vendor field is wrapped with `<UNTRUSTED_CONTENT>` markers at the code boundary (`mcp_server/security.py`); the system prompt instructs the LLM to treat fenced content as data, never as instructions.
@@ -166,9 +190,9 @@ Every HIGH finding from an independent security review is mapped to the code cha
 - **Error-payload allowlist** - the SSE `error` event surfaces a generic message unless the exception type is explicitly allowlisted; internal messages never leak to the client.
 - **Container hardening** - non-root users, `read_only: true` rootfs, `no-new-privileges`, ports bound to `127.0.0.1`, `tmpfs:/tmp`.
 - **Trivy in CI** - both images scanned on dependency changes plus a weekly cron; CRITICAL findings block the merge, HIGH findings land as SARIF in the Security tab. Open findings are triaged with accept rationale in [docs/security_findings.md](docs/security_findings.md).
-- **SBOM gate in CI** - the repository's own dependency tree is scanned by the deterministic gate on dependency changes plus a weekly cron; an Act-grade advisory (KEV / ransomware / imminent exploitation) fails the run, findings land as SARIF, and non-PR runs attest the SBOM + gate report.
+- **SBOM gate in CI** - the repository's own dependency tree is scanned by the deterministic gate on dependency changes plus a weekly cron; an Act-grade advisory fails the run.
 - **Opt-in API auth and per-IP rate limiting**; the MCP port takes a bearer token whenever it is published beyond the compose network - setup in [docs/running.md](docs/running.md).
-- **Denial-of-wallet and kill-switch rails** - a per-request round cap already bounds one run; an opt-in rolling-24h spend ceiling (`DENIAL_OF_WALLET_USD_PER_DAY`) bounds the aggregate an attacker can drive by repeating requests, and a kill-switch (env flag or a per-request sentinel file) disables `/v1/triage` with 503 live, with no redeploy. Both refuse before the agent is built, so a refused request spends nothing.
+- **Denial-of-wallet and kill-switch rails** - a per-request round cap bounds one run; an opt-in rolling-24h spend ceiling (`DENIAL_OF_WALLET_USD_PER_DAY`) bounds the aggregate an attacker can drive, and a kill-switch (env flag or a per-request sentinel file) disables `/v1/triage` with 503 live, with no redeploy. Both refuse before the agent is built, so a refused request spends nothing.
 - **Opt-in egress allowlist** - a default-deny forward proxy (`make up-egress`) permits outbound HTTPS only to the known feed hosts + the LLM provider, a network-level belt under the per-feed application-level host locks: a tool coerced into a different host cannot connect.
 
 ## Testing
@@ -187,16 +211,17 @@ The per-area breakdown - tool contracts, adversarial corpus, API, audit hash cha
 
 ## Frontend
 
-The browser is the primary interface, in a dual-theme "Editorial instrument" design system (dark instrument by default, light technical paper via the header toggle). Five tabs plus a permalink route:
+The browser is the primary interface, in a dual-theme "Editorial instrument" design system (dark instrument by default, light technical paper via the header toggle). Six tabs plus a permalink route:
 
-- **Home (`/`)** - landing: architecture pipeline, design pillars, tool grid.
+- **Home (`/`)** - landing: SSVC ladder hero, design pillars, tool grid.
 - **Triage (`/triage`)** - query form with example chips, live SSE progress, the report view, and a localStorage history sidebar.
 - **Dashboard (`/dashboard`)** - statistics from local history, a measured per-node latency waterfall, and a transparency tab showing the literal system prompt and tool inventory from `GET /v1/meta`.
-- **Scorecard (`/scorecard`)** - the reproducible scorecard rendered in the UI.
-- **Guide (`/guide`)** - one explainer card per framework the agent grounds answers in (CVE / CVSS, KEV, EPSS, ATT&CK, ATLAS, SBOM, SSVC, MCP...).
+- **Scorecard (`/scorecard`)** - the reproducible scorecard rendered as tabbed bands.
+- **Case study (`/case-study`)** - the trust-boundary design narrative as a guided tour.
+- **Guide (`/guide`)** - one explainer per framework the agent grounds answers in (CVE / CVSS, KEV, EPSS, ATT&CK, ATLAS, SBOM, SSVC, MCP...).
 - **`/r`** - self-contained viewer for shared-report permalinks: the whole report is gzip-encoded in the URL fragment, decoded locally, never sent to a server.
 
-Reports stream live over SSE, render the untrusted-content fence semantically (vendor text is visibly quarantined), surface the server-side grounding verification (a badge next to the model's self-assessed confidence plus a collapsible per-claim panel), and export to Markdown, raw JSON, or print-to-PDF. Component map and SSE wire protocol in [docs/frontend.md](docs/frontend.md).
+Reports stream live over SSE, render the untrusted-content fence semantically (vendor text is visibly quarantined), surface the server-side grounding verification, and export to Markdown, raw JSON, or print-to-PDF. Component map and SSE wire protocol in [docs/frontend.md](docs/frontend.md).
 
 ## Stack
 
