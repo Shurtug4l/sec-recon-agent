@@ -231,14 +231,11 @@ const GUIDE_SECTIONS: PaletteCommand[] = SECTIONS.map((s) => ({
   icon: s.icon,
   run: ({ router, pathname }) => {
     if (pathname === "/guide") {
-      // Same-route hash push is historically flaky in the App Router; scroll
-      // directly (scroll-mt-24 on the cards is honored) and sync the hash.
-      // The global reduced-motion CSS does not cover an explicit JS smooth
-      // scroll, so check the media query here.
-      document.getElementById(s.id)?.scrollIntoView({
-        behavior: prefersReducedMotion() ? "auto" : "smooth",
-      });
-      window.history.replaceState(null, "", `#${s.id}`);
+      // The guide is a master-detail: the panel is hash-driven, so setting
+      // the hash directly fires the page's hashchange listener and selects
+      // the section (same-route router.push on a hash is historically flaky
+      // in the App Router; this bypasses the router entirely).
+      window.location.hash = s.id;
     } else {
       router.push(`/guide#${s.id}`);
     }
