@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Activity, BarChart3, Eye } from "lucide-react";
+import { Activity, BarChart3, Eye, ShieldCheck } from "lucide-react";
 
 import { Header } from "@/components/header";
+import { AuditTab } from "@/components/dashboard/audit-tab";
 import { ObservabilityTab } from "@/components/dashboard/observability-tab";
 import { StatisticsTab } from "@/components/dashboard/statistics-tab";
 import { TransparencyTab } from "@/components/dashboard/transparency-tab";
@@ -11,12 +12,13 @@ import { useTriage } from "@/hooks/use-triage";
 import { DASHBOARD_TAB_EVENT } from "@/lib/nav-events";
 import { cn } from "@/lib/utils";
 
-type Tab = "statistics" | "observability" | "transparency";
+type Tab = "statistics" | "observability" | "transparency" | "audit";
 
 const TABS: Array<{ key: Tab; label: string; icon: React.ElementType }> = [
   { key: "statistics", label: "Statistics", icon: BarChart3 },
   { key: "observability", label: "Observability", icon: Activity },
   { key: "transparency", label: "Transparency", icon: Eye },
+  { key: "audit", label: "Audit trail", icon: ShieldCheck },
 ];
 
 const TAB_KEYS = TABS.map((t) => t.key);
@@ -86,8 +88,8 @@ export default function DashboardPage() {
           <div className="flex flex-col gap-1">
             <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
             <p className="text-sm text-muted-foreground">
-              Aggregated stats from your local history, per-run observability, and full transparency
-              into the agent&apos;s prompt and tool surface.
+              Aggregated stats from your local history, per-run observability, full transparency
+              into the agent&apos;s prompt and tool surface, and the tamper-evident audit trail.
             </p>
           </div>
           {state.isRunning && (
@@ -149,6 +151,7 @@ export default function DashboardPage() {
             {tab === key && key === "statistics" && <StatisticsTab entries={entries} />}
             {tab === key && key === "observability" && <ObservabilityTab entries={entries} />}
             {tab === key && key === "transparency" && <TransparencyTab />}
+            {tab === key && key === "audit" && <AuditTab />}
           </div>
         ))}
       </main>

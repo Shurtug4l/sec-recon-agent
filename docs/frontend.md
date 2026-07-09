@@ -4,7 +4,7 @@ Companion to [`docs/design.md`](design.md), focused on the Next.js + React UI in
 
 ## What it is
 
-A Next.js 15 (App Router) application on React 19 + TypeScript strict + Tailwind, with eight routes: `/` (landing), `/triage` (form + report), `/dashboard` (statistics / observability / transparency), `/scorecard` (the sonnet-baseline scorecard rendered statically from committed result JSONs), `/case-study` (the design narrative as a guided tour, twin of `docs/case_study.md`), `/docs` (the project's own markdown documentation rendered in-app, master-detail with cross-doc search), `/guide` (framework explainer), and `/r` (a self-contained shared-report viewer, not in the nav). The header nav carries seven tabs: Home, Triage, Dashboard, Scorecard, Case study, Docs, Guide (labels collapse to icon-only below `md` so the row fits a phone). It is the primary interface for the triage agent: the user types a query (free text, a CVE ID, a product description, or Nmap XML), the UI streams the agent's progress as it happens, and renders the final `TriageReport` as a structured card - the deterministic SSVC verdict (SSVC is CISA's remediation-urgency methodology: one of Act / Attend / Track* / Track, computed server-side, never by the LLM), per-feed signal coverage (whether each external feed returned data, had no entry, or errored), severity/confidence, and per-CVE detail.
+A Next.js 15 (App Router) application on React 19 + TypeScript strict + Tailwind, with eight routes: `/` (landing), `/triage` (form + report), `/dashboard` (statistics / observability / transparency / audit trail), `/scorecard` (the sonnet-baseline scorecard rendered statically from committed result JSONs), `/case-study` (the design narrative as a guided tour, twin of `docs/case_study.md`), `/docs` (the project's own markdown documentation rendered in-app, master-detail with cross-doc search), `/guide` (framework explainer), and `/r` (a self-contained shared-report viewer, not in the nav). The header nav carries seven tabs: Home, Triage, Dashboard, Scorecard, Case study, Docs, Guide (labels collapse to icon-only below `md` so the row fits a phone). It is the primary interface for the triage agent: the user types a query (free text, a CVE ID, a product description, or Nmap XML), the UI streams the agent's progress as it happens, and renders the final `TriageReport` as a structured card - the deterministic SSVC verdict (SSVC is CISA's remediation-urgency methodology: one of Act / Attend / Track* / Track, computed server-side, never by the LLM), per-feed signal coverage (whether each external feed returned data, had no entry, or errored), severity/confidence, and per-CVE detail.
 
 It is not a thin wrapper around the FastAPI surface; it adds:
 - A Next.js-side `/api/triage` proxy that lets the browser talk same-origin (no CORS opened on the backend).
@@ -21,7 +21,7 @@ frontend/src/
 │   ├── layout.tsx               # root layout; three fonts via next/font + pre-paint theme script
 │   ├── page.tsx                 # landing: hero (copy + animated SSVC ladder), how-it-works, pillars, tools
 │   ├── triage/page.tsx          # form + progress stream + report + history sidebar
-│   ├── dashboard/page.tsx       # ARIA tablist: statistics / observability / transparency
+│   ├── dashboard/page.tsx       # ARIA tablist: statistics / observability / transparency / audit
 │   ├── scorecard/page.tsx       # scorecard shell (title + provenance) around the tabbed bands
 │   ├── case-study/page.tsx      # design-narrative tour: hash-driven rail, 12 panels, 6-layer strip
 │   ├── docs/page.tsx            # in-app docs: doc rail + rendered panel + on-page TOC + search
@@ -30,7 +30,8 @@ frontend/src/
 │   ├── globals.css              # Tailwind directives + the dual-theme CSS-variable tokens
 │   └── api/
 │       ├── triage/route.ts      # SSE proxy to http://agent-api:8000/v1/triage
-│       └── meta/route.ts        # proxy to /v1/meta (transparency view)
+│       ├── meta/route.ts        # proxy to /v1/meta (transparency view)
+│       └── audit/route.ts       # proxy to /v1/audit (audit-trail view)
 │
 ├── components/
 │   ├── providers.tsx            # client wrapper mounting TriageProvider + CommandPaletteProvider
@@ -45,7 +46,7 @@ frontend/src/
 │   ├── history-sidebar.tsx      # localStorage-backed run list (lg+ viewports)
 │   ├── icons/github-logo.tsx    # inline SVG (lucide v1 dropped brand icons)
 │   ├── dashboard/               # kpi-card, charts (Recharts severity bars + plain-DOM tool bars),
-│   │                            #   statistics / observability / transparency tabs
+│   │                            #   statistics / observability / transparency / audit-trail tabs
 │   ├── scorecard/               # scorecard-bands: the KPI row as an ARIA tab rail + five band panels
 │   ├── docs/doc-content.tsx     # renders a doc's built HTML + lazy client-side mermaid (memo'd)
 │   └── ui/                      # shadcn-style primitives (copied, not imported):
@@ -70,8 +71,9 @@ frontend/src/
     ├── scorecard.ts             # aggregations for /scorecard, mirrors eval/metrics.py
     ├── markdown-export.ts       # TriageReport -> Markdown / JSON download helpers
     ├── permalink.ts             # gzip+base64url a report into a shareable URL fragment
-    ├── commands.ts              # static 59-command registry for the palette
+    ├── commands.ts              # static 60-command registry for the palette
     ├── guide-data.ts            # guide SECTIONS (sections + external refs), shared with the palette
+    ├── audit.ts                 # loads /v1/audit (demo audit.json snapshot or /api/audit proxy)
     ├── docs.ts                  # typed access to the built docs corpus (groups, sections, lookup)
     ├── docs-search.ts           # dependency-free client search over the docs corpus
     ├── docs-generated.json      # GENERATED by scripts/gen-docs.mjs from docs/*.md (do not hand-edit)
@@ -171,7 +173,7 @@ Every report card carries three exports plus a share link, all client-side with 
 
 ## Command palette
 
-`Cmd+K` (macOS) / `Ctrl+K` (elsewhere), or the Search button in the header, opens a command palette with 59 commands in 7 groups: report actions (copy link, export .md / JSON / PDF, show grounding verification - visible only while a report is on screen, PDF and grounding only where the report view is in the DOM), page navigation (including Docs), dashboard tab jumps, the 7 demo triage runs (live mode submits the same query to the real backend), the 12 guide sections, the guide's 23 external references, and project actions (GitHub, copy system prompt). Section-level search inside the docs is deliberately the `/docs` page's own search box, not palette commands, so the command count stays bounded.
+`Cmd+K` (macOS) / `Ctrl+K` (elsewhere), or the Search button in the header, opens a command palette with 60 commands in 7 groups: report actions (copy link, export .md / JSON / PDF, show grounding verification - visible only while a report is on screen, PDF and grounding only where the report view is in the DOM), page navigation (including Docs), dashboard tab jumps (including the audit trail), the 7 demo triage runs (live mode submits the same query to the real backend), the 12 guide sections, the guide's 23 external references, and project actions (GitHub, copy system prompt). Section-level search inside the docs is deliberately the `/docs` page's own search box, not palette commands, so the command count stays bounded.
 
 The registry is a static module (`lib/commands.ts`); context-dependent commands gate through a `visible(ctx)` predicate rather than conditional construction, so the filter always sees a stable item set. Section and reference commands consume the same `lib/guide-data.ts` the guide page renders from - one source, no drift. The binding is platform-split on purpose: registering `Ctrl+K` on macOS too would hijack readline kill-line inside the triage textarea.
 
@@ -300,3 +302,4 @@ npm run build        # production build
 | Docs rendered from `docs/*.md` at build time, not client-side (P5) | The whole markdown -> sanitized HTML + syntax-highlight pipeline runs in Node with dev-only deps, so the browser ships no parser and no highlighter; the generated JSON is a pure function of the docs, committed (the Docker context lacks `../docs`) and CI-gated for freshness. Doc-level master-detail with an on-page section TOC honors the horizontal principle at the navigation level, while a reference doc is allowed to scroll inside its own panel | Client-side `react-markdown` (ships the parser + raw markdown to every reader); exploding each doc into one-section-per-panel (fragments continuous prose - design.md's decisions log would be 30 panels); a searchable index that links out to GitHub (the user chose in-app rendering, and GitHub is one click away anyway) |
 | Mermaid the only added client dependency, code-split + lazy | Diagrams (design.md) must render in-app; mermaid is imported only on `/docs` and only when a diagram block is present, so its weight never touches the other routes; it renders themed and re-renders on toggle. `DocContent` is `memo`'d because the SVGs are injected imperatively - an unmemoized re-render (every scroll-spy tick) re-applies `dangerouslySetInnerHTML` and wipes them | Build-time SVG pre-render via mermaid-cli (needs puppeteer in CI - heavy and fragile, and dual-theme means two committed SVGs per diagram that drift from source); showing mermaid blocks as raw code (ugly, defeats the point); a heavier diagram lib |
 | `rehype-sanitize` allowlist over first-party doc HTML | Defense in depth on a security-portfolio repo: even our own build-time markdown passes an explicit tag/attribute allowlist before it becomes `dangerouslySetInnerHTML`, so the pattern is safe by construction if a doc ever ingested untrusted content. The clobber-prefix is disabled (clean `#threat-model` anchors) because the ids are ours | Trusting first-party content unsanitized (correct today, but a footgun the day a doc embeds something); a runtime DOM sanitizer (build-time is free and ships nothing) |
+| Audit trail as a fourth dashboard tab, fed by `GET /v1/audit` | The hash-chained audit log was CLI-only (`sec-recon-audit`); surfacing it in-app makes the governance record-keeping demonstrable to a reviewer. It lives beside Transparency (its sibling in intent), not a new header tab, and reads in one viewport: a chain-integrity banner (verified N/N, re-checked live) over a digest-only row table with the `prev -> this` hash link visible. The demo loads a real sealed chain from the seven captures (`demo/audit.json`), live proxies `/api/audit` | A dedicated `/audit` route (an eighth header tab, worse on mobile); a raw JSON dump (the chain linkage and the SSVC/grounding signals want a table); recomputing the chain client-side (would mean porting the JCS canonicalization to JS - the server verifies, the UI reports) |

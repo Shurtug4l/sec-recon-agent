@@ -192,6 +192,7 @@ const DASHBOARD_TABS: PaletteCommand[] = [
   { key: "statistics", label: "Statistics", keywords: ["stats", "charts", "kpi", "severity"] },
   { key: "observability", label: "Observability", keywords: ["waterfall", "tokens", "cost", "latency", "usage"] },
   { key: "transparency", label: "Transparency", keywords: ["system prompt", "tools", "model", "meta"] },
+  { key: "audit", label: "Audit trail", keywords: ["hash chain", "tamper", "integrity", "record-keeping", "provenance"] },
 ].map(({ key, label, keywords }) => ({
   id: `dashboard:${key}`,
   label: `Dashboard: ${label}`,

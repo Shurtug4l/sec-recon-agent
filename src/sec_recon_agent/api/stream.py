@@ -20,7 +20,10 @@ API process and the MCP server are independent.
 import hmac
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from sec_recon_agent.audit.models import TriageEvent
 
 import structlog
 import uvicorn
@@ -306,6 +309,118 @@ async def meta() -> MetaResponse:
                 ),
             ),
         ],
+    )
+
+
+# Upper bound on rows returned in one /v1/audit call: bounds the payload and
+# stops a caller pulling an unbounded history in a single request.
+_AUDIT_TAIL_MAX = 200
+
+
+class AuditRow(BaseModel):
+    """One audit-trail row as exposed over HTTP: the digest-only projection of
+    a TriageEvent. The plaintext fields (query_plain / report_summary_plain)
+    are deliberately absent - see the /v1/audit docstring."""
+
+    event_id: str
+    ts: str
+    query_sha256: str
+    query_length: int
+    report_sha256: str
+    severity: str | None
+    confidence: str | None
+    cves_count: int
+    attack_techniques_count: int
+    kev_hits: int
+    ransomware_hits: int
+    high_epss_hits: int
+    ssvc_decision: str | None
+    grounding_status: str | None
+    model: str
+    duration_ms: int
+    outcome: str
+    error_class: str | None
+    prev_event_hash: str
+    this_event_hash: str
+
+
+class AuditVerification(BaseModel):
+    """Live result of walking the hash chain. `ok` false means the chain broke;
+    `broken_event_id` names the first tampered row."""
+
+    ok: bool
+    verified_count: int
+    broken_event_id: str | None = None
+
+
+class AuditResponse(BaseModel):
+    enabled: bool
+    count: int
+    verification: AuditVerification
+    events: list[AuditRow]  # most-recent-first, capped at the requested limit
+
+
+def _to_audit_row(event: "TriageEvent") -> AuditRow:
+    # Explicit field copy, not model_dump: it guarantees the plaintext fields
+    # can never leak through this projection even if TriageEvent grows more.
+    return AuditRow(
+        event_id=event.event_id,
+        ts=event.ts,
+        query_sha256=event.query_sha256,
+        query_length=event.query_length,
+        report_sha256=event.report_sha256,
+        severity=event.severity,
+        confidence=event.confidence,
+        cves_count=event.cves_count,
+        attack_techniques_count=event.attack_techniques_count,
+        kev_hits=event.kev_hits,
+        ransomware_hits=event.ransomware_hits,
+        high_epss_hits=event.high_epss_hits,
+        ssvc_decision=event.ssvc_decision,
+        grounding_status=event.grounding_status,
+        model=event.model,
+        duration_ms=event.duration_ms,
+        outcome=event.outcome,
+        error_class=event.error_class,
+        prev_event_hash=event.prev_event_hash,
+        this_event_hash=event.this_event_hash,
+    )
+
+
+@app.get("/v1/audit", response_model=AuditResponse, dependencies=[Depends(verify_api_key)])
+async def audit(limit: int = 50) -> AuditResponse:
+    """Read-only view of the tamper-evident triage audit trail: the most recent
+    rows (digest-only) plus a live hash-chain verification.
+
+    Minimal-disclosure by construction: even when plaintext retention is enabled
+    in the database (AUDIT_INCLUDE_QUERY / AUDIT_INCLUDE_SUMMARY), this endpoint
+    never returns the plaintext. Retention on local disk and exposure over HTTP
+    are different trust boundaries; the plaintext stays reachable only via the
+    local `sec-recon-audit` CLI against the DB file. A detected break is
+    reported as `verification.ok = false` (not a 500), because surfacing tamper
+    is the endpoint's whole point."""
+    limit = max(1, min(limit, _AUDIT_TAIL_MAX))
+    if not settings.audit_log_enabled:
+        return AuditResponse(
+            enabled=False,
+            count=0,
+            verification=AuditVerification(ok=True, verified_count=0),
+            events=[],
+        )
+    from sec_recon_agent.audit.store import TamperDetectedError
+
+    store = _get_audit_store()
+    try:
+        verified = store.verify()
+        verification = AuditVerification(ok=True, verified_count=verified)
+    except TamperDetectedError as exc:
+        verification = AuditVerification(ok=False, verified_count=0, broken_event_id=exc.event_id)
+    events = [_to_audit_row(e) for e in store.tail(limit)]
+    return AuditResponse(
+        enabled=True,
+        count=store.count(),
+        verification=verification,
+        events=events,
     )
 
 
