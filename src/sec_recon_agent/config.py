@@ -101,6 +101,48 @@ class Settings(BaseSettings):
     # pydantic-ai's own default is 50, deliberately tightened here.
     agent_request_limit: int = Field(default=25, ge=1, le=200)
 
+    # Denial-of-wallet guard: a hard ceiling on estimated LLM spend (USD)
+    # summed in-process over a rolling 24h window across all triage runs. None
+    # disables it. When the window sum reaches the ceiling, /v1/triage refuses
+    # new runs with 503 until older spend ages out. The window lives in memory,
+    # so it resets on restart; that still bounds spend between restarts, which
+    # is the denial-of-wallet threat for a reachable LLM endpoint. The
+    # per-request round cap (agent_request_limit) bounds a single run's cost;
+    # this bounds the aggregate an attacker can drive by repeating requests.
+    denial_of_wallet_usd_per_day: float | None = Field(default=None, ge=0)
+
+    # Kill-switch: when the env flag is set OR the sentinel file exists,
+    # /v1/triage refuses with 503 without a redeploy. Both are checked per
+    # request, so `touch`/`rm` on the sentinel path (a mounted volume) toggles
+    # the service live; the env flag is the always-off form decided at deploy.
+    kill_switch: bool = False
+    kill_switch_file: Path | None = None
+
+    @field_validator("denial_of_wallet_usd_per_day", mode="before")
+    @classmethod
+    def _empty_budget_to_none(cls, raw: object) -> object:
+        # docker-compose passes the unset host var as "", which pydantic will
+        # not coerce to None for float|None. Treat empty string as "disabled".
+        if isinstance(raw, str) and raw.strip() == "":
+            return None
+        return raw
+
+    @field_validator("kill_switch_file", mode="before")
+    @classmethod
+    def _empty_kill_switch_file_to_none(cls, raw: object) -> object:
+        if isinstance(raw, str) and raw.strip() == "":
+            return None
+        return raw
+
+    @field_validator("kill_switch", mode="before")
+    @classmethod
+    def _empty_kill_switch_to_false(cls, raw: object) -> object:
+        # docker-compose passes the unset host var as ""; pydantic will not
+        # coerce "" to a bool. Treat empty string as "off".
+        if isinstance(raw, str) and raw.strip() == "":
+            return False
+        return raw
+
     log_level: str = "INFO"
 
     @property

@@ -822,3 +822,155 @@ def test_export_requires_api_key_when_configured(monkeypatch: MonkeyPatch) -> No
         headers={"X-API-Key": "good-key"},
     )
     assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# S4 operational safety rails: kill-switch + denial-of-wallet budget
+# ---------------------------------------------------------------------------
+
+from sec_recon_agent.api import budget as budget_module  # noqa: E402
+from sec_recon_agent.api.budget import BudgetTracker, budget_tracker  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _reset_budget_window() -> Any:
+    """Drop the shared tracker's window around every test so accumulated spend
+    never leaks between tests (the tracker is a module singleton)."""
+    budget_tracker.reset()
+    yield
+    budget_tracker.reset()
+
+
+def test_triage_refused_when_kill_switch_env(
+    monkeypatch: MonkeyPatch,
+    fake_agent_factory: Any,
+) -> None:
+    """The env kill-switch refuses triage with 503 before the agent is built."""
+    from sec_recon_agent.config import settings
+
+    monkeypatch.setattr(settings, "kill_switch", True)
+    # Wire a fake agent so a failure to short-circuit would otherwise 200.
+    monkeypatch.setattr(stream_module, "build_agent", fake_agent_factory)
+
+    client = TestClient(app)
+    resp = client.post("/v1/triage", json={"query": "CVE-2021-41773"})
+    assert resp.status_code == 503
+
+
+def test_triage_refused_when_kill_switch_file_present(
+    monkeypatch: MonkeyPatch,
+    fake_agent_factory: Any,
+    tmp_path: Any,
+) -> None:
+    """A present sentinel file disables triage live; removing it re-enables it,
+    with no restart in between (the path is checked per request)."""
+    from sec_recon_agent.config import settings
+
+    sentinel = tmp_path / "killswitch"
+    monkeypatch.setattr(settings, "kill_switch", False)
+    monkeypatch.setattr(settings, "kill_switch_file", sentinel)
+    monkeypatch.setattr(stream_module, "build_agent", fake_agent_factory)
+    client = TestClient(app)
+
+    # Absent -> allowed.
+    with client.stream("POST", "/v1/triage", json={"query": "test"}) as response:
+        assert response.status_code == 200
+        assert "event: final" in "".join(response.iter_text())
+
+    # Present -> refused.
+    sentinel.touch()
+    resp = client.post("/v1/triage", json={"query": "test"})
+    assert resp.status_code == 503
+
+    # Removed -> allowed again, no restart.
+    sentinel.unlink()
+    with client.stream("POST", "/v1/triage", json={"query": "test"}) as response:
+        assert response.status_code == 200
+
+
+def test_triage_refused_when_budget_exhausted(
+    monkeypatch: MonkeyPatch,
+    fake_agent_factory: Any,
+) -> None:
+    """With a ceiling set and the rolling window already over it, triage is
+    refused with 503; clearing the window re-enables it."""
+    from sec_recon_agent.config import settings
+
+    monkeypatch.setattr(settings, "denial_of_wallet_usd_per_day", 1.0)
+    monkeypatch.setattr(stream_module, "build_agent", fake_agent_factory)
+    # Preload the window above the ceiling (a recent event).
+    budget_tracker._events.append((budget_module.time.monotonic(), 2.0))
+
+    client = TestClient(app)
+    resp = client.post("/v1/triage", json={"query": "test"})
+    assert resp.status_code == 503
+
+    budget_tracker.reset()
+    with client.stream("POST", "/v1/triage", json={"query": "test"}) as response:
+        assert response.status_code == 200
+
+
+def test_triage_allowed_when_budget_guard_disabled(
+    monkeypatch: MonkeyPatch,
+    fake_agent_factory: Any,
+) -> None:
+    """With no ceiling configured, even a large recorded spend never blocks."""
+    from sec_recon_agent.config import settings
+
+    monkeypatch.setattr(settings, "denial_of_wallet_usd_per_day", None)
+    monkeypatch.setattr(stream_module, "build_agent", fake_agent_factory)
+    budget_tracker._events.append((budget_module.time.monotonic(), 999.0))
+
+    client = TestClient(app)
+    with client.stream("POST", "/v1/triage", json={"query": "test"}) as response:
+        assert response.status_code == 200
+
+
+async def test_budget_tracker_disabled_never_blocks(monkeypatch: MonkeyPatch) -> None:
+    from sec_recon_agent.config import settings
+
+    monkeypatch.setattr(settings, "denial_of_wallet_usd_per_day", None)
+    tracker = BudgetTracker()
+    await tracker.record(5.0)
+    assert tracker.enabled is False
+    assert await tracker.would_block() is False
+    # record() is a no-op while disabled: nothing accumulates.
+    assert await tracker.spent_usd() == 0.0
+
+
+async def test_budget_tracker_blocks_over_ceiling(monkeypatch: MonkeyPatch) -> None:
+    from sec_recon_agent.config import settings
+
+    monkeypatch.setattr(settings, "denial_of_wallet_usd_per_day", 0.10)
+    tracker = BudgetTracker()
+    await tracker.record(0.04)
+    assert await tracker.would_block() is False
+    await tracker.record(0.07)
+    assert await tracker.spent_usd() == pytest.approx(0.11)
+    assert await tracker.would_block() is True
+
+
+async def test_budget_tracker_ignores_unknown_and_nonpositive(monkeypatch: MonkeyPatch) -> None:
+    from sec_recon_agent.config import settings
+
+    monkeypatch.setattr(settings, "denial_of_wallet_usd_per_day", 1.0)
+    tracker = BudgetTracker()
+    await tracker.record(None)  # unpriced model
+    await tracker.record(0.0)
+    await tracker.record(-1.0)
+    assert await tracker.spent_usd() == 0.0
+
+
+async def test_budget_tracker_prunes_outside_window(monkeypatch: MonkeyPatch) -> None:
+    from sec_recon_agent.config import settings
+
+    monkeypatch.setattr(settings, "denial_of_wallet_usd_per_day", 1.0)
+    clock = {"now": 1000.0}
+    monkeypatch.setattr(budget_module.time, "monotonic", lambda: clock["now"])
+    tracker = BudgetTracker(window_seconds=100.0)
+    await tracker.record(2.0)
+    assert await tracker.spent_usd() == pytest.approx(2.0)
+    # Advance past the window: the event ages out and the guard reopens.
+    clock["now"] = 1000.0 + 101.0
+    assert await tracker.spent_usd() == 0.0
+    assert await tracker.would_block() is False
