@@ -16,7 +16,7 @@ classifiers = [
 ]
 dependencies = [
     "pydantic>=2.9.0",
-    "pydantic-ai>=0.0.13",
+    "pydantic-ai>=1.102.0",
     "pydantic-settings>=2.6.0",
     "mcp>=1.0.0",
     "fastapi>=0.115.0",
