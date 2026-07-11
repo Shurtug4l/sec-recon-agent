@@ -1,8 +1,9 @@
 import type { ElementType } from "react";
 import Link from "next/link";
-import { ShieldAlert } from "lucide-react";
+import { Mail, ShieldAlert } from "lucide-react";
 
 import { GithubLogo } from "@/components/icons/github-logo";
+import { LinkedinLogo } from "@/components/icons/linkedin-logo";
 
 // Global site footer, mounted once in app/layout.tsx so it renders on every
 // route (including /r). Pure server component: only links and CSS tokens, no
@@ -52,13 +53,16 @@ const COLUMNS: { heading: string; links: FooterLink[] }[] = [
   },
 ];
 
-// Contact / social links. GitHub is already public; email and LinkedIn are left
-// commented out so no personal detail ships without intent. Uncomment and fill
-// them (same as the logo) to surface them; the row grows automatically.
+// Contact / social links. The row grows automatically as entries are added.
 const CONTACTS: { label: string; href: string; icon: ElementType; external?: boolean }[] = [
   { label: "GitHub repository", href: REPO, icon: GithubLogo, external: true },
-  // { label: "Email", href: "mailto:you@example.com", icon: Mail, external: true },
-  // { label: "LinkedIn", href: "https://www.linkedin.com/in/your-handle", icon: LinkedinLogo, external: true },
+  { label: "Email", href: "mailto:slaporta94@gmail.com", icon: Mail, external: true },
+  {
+    label: "LinkedIn",
+    href: "https://www.linkedin.com/in/simonelaporta",
+    icon: LinkedinLogo,
+    external: true,
+  },
 ];
 
 const LINK_CLS =
