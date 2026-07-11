@@ -142,9 +142,13 @@ export function Header() {
             )}
           >
             <Search className="h-3.5 w-3.5" />
-            <span className="hidden lg:inline">Search...</span>
+            {/* Icon-only from lg to xl: the 7 inline tabs appear at lg and, on
+                classic-scrollbar platforms (Linux/Windows), the label+kbd here
+                pushed the bar ~18px past a 1024px window. The label returns at xl
+                alongside the brand subtitle, where there is room to spare. */}
+            <span className="hidden xl:inline">Search...</span>
             {modKey && (
-              <kbd className="hidden rounded border border-border bg-muted px-1.5 font-mono text-[10px] text-muted-foreground lg:inline">
+              <kbd className="hidden rounded border border-border bg-muted px-1.5 font-mono text-[10px] text-muted-foreground xl:inline">
                 {modKey}K
               </kbd>
             )}
