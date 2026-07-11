@@ -154,6 +154,29 @@ function renderGrounding(g: GroundingAssessment): string {
   return lines.join("\n");
 }
 
+function renderProvenance(): string {
+  const lines: string[] = [];
+  lines.push("## Provenance");
+  lines.push("");
+  lines.push("_Which part of this report came from where, and who holds the pen._");
+  lines.push("");
+  lines.push(
+    "- **Deterministic** (server-computed, not the model): SSVC verdict, grounding verification. Fixed code stamps these after the model returns; the same signals always produce the same result.",
+  );
+  lines.push(
+    "- **Model-authored** (tool-grounded): summary, recommended action, confidence, reasoning chain. Written by the LLM, constrained to the typed TriageReport schema and grounded in the tool returns.",
+  );
+  lines.push(
+    "- **External feed data** (verbatim): CVE / CVSS / CWE, KEV + EPSS, exploit signals, ATT&CK mapping, from NVD, CISA, FIRST, Exploit-DB / GitHub, OSV.dev and MITRE. Untrusted free text is fenced before reaching the model.",
+  );
+  lines.push("");
+  lines.push(
+    "A prompt injection that fully persuades the model still cannot move the verdict from Act to Track: the model does not hold that pen, the deterministic lane does.",
+  );
+  lines.push("");
+  return lines.join("\n");
+}
+
 export function reportToMarkdown(report: TriageReport, query?: string): string {
   const now = new Date().toISOString().replace(/T.*/, "");
   const lines: string[] = [];
@@ -206,6 +229,8 @@ export function reportToMarkdown(report: TriageReport, query?: string): string {
   if (report.grounding) {
     lines.push(renderGrounding(report.grounding));
   }
+
+  lines.push(renderProvenance());
 
   if (report.reasoning_chain.length > 0) {
     lines.push(`## Reasoning chain (${report.reasoning_chain.length} steps)`);

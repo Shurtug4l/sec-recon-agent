@@ -8,6 +8,7 @@ import {
   Download,
   ExternalLink,
   FileSearch,
+  GitBranch,
   Home,
   Library,
   MessageSquare,
@@ -23,7 +24,7 @@ import { DEMO_FIXTURES } from "@/demo/fixtures";
 import { loadAgentMeta } from "@/lib/agent-meta";
 import { SECTIONS } from "@/lib/guide-data";
 import { downloadJson, downloadMarkdown, reportToMarkdown } from "@/lib/markdown-export";
-import { DASHBOARD_TAB_EVENT } from "@/lib/nav-events";
+import { DASHBOARD_TAB_EVENT, SSVC_TRACE_EVENT } from "@/lib/nav-events";
 import { buildPermalink } from "@/lib/permalink";
 import type { TriageReport } from "@/lib/types";
 
@@ -103,12 +104,12 @@ const REPORT_ACTIONS: PaletteCommand[] = [
     keywords: ["share", "permalink", "url"],
     icon: Share2,
     visible: hasReport,
-    run: async ({ report }) => {
+    run: async ({ report, query }) => {
       if (!report) return;
       // buildPermalink returns null for oversized reports; without a toast
       // surface the palette stays silent, same accepted tradeoff as closing
       // before the clipboard write resolves.
-      const url = await buildPermalink(report, window.location.origin);
+      const url = await buildPermalink(report, window.location.origin, query);
       if (url) await navigator.clipboard.writeText(url);
     },
   },
@@ -166,6 +167,19 @@ const REPORT_ACTIONS: PaletteCommand[] = [
         block: "start",
       });
     },
+  },
+  {
+    id: "report:show-decision-trace",
+    label: "Show SSVC decision trace",
+    group: "Report actions",
+    keywords: ["ssvc", "rule", "why", "verdict", "decision tree", "first-match"],
+    icon: GitBranch,
+    // The trace is nested in the SSVC verdict block, which renders only when the
+    // report carries an ssvc assessment (absent on pre-ssvc history). It is
+    // closed by default, so the trace listens for this event to open + scroll.
+    visible: (ctx) =>
+      !!ctx.report?.ssvc && (ctx.pathname === "/triage" || ctx.pathname === "/r"),
+    run: () => window.dispatchEvent(new Event(SSVC_TRACE_EVENT)),
   },
 ];
 

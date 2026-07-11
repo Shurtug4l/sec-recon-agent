@@ -2,19 +2,19 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Link2, TriangleAlert } from "lucide-react";
+import { ArrowRight, Link2, Search, TriangleAlert } from "lucide-react";
 
 import { Header } from "@/components/header";
 import { TriageReportView } from "@/components/triage-report-view";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { decodeReport } from "@/lib/permalink";
-import type { TriageReport } from "@/lib/types";
+import type { SharedReport } from "@/lib/permalink";
 
 type Status = "loading" | "ok" | "empty" | "error";
 
 export default function SharedReportPage() {
-  const [report, setReport] = useState<TriageReport | null>(null);
+  const [shared, setShared] = useState<SharedReport | null>(null);
   const [status, setStatus] = useState<Status>("loading");
 
   useEffect(() => {
@@ -29,7 +29,7 @@ export default function SharedReportPage() {
     decodeReport(decodeURIComponent(match[1])).then((decoded) => {
       if (cancelled) return;
       if (decoded) {
-        setReport(decoded);
+        setShared(decoded);
         setStatus("ok");
       } else {
         setStatus("error");
@@ -73,7 +73,7 @@ export default function SharedReportPage() {
           </Card>
         )}
 
-        {status === "ok" && report && (
+        {status === "ok" && shared && (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -86,7 +86,26 @@ export default function SharedReportPage() {
                 </Link>
               </Button>
             </div>
-            <TriageReportView report={report} />
+            {shared.query && (
+              <div className="rounded-lg border border-border bg-card/50 p-3">
+                <div className="mb-1 flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  <Search className="h-3.5 w-3.5" />
+                  Query
+                  {shared.queryTruncated && (
+                    <span className="normal-case tracking-normal text-muted-foreground/70">
+                      clipped to fit the link
+                    </span>
+                  )}
+                </div>
+                <p
+                  tabIndex={0}
+                  className="max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                >
+                  {shared.query}
+                </p>
+              </div>
+            )}
+            <TriageReportView report={shared.report} query={shared.query} />
           </div>
         )}
       </main>
