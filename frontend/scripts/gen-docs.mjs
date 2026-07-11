@@ -82,9 +82,10 @@ const SCHEMA = {
   },
 };
 
-// remark plugin: pull the leading H1 as the doc title and the first paragraph
-// as the purpose blurb, then strip the H1 from the body so the rendered panel
-// does not repeat the title the rail already shows.
+// remark plugin: pull the leading H1 as the doc title and the leading paragraph
+// as the purpose blurb, then strip BOTH from the body. The panel renders the
+// purpose as its lead line, so leaving the paragraph in the body repeats it
+// verbatim right below (same rationale as stripping the title-carrying H1).
 function extractTitleAndStripH1(meta) {
   return (tree) => {
     const first = tree.children[0];
@@ -92,8 +93,18 @@ function extractTitleAndStripH1(meta) {
       meta.title = mdastToString(first).trim();
       tree.children.shift();
     }
-    const firstPara = tree.children.find((n) => n.type === "paragraph");
-    meta.purpose = firstPara ? mdastToString(firstPara).trim() : "";
+    const lead = tree.children[0];
+    if (lead && lead.type === "paragraph") {
+      // The normal shape (H1 then an intro paragraph): this IS the lead, so
+      // remove it from the body to avoid the duplicate.
+      meta.purpose = mdastToString(lead).trim();
+      tree.children.shift();
+    } else {
+      // Edge shape (H1 straight into a heading): keep the old behavior and do
+      // not yank a mid-section paragraph up as the lead.
+      const firstPara = tree.children.find((n) => n.type === "paragraph");
+      meta.purpose = firstPara ? mdastToString(firstPara).trim() : "";
+    }
   };
 }
 
