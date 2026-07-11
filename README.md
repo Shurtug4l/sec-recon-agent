@@ -155,7 +155,7 @@ The system prompt encodes one prioritization heuristic: CISA KEV membership > kn
 The gate ships as a composite GitHub Action at the repo root, and this repository dogfoods it: `ci-sbom-gate.yml` scans the project's own dependency tree on dependency changes and a weekly cron, uploads SARIF to the Security tab, and attests the SBOM + gate report on non-PR runs.
 
 ```yaml
-- uses: Shurtug4l/sec-recon-agent@v0.1.0
+- uses: Shurtug4l/sec-recon-agent@v0.1.1
   with:
     sbom-path: sbom.cdx.json
     fail-on: act
