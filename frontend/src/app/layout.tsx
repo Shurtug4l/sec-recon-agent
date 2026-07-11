@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Hanken_Grotesk, IBM_Plex_Mono, Martian_Mono } from "next/font/google";
 
+import { Footer } from "@/components/footer";
 import { Providers } from "@/components/providers";
 import "./globals.css";
 
@@ -50,7 +51,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     >
       <body>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
-        <Providers>{children}</Providers>
+        <Providers>
+          {children}
+          <Footer />
+        </Providers>
       </body>
     </html>
   );
