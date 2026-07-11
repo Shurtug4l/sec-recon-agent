@@ -131,11 +131,45 @@ async function main() {
 
         for (const width of WIDTHS) {
           await page.setViewportSize({ width, height: 900 });
-          const scrollWidth = await page.evaluate(
-            () => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
-          );
-          if (scrollWidth > width + OVERFLOW_TOLERANCE) {
-            overflowFails.push({ theme, route, width, scrollWidth });
+          // Let async layout settle (web fonts, Recharts ResizeObserver) so the
+          // measurement is stable rather than a mid-render snapshot.
+          await page.evaluate(() => document.fonts?.ready).catch(() => {});
+          const measure = await page.evaluate(() => {
+            const de = document.documentElement;
+            const scrollWidth = Math.max(de.scrollWidth, document.body.scrollWidth);
+            // clientWidth excludes the scrollbar gutter, so `scrollWidth > clientWidth`
+            // is the scrollbar-independent definition of "the page scrolls sideways".
+            // Comparing to window.innerWidth (which includes the gutter) under- or
+            // over-counts by a scrollbar width between overlay-scrollbar (macOS) and
+            // classic-scrollbar (Linux CI) platforms; clientWidth is consistent.
+            const clientWidth = de.clientWidth;
+            if (scrollWidth <= clientWidth + 1) return { over: 0 };
+            // Name the elements that breach the content box, ignoring content that
+            // legitimately scrolls inside its own overflow-x container (wide code
+            // blocks, tables) — those are meant to scroll, not push the page.
+            const inScrollBox = (el) => {
+              for (let n = el.parentElement; n; n = n.parentElement) {
+                const ox = getComputedStyle(n).overflowX;
+                if (ox === "auto" || ox === "scroll" || ox === "hidden") return true;
+              }
+              return false;
+            };
+            const seen = new Set();
+            const offenders = [];
+            for (const el of document.querySelectorAll("body *")) {
+              const r = el.getBoundingClientRect();
+              if (r.width === 0 || r.right <= clientWidth + 1 || inScrollBox(el)) continue;
+              const cls = (el.className?.toString?.() || "").trim().replace(/\s+/g, ".").slice(0, 70);
+              const key = el.tagName + cls;
+              if (seen.has(key)) continue;
+              seen.add(key);
+              offenders.push(`<${el.tagName.toLowerCase()}${cls ? ` .${cls}` : ""}> right=${Math.round(r.right)}`);
+              if (offenders.length >= 6) break;
+            }
+            return { over: scrollWidth - clientWidth, scrollWidth, clientWidth, offenders };
+          });
+          if (measure.over > OVERFLOW_TOLERANCE) {
+            overflowFails.push({ theme, route, width, ...measure });
           }
         }
 
@@ -164,7 +198,10 @@ async function main() {
   if (overflowFails.length) {
     console.error(`a11y-sweep: ${overflowFails.length} horizontal-overflow failure(s):`);
     for (const f of overflowFails) {
-      console.error(`  - ${f.theme} ${f.route} @ ${f.width}px: document width ${f.scrollWidth}px`);
+      console.error(
+        `  - ${f.theme} ${f.route} @ ${f.width}px: content ${f.scrollWidth}px in ${f.clientWidth}px (+${f.over}px)`,
+      );
+      for (const o of f.offenders || []) console.error(`      ${o}`);
     }
   }
   if (axeFails.length) {
