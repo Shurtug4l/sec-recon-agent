@@ -1,0 +1,35 @@
+{
+  "@id": "https://openvex.dev/docs/public/vex-f681fdd4c463abce1605b6826a85fd120ee89c60095309ec876a57d105091ce4",
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "author": "https://github.com/Shurtug4l/sec-recon-agent",
+  "timestamp": "2026-07-11T00:00:00+00:00",
+  "version": 1,
+  "statements": [
+    {
+      "vulnerability": {
+        "@id": "https://github.com/advisories/GHSA-f4j7-r4q5-qw2c",
+        "name": "CVE-2026-45829",
+        "description": "ChromaDB Python project has a pre-authentication code injection vulnerability."
+      },
+      "products": [
+        {
+          "@id": "pkg:github/Shurtug4l/sec-recon-agent",
+          "identifiers": {
+            "purl": "pkg:github/Shurtug4l/sec-recon-agent"
+          }
+        }
+      ],
+      "subcomponents": [
+        {
+          "@id": "pkg:pypi/chromadb@1.5.9",
+          "identifiers": {
+            "purl": "pkg:pypi/chromadb@1.5.9"
+          }
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
+      "impact_statement": "ChromaDB runs only as an internal service on the compose network (mcp / agent-api / frontend); its port is never published to the host and egress is further constrained by the default-deny tinyproxy allowlist shipped in the S4 hardening. The pre-authentication vector requires an adversary to reach the ChromaDB HTTP endpoint directly, which no untrusted principal can do in this deployment. No patched chromadb release exists (the advisory range is >= 1.0.0 <= 1.5.9); this statement is revisited when a fixed version ships."
+    }
+  ]
+}
