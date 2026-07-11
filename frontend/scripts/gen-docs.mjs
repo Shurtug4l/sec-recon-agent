@@ -1,4 +1,4 @@
-// Build-time docs pipeline: docs/*.md -> src/lib/docs-generated.json.
+// Build-time docs pipeline: the repo's markdown -> src/lib/docs-generated.json.
 //
 // The /docs route renders the project's own markdown documentation in-app.
 // Rendering happens HERE, at build time, not in the client: markdown -> HTML,
@@ -7,9 +7,17 @@
 // markdown parser and no highlighter — only the generated HTML (plus mermaid,
 // dynamically imported on /docs for the diagram blocks).
 //
-// Output is a PURE function of the docs content (no timestamps, no randomness):
-// the CI freshness gate regenerates and `git diff --exit-code`s this file, so
-// determinism is load-bearing.
+// The corpus is assembled by DISCOVERY, not by an allowlist (P9): every tracked
+// markdown file across docs/, the repo root, and examples/ is a candidate. A
+// candidate MUST be assigned to a group (below) or explicitly excluded; a file
+// that is present but unconfigured FAILS the build, so a new doc cannot be
+// silently dropped and orphans (examples/triage_walkthrough.md) are closed by
+// construction. The two exclusions are documented, not an allowlist in disguise.
+//
+// Output is a PURE function of the corpus content (no timestamps, no randomness)
+// AND of the fixed GROUPS order (never of readdir order, which is filesystem-
+// dependent): the CI freshness gate regenerates and `git diff --exit-code`s this
+// file, so determinism across machines (local macOS, Ubuntu CI) is load-bearing.
 //
 // Context resilience: the frontend Docker build context is ./frontend only, so
 // ../docs is absent there. When the docs directory is missing this script is a
@@ -31,33 +39,52 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeStringify from "rehype-stringify";
 import { toString as mdastToString } from "mdast-util-to-string";
 import { toText as hastToText } from "hast-util-to-text";
-import { visit } from "unist-util-visit";
+import { visit, SKIP } from "unist-util-visit";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const DOCS_DIR = resolve(root, "..", "docs");
+const REPO_ROOT = resolve(root, "..");
+const DOCS_DIR = resolve(REPO_ROOT, "docs");
+const EXAMPLES_DIR = resolve(REPO_ROOT, "examples");
 const OUT_FILE = resolve(root, "src", "lib", "docs-generated.json");
-const GITHUB_BLOB = "https://github.com/Shurtug4l/sec-recon-agent/blob/main/docs";
+const GITHUB_BLOB = "https://github.com/Shurtug4l/sec-recon-agent/blob/main";
 
-// Grouping, order, and short rail labels. Anything not listed is skipped (the
-// docs set surfaced in-app is a deliberate curation, not a directory dump).
+// Root markdown that discovery must skip, by basename. The default is
+// ingest-everything; these two are the documented exceptions:
+//   - CLAUDE:    untracked (global gitignore), so it is present locally but
+//                ABSENT in CI. Ingesting it would make the JSON diverge between
+//                machines and flap the freshness gate. It is never repo content.
+//   - SCORECARD: already a first-class route (/scorecard, tabbed bands) and a
+//                machine-generated artifact (`make scorecard`); rendering it in
+//                /docs too would double-surface the same content.
+const EXCLUDE_BASENAMES = new Set(["CLAUDE", "SCORECARD"]);
+
+// Grouping, order, and short rail labels. Every discovered doc must appear here
+// (or in EXCLUDE_BASENAMES); a present-but-unconfigured file fails the build.
+// The first group's first doc is the /docs landing (Overview = the README, far
+// lighter than design.md's 72 KB first-paint).
 const GROUPS = [
-  { name: "Engineering & operations", slugs: ["design", "tools", "evaluation", "running", "frontend"] },
-  { name: "Governance & security", slugs: ["owasp_llm_top10", "mitre_atlas", "iso_42001", "mcp_self_audit", "security_findings"] },
-  { name: "Narrative", slugs: ["case_study"] },
+  { name: "Overview", slugs: ["readme"] },
+  { name: "Engineering & operations", slugs: ["design", "tools", "evaluation", "running", "frontend", "contributing"] },
+  { name: "Governance & security", slugs: ["owasp_llm_top10", "mitre_atlas", "iso_42001", "mcp_self_audit", "security_findings", "security"] },
+  { name: "Narrative", slugs: ["case_study", "triage_walkthrough"] },
 ];
 
 const NAV_LABEL = {
+  readme: "Overview",
   design: "Design brief",
   tools: "Tool contracts",
   evaluation: "Evaluation",
   running: "Running",
   frontend: "Frontend",
+  contributing: "Contributing",
   owasp_llm_top10: "OWASP LLM Top 10",
   mitre_atlas: "MITRE ATLAS",
   iso_42001: "ISO 42001",
   mcp_self_audit: "MCP self-audit",
   security_findings: "Security findings",
+  security: "Security policy",
   case_study: "Case study",
+  triage_walkthrough: "Triage walkthrough",
 };
 
 // Allowlist sanitize: defense in depth even on first-party build-time content.
@@ -81,6 +108,41 @@ const SCHEMA = {
     pre: [...(defaultSchema.attributes?.pre || []), "tabIndex"],
   },
 };
+
+// remark plugin: strip images and image-only links from the corpus. No doc uses
+// a raster image for content (diagrams are ```mermaid fences, rendered client-
+// side); the only images are the README's shields.io badges (a link wrapping an
+// image) and the demo GIF — GitHub-landing chrome that would be a dead relative
+// path or an external request in-app. Runs BEFORE title/lead extraction so the
+// removed badge paragraph cannot be mistaken for the lead blurb. The README
+// keeps its badges/GIF on GitHub; only the in-app rendering drops them.
+function stripBadgesAndImages() {
+  const isBlank = (n) => n.type === "text" && n.value.trim() === "";
+  return (tree) => {
+    // Standalone images (the demo GIF).
+    visit(tree, "image", (_node, index, parent) => {
+      if (parent && index !== null) {
+        parent.children.splice(index, 1);
+        return [SKIP, index];
+      }
+    });
+    // Links left with no meaningful child (a badge = link whose only child was
+    // the image just removed).
+    visit(tree, "link", (node, index, parent) => {
+      if (parent && index !== null && node.children.every(isBlank)) {
+        parent.children.splice(index, 1);
+        return [SKIP, index];
+      }
+    });
+    // Paragraphs that are now empty / whitespace-only (the badge row itself).
+    visit(tree, "paragraph", (node, index, parent) => {
+      if (parent && index !== null && node.children.every(isBlank)) {
+        parent.children.splice(index, 1);
+        return [SKIP, index];
+      }
+    });
+  };
+}
 
 // remark plugin: pull the leading H1 as the doc title and the leading paragraph
 // as the purpose blurb, then strip BOTH from the body. The panel renders the
@@ -186,12 +248,13 @@ function collectSections(store) {
   };
 }
 
-async function renderDoc(slug, raw) {
+async function renderDoc(slug, path, raw) {
   const meta = { title: slug, purpose: "" };
   const store = { sections: [] };
   const file = await unified()
     .use(remarkParse)
     .use(remarkGfm)
+    .use(stripBadgesAndImages)
     .use(extractTitleAndStripH1, meta)
     .use(remarkRehype)
     .use(rehypeSlug)
@@ -205,14 +268,39 @@ async function renderDoc(slug, raw) {
     .process(raw);
   return {
     slug,
+    path,
     title: meta.title,
     navLabel: NAV_LABEL[slug] || meta.title,
     purpose: meta.purpose,
     html: String(file),
     sections: store.sections,
     hasMermaid: raw.includes("```mermaid"),
-    githubUrl: `${GITHUB_BLOB}/${slug}.md`,
+    githubUrl: `${GITHUB_BLOB}/${path}`,
   };
+}
+
+// Discover every candidate markdown file across the three source roots, mapped
+// to {slug, path}. path is repo-relative (drives githubUrl and the panel label);
+// slug is the lowercased basename (drives ?doc= deep links and the group config).
+async function discover() {
+  const found = [];
+  const scan = async (dir, relPrefix) => {
+    if (!existsSync(dir)) return;
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
+      const base = entry.name.slice(0, -3);
+      if (EXCLUDE_BASENAMES.has(base)) continue;
+      found.push({
+        slug: base.toLowerCase(),
+        path: relPrefix ? `${relPrefix}/${entry.name}` : entry.name,
+        absPath: resolve(dir, entry.name),
+      });
+    }
+  };
+  await scan(REPO_ROOT, "");
+  await scan(DOCS_DIR, "docs");
+  await scan(EXAMPLES_DIR, "examples");
+  return found;
 }
 
 async function main() {
@@ -220,17 +308,48 @@ async function main() {
     console.log("gen-docs: docs/ not in build context, keeping committed docs-generated.json");
     return;
   }
-  const present = new Set((await readdir(DOCS_DIR)).filter((f) => f.endsWith(".md")).map((f) => f.slice(0, -3)));
+  const discovered = await discover();
+
+  // Collision guard: two source files must not resolve to the same slug (the
+  // slug keys deep links and the group config).
+  const bySlug = new Map();
+  for (const d of discovered) {
+    const prev = bySlug.get(d.slug);
+    if (prev) throw new Error(`gen-docs: slug collision '${d.slug}' from ${prev.path} and ${d.path}`);
+    bySlug.set(d.slug, d);
+  }
+
+  // Discovery contract: every discovered doc must be assigned to a group. A
+  // present-but-unconfigured file fails the build (closes orphans by
+  // construction; forces a deliberate group/label or an EXCLUDE_BASENAMES entry).
+  const configured = new Set(GROUPS.flatMap((g) => g.slugs));
+  const unconfigured = discovered
+    .filter((d) => !configured.has(d.slug))
+    .map((d) => d.path)
+    .sort();
+  if (unconfigured.length) {
+    throw new Error(
+      `gen-docs: ${unconfigured.length} markdown file(s) present but not assigned to a group:\n` +
+        unconfigured.map((p) => `  - ${p}`).join("\n") +
+        "\nAdd each to a GROUPS entry (with a NAV_LABEL) or to EXCLUDE_BASENAMES in scripts/gen-docs.mjs.",
+    );
+  }
+
+  // Output order follows GROUPS (fixed), never readdir order, so the JSON is
+  // byte-stable across filesystems. A configured slug with no source file only
+  // warns (a doc can be renamed/removed without a hard stop); the fatal
+  // direction is present-but-unconfigured, handled above.
   const groups = [];
   for (const g of GROUPS) {
     const docs = [];
     for (const slug of g.slugs) {
-      if (!present.has(slug)) {
-        console.warn(`gen-docs: WARNING configured doc '${slug}.md' not found, skipping`);
+      const doc = bySlug.get(slug);
+      if (!doc) {
+        console.warn(`gen-docs: WARNING configured doc '${slug}' has no source file, skipping`);
         continue;
       }
-      const raw = await readFile(resolve(DOCS_DIR, `${slug}.md`), "utf8");
-      docs.push(await renderDoc(slug, raw));
+      const raw = await readFile(doc.absPath, "utf8");
+      docs.push(await renderDoc(slug, doc.path, raw));
     }
     if (docs.length) groups.push({ name: g.name, docs });
   }

@@ -573,3 +573,26 @@
 :root[data-theme="light"] .docs-prose .hljs-addition {
   color: hsl(55 90% 22%); /* #6B6206, 6.0:1 on the light card */
 }
+/* Dark-theme text-contrast floor: chart-6 (#B85E93) lands at ~4.1:1 on the dark
+ * card, below the 4.5:1 text floor (it is validated for graphics >= 3:1, not
+ * text). The attr / variable group is the only syntax use of chart-6; lift just
+ * it to a brighter same-hue pink. Surfaced once the docs corpus went
+ * discovery-wide (P9): the README's Actions YAML and the walkthrough's JSON keys
+ * render as hljs-attr, which the pre-P9 in-app doc set never exercised in dark. */
+:root[data-theme="dark"] .docs-prose .hljs-attr,
+:root[data-theme="dark"] .docs-prose .hljs-attribute,
+:root[data-theme="dark"] .docs-prose .hljs-variable,
+:root[data-theme="dark"] .docs-prose .hljs-template-variable,
+:root[data-theme="dark"] .docs-prose .hljs-symbol,
+:root[data-theme="dark"] .docs-prose .hljs-bullet {
+  color: hsl(325 45% 62%); /* #CA73A5, ~5.3:1 on the dark card */
+}
+/* Same floor for chart-3 (#9A5CEA, ~4.1:1): the keyword group. hljs-literal is
+ * intentionally left out — a later rule maps it to chart-2, which clears AA.
+ * Surfaced by the walkthrough's JSON booleans (hljs-keyword `true`) in dark. */
+:root[data-theme="dark"] .docs-prose .hljs-keyword,
+:root[data-theme="dark"] .docs-prose .hljs-selector-tag,
+:root[data-theme="dark"] .docs-prose .hljs-section,
+:root[data-theme="dark"] .docs-prose .hljs-doctag {
+  color: hsl(266 80% 71%); /* #AD7AF0, ~5.5:1 on the dark card */
+}
