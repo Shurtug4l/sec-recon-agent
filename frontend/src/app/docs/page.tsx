@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowUpRight, FileText, Search, X } from "lucide-react";
 
 import { DocContent } from "@/components/docs/doc-content";
+import { DocFooter } from "@/components/docs/doc-footer";
 import { Header } from "@/components/header";
 import { Badge } from "@/components/ui/badge";
 import { DEFAULT_DOC_SLUG, DOC_GROUPS, getDoc } from "@/lib/docs";
@@ -15,6 +17,7 @@ import { cn } from "@/lib/utils";
 const HEADER_OFFSET = 80;
 
 export default function DocsPage() {
+  const router = useRouter();
   const [activeSlug, setActiveSlug] = useState(DEFAULT_DOC_SLUG);
   const [query, setQuery] = useState("");
   const [activeSection, setActiveSection] = useState<string | null>(null);
@@ -54,7 +57,7 @@ export default function DocsPage() {
       setActiveSection(sectionId ?? null);
       const url = new URL(window.location.href);
       url.searchParams.set("doc", slug);
-      url.hash = "";
+      url.hash = sectionId ?? "";
       window.history.replaceState(null, "", url);
       if (!sectionId) window.scrollTo({ top: 0, behavior: "auto" });
     },
@@ -198,9 +201,42 @@ export default function DocsPage() {
                   {doc.purpose}
                 </p>
               </div>
-              <div ref={contentRef}>
+              {/* Delegated click handler for the P10 in-app cross-links. The doc
+                  HTML is injected via dangerouslySetInnerHTML, so its anchors
+                  aren't React elements; catch the bubbled click here. A corpus
+                  link (data-doc-slug) switches doc in place (honoring the
+                  section anchor, or just scrolling when it targets the current
+                  doc); a routed link (data-doc-route, e.g. SCORECARD) becomes a
+                  basePath-aware router.push instead of the GitHub fallback. */}
+              <div
+                ref={contentRef}
+                onClick={(e) => {
+                  const anchor = (e.target as HTMLElement).closest("a");
+                  if (!anchor) return;
+                  const { docSlug, docSection, docRoute } = anchor.dataset;
+                  if (docSlug) {
+                    e.preventDefault();
+                    if (docSlug === activeSlug) {
+                      if (docSection) {
+                        scrollToId(docSection);
+                        const url = new URL(window.location.href);
+                        url.hash = docSection;
+                        window.history.replaceState(null, "", url);
+                      }
+                    } else {
+                      selectDoc(docSlug, docSection || undefined);
+                    }
+                    return;
+                  }
+                  if (docRoute) {
+                    e.preventDefault();
+                    router.push(docRoute);
+                  }
+                }}
+              >
                 <DocContent doc={doc} />
               </div>
+              <DocFooter doc={doc} onNavigate={selectDoc} />
             </article>
 
             {/* On-page table of contents (xl+), scroll-spy tracked. */}
