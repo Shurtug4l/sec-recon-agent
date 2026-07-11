@@ -15,10 +15,15 @@ Only `main` is supported; there are no release tags. Fixes land on
 
 **Please do not open public GitHub issues for security findings.**
 
-Send a private report to:
+Report privately through GitHub's built-in channel:
 
-- Email: `slaporta94@gmail.com`
-- Subject line: `[sec-recon-agent] <one-line summary>`
+- Open [**Security -> Report a vulnerability**](https://github.com/Shurtug4l/sec-recon-agent/security/advisories/new)
+  (GitHub Private Vulnerability Reporting). This creates a private advisory
+  visible only to you and the maintainer, with a structured form for the
+  details below.
+- If you cannot use GitHub, reach the maintainer via
+  [LinkedIn](https://www.linkedin.com/in/simonelaporta) and a private channel
+  will be arranged. No public contact email is published, by design.
 
 Include in the report:
 
