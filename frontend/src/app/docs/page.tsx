@@ -10,6 +10,7 @@ import { Header } from "@/components/header";
 import { Badge } from "@/components/ui/badge";
 import { DEFAULT_DOC_SLUG, DOC_GROUPS, getDoc } from "@/lib/docs";
 import { searchDocs } from "@/lib/docs-search";
+import { DOCS_SELECT_EVENT } from "@/lib/nav-events";
 import { cn } from "@/lib/utils";
 
 // Sticky header height (h-14 = 56px) plus breathing room; anchor scrolls land
@@ -71,6 +72,43 @@ export default function DocsPage() {
     pendingAnchor.current = null;
     requestAnimationFrame(() => scrollToId(id));
   }, [activeSlug, scrollToId]);
+
+  // Honor an initial #section on fresh arrival (a global-search doc hit from
+  // another route, or a P10 in-app cross-link opened as a bare URL). The doc
+  // HTML mounts client-side, so the browser's native hash scroll finds nothing
+  // at first paint; poll a few frames for the (possibly just-switched) doc's
+  // target, then scroll. Bounded so a stale hash can't loop.
+  useEffect(() => {
+    const hash = window.location.hash.slice(1);
+    if (!hash) return;
+    setActiveSection(hash);
+    let tries = 0;
+    const tick = () => {
+      if (document.getElementById(hash)) {
+        scrollToId(hash);
+      } else if (tries++ < 10) {
+        requestAnimationFrame(tick);
+      }
+    };
+    requestAnimationFrame(tick);
+  }, [scrollToId]);
+
+  // Global-search selection while already on /docs: the palette rewrote
+  // ?doc=&#section and fired this event (a same-route router.push would not
+  // remount the page). Switch the panel in place; a same-doc hit just scrolls.
+  useEffect(() => {
+    const onSelect = () => {
+      const slug = new URLSearchParams(window.location.search).get("doc");
+      const section = window.location.hash.slice(1) || undefined;
+      if (slug && getDoc(slug) && slug !== activeSlug) {
+        selectDoc(slug, section);
+      } else if (section) {
+        scrollToId(section);
+      }
+    };
+    window.addEventListener(DOCS_SELECT_EVENT, onSelect);
+    return () => window.removeEventListener(DOCS_SELECT_EVENT, onSelect);
+  }, [activeSlug, selectDoc, scrollToId]);
 
   // Scroll-spy: mark the section nearest the top of the viewport as active so
   // the on-page table of contents tracks the reading position.
