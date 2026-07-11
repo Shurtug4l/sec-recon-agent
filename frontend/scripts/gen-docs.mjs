@@ -26,7 +26,7 @@
 
 import { existsSync } from "node:fs";
 import { readFile, readdir, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { unified } from "unified";
@@ -57,6 +57,13 @@ const GITHUB_BLOB = "https://github.com/Shurtug4l/sec-recon-agent/blob/main";
 //                machine-generated artifact (`make scorecard`); rendering it in
 //                /docs too would double-surface the same content.
 const EXCLUDE_BASENAMES = new Set(["CLAUDE", "SCORECARD"]);
+
+// Non-corpus markdown that nonetheless owns a first-class in-app route. SCORECARD
+// is in EXCLUDE_BASENAMES (its own /scorecard tab), so a cross-link to it cannot
+// become a ?doc= slug; instead the P10 rewrite hands the client a data-doc-route
+// marker it upgrades to a basePath-aware router.push, with a GitHub-blob href as
+// the no-JS fallback. Keyed by lowercased basename -> route.
+const EXTERNAL_ROUTE = { scorecard: "/scorecard" };
 
 // Grouping, order, and short rail labels. Every discovered doc must appear here
 // (or in EXCLUDE_BASENAMES); a present-but-unconfigured file fails the build.
@@ -101,6 +108,10 @@ const SCHEMA = {
   attributes: {
     ...defaultSchema.attributes,
     "*": [...(defaultSchema.attributes?.["*"] || []), "className", "id"],
+    // The P10 xref rewrite stamps these markers on rewritten cross-links so the
+    // client can upgrade a corpus link to an in-place doc switch (dataDocSlug /
+    // dataDocSection) or a routed link to a basePath-aware push (dataDocRoute).
+    a: [...(defaultSchema.attributes?.a || []), "dataDocSlug", "dataDocSection", "dataDocRoute"],
     // tabIndex lets the scroll-container divs (docs-mermaid, docs-table-scroll)
     // and code blocks take keyboard focus so a wide diagram/table/code line
     // stays reachable without a mouse (WCAG 2.1.1, scrollable-region-focusable).
@@ -248,7 +259,46 @@ function collectSections(store) {
   };
 }
 
-async function renderDoc(slug, path, raw) {
+// rehype plugin (P10 "docs mesh"): rewrite relative markdown cross-links so they
+// resolve IN-APP instead of dead-ending on a raw `.md` path the /docs route can't
+// serve. A link whose basename maps to a corpus slug becomes a basePath-agnostic
+// `?doc=slug#anchor` (relative to the current /docs URL, so it survives the Pages
+// sub-path) carrying data-doc-* markers the client upgrades to an in-place doc
+// switch (no reload, honors the anchor). A link to a doc that owns a route but is
+// NOT in the corpus (SCORECARD -> /scorecard) gets a GitHub-blob href as the
+// no-JS fallback plus a data-doc-route marker the client turns into a basePath-
+// aware push. Absolute URLs, in-page #anchors, and unknown `.md` are left as-is
+// (an unknown `.md` stays visibly dead on purpose, for the P12 completeness gate).
+// Runs before rehypeSanitize, so the markers are added under the allowlist above.
+const XREF = /^([^#?]*?)\.md(#.+)?$/;
+function rehypeRewriteXrefs({ validSlugs, docPath }) {
+  return (tree) => {
+    visit(tree, "element", (node) => {
+      if (node.tagName !== "a") return;
+      const href = node.properties?.href;
+      if (typeof href !== "string") return;
+      if (/^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i.test(href)) return; // absolute / in-page
+      const m = XREF.exec(href);
+      if (!m) return;
+      const anchor = m[2] ? m[2].slice(1) : "";
+      const base = m[1].split("/").pop().toLowerCase();
+      if (validSlugs.has(base)) {
+        node.properties.href = `?doc=${base}${anchor ? `#${anchor}` : ""}`;
+        node.properties.dataDocSlug = base;
+        if (anchor) node.properties.dataDocSection = anchor;
+        return;
+      }
+      const route = EXTERNAL_ROUTE[base];
+      if (route) {
+        const resolved = posix.normalize(posix.join(posix.dirname(docPath), `${m[1]}.md`));
+        node.properties.href = `${GITHUB_BLOB}/${resolved}${anchor ? `#${anchor}` : ""}`;
+        node.properties.dataDocRoute = route;
+      }
+    });
+  };
+}
+
+async function renderDoc(slug, path, raw, validSlugs) {
   const meta = { title: slug, purpose: "" };
   const store = { sections: [] };
   const file = await unified()
@@ -262,6 +312,7 @@ async function renderDoc(slug, path, raw) {
     .use(rehypeWrapTables)
     .use(rehypeHighlight, { detect: false, ignoreMissing: true })
     .use(rehypeFocusableCode)
+    .use(rehypeRewriteXrefs, { validSlugs, docPath: path })
     .use(rehypeSanitize, SCHEMA)
     .use(collectSections, store)
     .use(rehypeStringify)
@@ -335,6 +386,11 @@ async function main() {
     );
   }
 
+  // Slugs that actually resolve to a rendered doc; the P10 xref rewrite consults
+  // this to decide whether a `.md` cross-link becomes an in-app ?doc= link or is
+  // left alone. Built from the corpus, so it is independent of readdir order.
+  const validSlugs = new Set(GROUPS.flatMap((g) => g.slugs).filter((s) => bySlug.has(s)));
+
   // Output order follows GROUPS (fixed), never readdir order, so the JSON is
   // byte-stable across filesystems. A configured slug with no source file only
   // warns (a doc can be renamed/removed without a hard stop); the fatal
@@ -349,7 +405,7 @@ async function main() {
         continue;
       }
       const raw = await readFile(doc.absPath, "utf8");
-      docs.push(await renderDoc(slug, doc.path, raw));
+      docs.push(await renderDoc(slug, doc.path, raw, validSlugs));
     }
     if (docs.length) groups.push({ name: g.name, docs });
   }
