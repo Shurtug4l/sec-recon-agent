@@ -24,6 +24,13 @@ const R_PATH = `${BASE_PATH}/r${DEMO_MODE ? "/" : ""}`;
 // some clients truncate; the caller falls back to the JSON export instead.
 export const PERMALINK_MAX = 16_000;
 
+// The originating query rides along in the envelope, but it can be a whole SBOM
+// or Nmap XML. Cap it so a large query never sinks an otherwise-shareable
+// report; the report is the payload, the query is context. Truncation is
+// marked so the /r view can be honest that it was clipped.
+const SHARED_QUERY_MAX = 4_000;
+const TRUNCATION_MARK = "…";
+
 const hasCompression =
   typeof CompressionStream !== "undefined" && typeof DecompressionStream !== "undefined";
 
@@ -57,30 +64,77 @@ async function gunzip(bytes: Uint8Array): Promise<string> {
   return new Response(stream).text();
 }
 
-export async function encodeReport(report: TriageReport): Promise<string> {
-  const json = JSON.stringify(report);
+// What a decoded permalink yields: the report plus the query that produced it
+// (absent on legacy links minted before the envelope, and on reports shared
+// without a query in scope).
+export interface SharedReport {
+  report: TriageReport;
+  query?: string;
+  queryTruncated?: boolean;
+}
+
+// Envelope written into the fragment since P8. `v` marks the shape so a later
+// change is detectable; legacy links carried a bare TriageReport with no
+// envelope, and decodeReport still reads them.
+interface ShareEnvelope {
+  v: 1;
+  query?: string;
+  queryTruncated?: boolean;
+  report: TriageReport;
+}
+
+// Trust-but-verify the minimal report shape before handing it to the view.
+function isReportShaped(value: unknown): value is TriageReport {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    "summary" in value &&
+    "severity" in value &&
+    "cves" in value
+  );
+}
+
+export async function encodeReport(report: TriageReport, query?: string): Promise<string> {
+  const envelope: ShareEnvelope = { v: 1, report };
+  // Keep the query out of the payload when absent so the no-query case is byte-
+  // for-byte what it was before the envelope carried a query.
+  if (query) {
+    if (query.length > SHARED_QUERY_MAX) {
+      envelope.query = query.slice(0, SHARED_QUERY_MAX) + TRUNCATION_MARK;
+      envelope.queryTruncated = true;
+    } else {
+      envelope.query = query;
+    }
+  }
+  const json = JSON.stringify(envelope);
   if (hasCompression) {
     return GZIP + bytesToB64Url(await gzip(json));
   }
   return PLAIN + bytesToB64Url(new TextEncoder().encode(json));
 }
 
-export async function decodeReport(encoded: string): Promise<TriageReport | null> {
+export async function decodeReport(encoded: string): Promise<SharedReport | null> {
   try {
     const scheme = encoded.slice(0, 1);
     const bytes = b64UrlToBytes(encoded.slice(1));
     const json =
       scheme === GZIP ? await gunzip(bytes) : new TextDecoder().decode(bytes);
     const parsed: unknown = JSON.parse(json);
-    // Trust-but-verify the minimal shape before handing it to the report view.
-    if (
-      parsed &&
-      typeof parsed === "object" &&
-      "summary" in parsed &&
-      "severity" in parsed &&
-      "cves" in parsed
-    ) {
-      return parsed as TriageReport;
+    // Envelope (P8+): { v, query?, report }.
+    if (parsed && typeof parsed === "object" && "report" in parsed) {
+      const env = parsed as ShareEnvelope;
+      if (isReportShaped(env.report)) {
+        return {
+          report: env.report,
+          query: typeof env.query === "string" ? env.query : undefined,
+          queryTruncated: env.queryTruncated === true,
+        };
+      }
+      return null;
+    }
+    // Legacy (pre-P8): a bare TriageReport, no envelope, no query.
+    if (isReportShaped(parsed)) {
+      return { report: parsed };
     }
     return null;
   } catch {
@@ -89,8 +143,12 @@ export async function decodeReport(encoded: string): Promise<TriageReport | null
 }
 
 /** Build the full shareable URL for a report, or null if it exceeds the cap. */
-export async function buildPermalink(report: TriageReport, origin: string): Promise<string | null> {
-  const encoded = await encodeReport(report);
+export async function buildPermalink(
+  report: TriageReport,
+  origin: string,
+  query?: string,
+): Promise<string | null> {
+  const encoded = await encodeReport(report, query);
   const url = `${origin}${R_PATH}#r=${encoded}`;
   return url.length - origin.length > PERMALINK_MAX ? null : url;
 }

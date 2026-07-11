@@ -25,6 +25,8 @@ import {
   Zap,
 } from "lucide-react";
 
+import { ProvenanceNote } from "@/components/provenance-note";
+import { SsvcDecisionTrace } from "@/components/ssvc-decision-trace";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -34,6 +36,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Separator } from "@/components/ui/separator";
+import { InfoTip, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { downloadJson, downloadMarkdown, reportToMarkdown } from "@/lib/markdown-export";
 import { buildPermalink } from "@/lib/permalink";
 import { cn } from "@/lib/utils";
@@ -115,6 +118,18 @@ const STATUS_GLOSS: Record<SignalStatus, string> = {
   not_found: "queried successfully, no entry: a real answer, not a failure",
   error: "could not be consulted (timeout or unusable response)",
   not_queried: "not consulted for this triage",
+};
+
+// Bridge each feed to the guide section that explains it, so a live signal is
+// one click from its background. Ids mirror guide-data.ts SECTIONS; feeds
+// without a dedicated section (exploit) simply carry no link.
+const FEED_TO_GUIDE: Record<string, string> = {
+  nvd: "cve-nvd",
+  kev: "kev",
+  epss: "epss",
+  osv: "osv",
+  attack: "attack",
+  semantic_search: "cve-nvd",
 };
 
 // Report-level grounding outcome: icon + text + hue (redundant encoding, same
@@ -217,9 +232,10 @@ export function TriageReportView({
   }
 
   async function handleCopyLink() {
-    // Encode the whole report into a URL fragment (client-side, never sent to a
-    // server) and copy it. Oversized reports fall back to the JSON export.
-    const url = await buildPermalink(report, window.location.origin);
+    // Encode the whole report (plus the originating query) into a URL fragment,
+    // client-side, never sent to a server, and copy it. Oversized reports fall
+    // back to the JSON export.
+    const url = await buildPermalink(report, window.location.origin, query);
     if (!url) {
       setLinkState("toolarge");
       window.setTimeout(() => setLinkState("idle"), 2500);
@@ -263,13 +279,17 @@ export function TriageReportView({
             >
               {report.severity}
             </Badge>
-            <Badge
-              variant="outline"
-              className="text-xs uppercase tracking-wider"
-              title="The agent's self-assessed confidence: high = backed by direct tool data, medium = partial, low = speculative or a tool failed during the run. Self-reported by the model; the grounding badge next to it is the server-verified counterpart."
-            >
-              {report.confidence} confidence
-            </Badge>
+            <span className="inline-flex items-center gap-1">
+              <Badge variant="outline" className="text-xs uppercase tracking-wider">
+                {report.confidence} confidence
+              </Badge>
+              <InfoTip label="What confidence means">
+                The agent&apos;s self-assessed confidence: high = backed by direct
+                tool data, medium = partial, low = speculative or a tool failed
+                during the run. Self-reported by the model; the grounding badge next
+                to it is the server-verified counterpart.
+              </InfoTip>
+            </span>
             {report.grounding && (
               <GroundingBadge grounding={report.grounding} onClick={handleShowGrounding} />
             )}
@@ -343,8 +363,14 @@ export function TriageReportView({
 
       {report.cves.length > 0 && (
         <div className="space-y-3">
-          <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
             CVEs ({report.cves.length})
+            <Link
+              href="/guide#cve-nvd"
+              className="ml-auto shrink-0 text-[10px] font-normal normal-case tracking-normal text-primary hover:underline print:hidden"
+            >
+              CVE, CVSS &amp; CWE explained
+            </Link>
           </div>
           {report.cves.map((cve) => {
             const { body, fenced } = unfence(cve.summary);
@@ -472,6 +498,8 @@ export function TriageReportView({
         />
       )}
 
+      <ProvenanceNote />
+
       <ReasoningChain steps={report.reasoning_chain} />
     </div>
   );
@@ -487,12 +515,17 @@ function SsvcVerdict({ ssvc }: { ssvc: SsvcAssessment }) {
         <span title="SSVC: Stakeholder-Specific Vulnerability Categorization, CISA's scheme for deciding how urgently to act on a vulnerability. A prioritization decision, not a severity score.">
           SSVC verdict
         </span>
-        <span
-          className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] normal-case tracking-normal text-muted-foreground"
-          title="Computed by a fixed server-side rule from the collected signals (KEV, EPSS, public exploits, ransomware use, CVSS) after the model returns. The LLM does not pick this verdict; the same signals always produce the same decision."
-        >
-          deterministic · server-computed
-        </span>
+        <Tooltip>
+          <TooltipTrigger className="cursor-help rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] normal-case tracking-normal text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background">
+            deterministic · server-computed
+          </TooltipTrigger>
+          <TooltipContent>
+            Computed by a fixed server-side rule from the collected signals (KEV,
+            EPSS, public exploits, ransomware use, CVSS) after the model returns.
+            The LLM does not pick this verdict; the same signals always produce the
+            same decision.
+          </TooltipContent>
+        </Tooltip>
         <Link
           href="/guide#ssvc"
           className="ml-auto shrink-0 rounded text-[10px] font-normal normal-case tracking-normal text-primary hover:underline print:hidden"
@@ -516,7 +549,7 @@ function SsvcVerdict({ ssvc }: { ssvc: SsvcAssessment }) {
               title={stopMeta.blurb}
               className={cn(
                 "flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold transition-colors",
-                active ? stopMeta.activeClass : "bg-muted/40 text-muted-foreground/50",
+                active ? stopMeta.activeClass : "bg-muted/40 text-muted-foreground",
               )}
             >
               <StopIcon className="h-3.5 w-3.5 shrink-0" />
@@ -550,6 +583,7 @@ function SsvcVerdict({ ssvc }: { ssvc: SsvcAssessment }) {
           </p>
         </div>
       </div>
+      <SsvcDecisionTrace ssvc={ssvc} />
     </div>
   );
 }
@@ -561,7 +595,7 @@ function SignalCoverageStrip({ coverage }: { coverage: FeedStatus[] }) {
       <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
         <Radar className="h-3.5 w-3.5" />
         Signal coverage
-        <span className="normal-case tracking-normal text-muted-foreground/70">
+        <span className="normal-case tracking-normal text-muted-foreground">
           what each feed actually returned; a miss or an error is reported as such, never hidden
         </span>
       </div>
@@ -569,18 +603,44 @@ function SignalCoverageStrip({ coverage }: { coverage: FeedStatus[] }) {
         {coverage.map((feed) => {
           const statusMeta = COVERAGE_META[feed.status] ?? COVERAGE_META.not_queried;
           const StatusIcon = statusMeta.icon;
-          return (
-            <span
-              key={feed.feed}
-              title={[FEED_GLOSS[feed.feed] ?? feed.feed, STATUS_GLOSS[feed.status], feed.detail]
-                .filter(Boolean)
-                .join(". ")}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-[11px]"
-            >
+          const guideId = FEED_TO_GUIDE[feed.feed];
+          const chipClass = cn(
+            "inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+            guideId ? "cursor-pointer hover:border-primary/40 hover:bg-accent" : "cursor-help",
+          );
+          const chipInner = (
+            <>
               <StatusIcon className={cn("h-3.5 w-3.5 shrink-0", statusMeta.className)} />
               <span className="font-mono">{feed.feed}</span>
               <span className="text-muted-foreground">{statusMeta.label}</span>
-            </span>
+            </>
+          );
+          return (
+            <Tooltip key={feed.feed}>
+              <TooltipTrigger asChild>
+                {guideId ? (
+                  <Link href={`/guide#${guideId}`} className={chipClass}>
+                    {chipInner}
+                  </Link>
+                ) : (
+                  <span tabIndex={0} className={chipClass}>
+                    {chipInner}
+                  </span>
+                )}
+              </TooltipTrigger>
+              <TooltipContent>
+                <div className="font-medium text-popover-foreground">
+                  {FEED_GLOSS[feed.feed] ?? feed.feed}
+                </div>
+                <div className="mt-1 text-muted-foreground">{STATUS_GLOSS[feed.status]}</div>
+                {feed.detail && (
+                  <div className="mt-1 text-muted-foreground">{feed.detail}</div>
+                )}
+                {guideId && (
+                  <div className="mt-1.5 text-primary">Open the guide section &rarr;</div>
+                )}
+              </TooltipContent>
+            </Tooltip>
           );
         })}
       </div>
@@ -594,9 +654,15 @@ function AttackSection({ techniques }: { techniques: TriageReport["attack_techni
       <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
         <Crosshair className="h-3 w-3" />
         MITRE ATT&CK ({techniques.length})
-        <span className="normal-case tracking-normal text-muted-foreground/70">
+        <span className="normal-case tracking-normal text-muted-foreground">
           how an attacker would use these weaknesses, with mitigations
         </span>
+        <Link
+          href="/guide#attack"
+          className="ml-auto shrink-0 text-[10px] font-normal normal-case tracking-normal text-primary hover:underline print:hidden"
+        >
+          What is ATT&CK?
+        </Link>
       </div>
       {techniques.map((technique) => (
         <Card key={technique.id} className="overflow-hidden">
@@ -637,12 +703,12 @@ function AttackSection({ techniques }: { techniques: TriageReport["attack_techni
               </div>
               <ul className="space-y-1 text-xs">
                 {technique.mitigations.map((m) => (
-                  <li key={m.id} className="flex items-start gap-2">
+                  <li key={m.id} className="flex items-center gap-2">
                     <a
                       href={m.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="font-mono text-primary hover:underline"
+                      className="inline-flex min-h-6 shrink-0 items-center font-mono text-primary hover:underline"
                     >
                       {m.id}
                     </a>
@@ -675,17 +741,26 @@ function GroundingBadge({
         ? `suspect ${flagged}/${grounding.claims_checked}`
         : "grounding not evaluated";
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title="Deterministic grounding verification: after the model returns, the server re-checks every tool-derived claim (CVE identity, CVSS, KEV, EPSS, exploit flags, ATT&CK ids) against the tool results captured from the run. Not the model's self-assessment. Click for the per-claim breakdown."
-      className="rounded-full"
-    >
-      <Badge variant="outline" className="gap-1 text-xs uppercase tracking-wider">
-        <Icon className={cn("h-3 w-3 shrink-0", meta.iconClass)} />
-        {label}
-      </Badge>
-    </button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={onClick}
+          className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+        >
+          <Badge variant="outline" className="gap-1 text-xs uppercase tracking-wider">
+            <Icon className={cn("h-3 w-3 shrink-0", meta.iconClass)} />
+            {label}
+          </Badge>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>
+        Deterministic grounding verification: after the model returns, the server
+        re-checks every tool-derived claim (CVE identity, CVSS, KEV, EPSS, exploit
+        flags, ATT&CK ids) against the tool results captured from the run. Not the
+        model&apos;s self-assessment. Click for the per-claim breakdown.
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -726,7 +801,7 @@ function GroundingSection({
                 <StatusIcon className={cn("h-3 w-3 shrink-0", meta.iconClass)} />
                 {meta.label}
               </Badge>
-              <span className="text-[11px] normal-case tracking-normal text-muted-foreground/70">
+              <span className="text-[11px] normal-case tracking-normal text-muted-foreground">
                 every tool-derived claim re-checked against what the tools actually returned
               </span>
             </div>
@@ -849,7 +924,7 @@ function ReasoningChain({ steps }: { steps: string[] }) {
               <Badge variant="secondary" className="text-[10px]">
                 {steps.length} steps
               </Badge>
-              <span className="text-[11px] normal-case tracking-normal text-muted-foreground/70">
+              <span className="text-[11px] normal-case tracking-normal text-muted-foreground">
                 the agent&apos;s own log of tool calls and decisions, in order
               </span>
             </div>
