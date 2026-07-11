@@ -1,6 +1,6 @@
 import type { ElementType } from "react";
 import Link from "next/link";
-import { Mail, ShieldAlert } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
 
 import { GithubLogo } from "@/components/icons/github-logo";
 import { LinkedinLogo } from "@/components/icons/linkedin-logo";
@@ -53,12 +53,14 @@ const COLUMNS: { heading: string; links: FooterLink[] }[] = [
   },
 ];
 
-// Contact / social links. The row grows automatically as entries are added.
+// Contact / social links. No email: mailto: needs a registered mail-client
+// handler (a no-op where none exists) and would print the address in the page
+// source for scrapers. LinkedIn is the contact channel; a real on-site form
+// would need a third-party form backend this static export intentionally avoids.
 const CONTACTS: { label: string; href: string; icon: ElementType; external?: boolean }[] = [
   { label: "GitHub repository", href: REPO, icon: GithubLogo, external: true },
-  { label: "Email", href: "mailto:slaporta94@gmail.com", icon: Mail, external: true },
   {
-    label: "LinkedIn",
+    label: "Contact on LinkedIn",
     href: "https://www.linkedin.com/in/simonelaporta",
     icon: LinkedinLogo,
     external: true,
@@ -111,17 +113,12 @@ export function Footer() {
             <div className="mt-5 flex items-center gap-2">
               {CONTACTS.map((c) => {
                 const Icon = c.icon;
-                // Web links open in a new tab; protocol links (mailto:/tel:)
-                // must not - target=_blank on a mailto opens an empty browser
-                // tab before handing off to the mail client. Key off the
-                // protocol, not a per-entry flag, so future contacts are safe.
-                const newTab = c.external && !/^(mailto|tel):/.test(c.href);
                 return (
                   <a
                     key={c.label}
                     href={c.href}
-                    target={newTab ? "_blank" : undefined}
-                    rel={newTab ? "noopener noreferrer" : undefined}
+                    target={c.external ? "_blank" : undefined}
+                    rel={c.external ? "noopener noreferrer" : undefined}
                     aria-label={c.label}
                     className={`inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground ${RING}`}
                   >
