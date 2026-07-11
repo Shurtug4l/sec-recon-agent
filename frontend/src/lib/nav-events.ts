@@ -9,3 +9,9 @@ export const DASHBOARD_TAB_EVENT = "sec-recon:dashboard-tab";
 // trace disclosure (closed by default, so a plain scroll would land on a
 // collapsed panel) listens for it to open itself and scroll into view.
 export const SSVC_TRACE_EVENT = "sec-recon:ssvc-trace";
+
+// Fired by the command palette after picking a global-search doc hit while
+// already on /docs: the palette rewrites ?doc=&#section first (same idiom as
+// the dashboard tab event), then the docs page re-reads the URL and switches
+// the panel in place. router.push would not remount a same-route target.
+export const DOCS_SELECT_EVENT = "sec-recon:docs-select";
