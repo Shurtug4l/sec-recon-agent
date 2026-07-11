@@ -8,6 +8,7 @@ import {
   Crosshair,
   Flame,
   Gavel,
+  GitBranch,
   Library,
   Network,
   Package,
@@ -76,6 +77,22 @@ export const SECTIONS: Section[] = [
     refs: [
       { label: "EPSS home", href: "https://www.first.org/epss/" },
       { label: "Model paper", href: "https://arxiv.org/abs/2302.14172" },
+    ],
+  },
+  {
+    id: "ssvc",
+    title: "SSVC: the deterministic verdict",
+    shortLabel: "SSVC",
+    badge: "Prioritization decision",
+    icon: GitBranch,
+    what:
+      "SSVC (Stakeholder-Specific Vulnerability Categorization) is the CISA-backed prioritization scheme that replaces a single CVSS number with a decision over the signals that actually predict urgency: is the flaw being exploited in the wild (KEV), how likely is exploitation soon (EPSS), is public exploit code available, and how severe is the technical impact (CVSS). It outputs a small set of discrete decisions, not a 0.0-10.0 score. This agent uses a four-rung ladder, most to least urgent: Act (remediate out-of-cycle), Attend (ahead of standard timelines), Track* (standard timeline but monitor for escalation), Track (routine update cycle).",
+    whyHere:
+      "The verdict is computed in code (agent/ssvc.py) from the collected signals, never chosen by the model: eight first-match-wins rules map the signals to a rung, so the same inputs always produce the same decision and the LLM only echoes it. KEV membership escalates regardless of CVSS; a public exploit with high EPSS lifts the rung. This is the deterministic-not-LLM boundary made concrete, and it is why a prompt injection that fully persuades the model still cannot move Act to Track: the model does not hold that pen. Every report names the rule that fired and the CVE that drove it.",
+    used: ["SSVC engine (agent/ssvc.py)", "kev_check", "epss_score", "exploit_check"],
+    refs: [
+      { label: "CISA SSVC", href: "https://www.cisa.gov/stakeholder-specific-vulnerability-categorization-ssvc" },
+      { label: "CERT/CC SSVC", href: "https://certcc.github.io/SSVC/" },
     ],
   },
   {

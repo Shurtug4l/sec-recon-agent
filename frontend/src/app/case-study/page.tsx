@@ -120,11 +120,11 @@ function ProblemPanel() {
       </div>
       <Aside>
         This page is the guided tour; the long-form essay with the full
-        reasoning lives in the repo as docs/case_study.md.
+        reasoning is rendered and searchable in-app in the docs.
       </Aside>
       <ProofRow
         links={[
-          { label: "docs/case_study.md", href: `${REPO}/docs/case_study.md` },
+          { label: "Long-form essay", href: "/docs?doc=case_study", internal: true },
           { label: "OWASP mapping", href: `${REPO}/docs/owasp_llm_top10.md` },
         ]}
       />
@@ -642,7 +642,7 @@ function PrinciplePanel() {
       </Lead>
       <ProofRow
         links={[
-          { label: "the long-form essay", href: `${REPO}/docs/case_study.md` },
+          { label: "the long-form essay", href: "/docs?doc=case_study", internal: true },
           { label: "run a triage", href: "/triage", internal: true },
         ]}
       />
