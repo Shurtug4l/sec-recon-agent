@@ -182,7 +182,7 @@ steps:
   - uses: actions/checkout@v7
   - uses: anchore/sbom-action@v0.24.0
     with: { path: ., format: cyclonedx-json, output-file: sbom.cdx.json, upload-artifact: false }
-  - uses: Shurtug4l/sec-recon-agent@main
+  - uses: Shurtug4l/sec-recon-agent@v0.1.0
     with:
       sbom-path: sbom.cdx.json
       fail-on: act # act | attend | track-star | never
