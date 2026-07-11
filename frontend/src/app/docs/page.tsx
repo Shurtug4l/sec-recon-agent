@@ -102,9 +102,10 @@ export default function DocsPage() {
             </Badge>
             <h1 className="text-3xl font-semibold tracking-tight">Docs</h1>
             <p className="mt-3 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-              The project&apos;s engineering, operations, and governance
-              documentation, rendered in-app. Pick a document from the rail or
-              search across every section; each heading is deep-linkable.
+              Every markdown document in the repository, rendered in-app: the
+              overview, the engineering, operations, and governance docs, and a
+              captured triage walkthrough. Pick one from the rail or search
+              across every section; each heading is deep-linkable.
             </p>
           </div>
 
@@ -176,7 +177,7 @@ export default function DocsPage() {
                     <div className="flex items-center gap-2 text-primary">
                       <FileText className="h-4 w-4 shrink-0" />
                       <span className="font-mono text-[11px] text-muted-foreground">
-                        docs/{doc.slug}.md
+                        {doc.path}
                       </span>
                     </div>
                     <h2 className="mt-1.5 text-xl font-semibold tracking-tight">

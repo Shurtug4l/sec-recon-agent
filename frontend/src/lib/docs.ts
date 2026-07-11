@@ -15,6 +15,9 @@ export interface DocSection {
 
 export interface Doc {
   slug: string;
+  // Repo-relative source path (e.g. "README.md", "docs/design.md",
+  // "examples/triage_walkthrough.md"); shown in the panel and links to GitHub.
+  path: string;
   title: string;
   navLabel: string;
   purpose: string;
