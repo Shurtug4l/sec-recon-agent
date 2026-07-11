@@ -1,9 +1,6 @@
 name: "sec-recon SBOM gate"
-description: >-
-  Deterministic, LLM-free SBOM gate: OSV.dev advisories enriched with CISA
-  KEV, FIRST EPSS and public-exploit signals, prioritized with SSVC,
-  rendered to SARIF 2.1.0 and OpenVEX v0.2.0. Exit codes are the CI
-  contract: pass, policy fail, or infrastructure failure.
+# Marketplace caps the description at 125 chars; the full pitch lives in the README.
+description: "Deterministic, LLM-free SBOM vulnerability gate: OSV + KEV/EPSS/exploit, SSVC priority, SARIF + OpenVEX, CI exit code."
 author: "Simone La Porta"
 
 branding:
