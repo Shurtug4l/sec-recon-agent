@@ -95,6 +95,40 @@ function startServer() {
   return new Promise((ok) => server.listen(0, () => ok(server)));
 }
 
+// Measure horizontal overflow past the content box, naming the breaching elements
+// (skipping content that legitimately scrolls inside its own overflow-x container).
+// clientWidth excludes the scrollbar gutter, so `scrollWidth > clientWidth` is the
+// scrollbar-independent definition of "the page scrolls sideways" — consistent
+// between overlay-scrollbar (macOS) and classic-scrollbar (Linux CI) platforms.
+function measureOverflow(page) {
+  return page.evaluate(() => {
+    const de = document.documentElement;
+    const scrollWidth = Math.max(de.scrollWidth, document.body.scrollWidth);
+    const clientWidth = de.clientWidth;
+    if (scrollWidth <= clientWidth + 1) return { over: 0 };
+    const inScrollBox = (el) => {
+      for (let n = el.parentElement; n; n = n.parentElement) {
+        const ox = getComputedStyle(n).overflowX;
+        if (ox === "auto" || ox === "scroll" || ox === "hidden") return true;
+      }
+      return false;
+    };
+    const seen = new Set();
+    const offenders = [];
+    for (const el of document.querySelectorAll("body *")) {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.right <= clientWidth + 1 || inScrollBox(el)) continue;
+      const cls = (el.className?.toString?.() || "").trim().replace(/\s+/g, ".").slice(0, 70);
+      const key = el.tagName + cls;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      offenders.push(`<${el.tagName.toLowerCase()}${cls ? ` .${cls}` : ""}> right=${Math.round(r.right)}`);
+      if (offenders.length >= 6) break;
+    }
+    return { over: scrollWidth - clientWidth, scrollWidth, clientWidth, offenders };
+  });
+}
+
 async function main() {
   if (!existsSync(OUT_DIR)) {
     console.error(`a11y-sweep: ${OUT_DIR} not found — run 'npm run build:demo' first.`);
@@ -131,43 +165,19 @@ async function main() {
 
         for (const width of WIDTHS) {
           await page.setViewportSize({ width, height: 900 });
-          // Let async layout settle (web fonts, Recharts ResizeObserver) so the
-          // measurement is stable rather than a mid-render snapshot.
+          // Let async layout settle (web fonts, Recharts ResizeObserver) before
+          // the first read.
           await page.evaluate(() => document.fonts?.ready).catch(() => {});
-          const measure = await page.evaluate(() => {
-            const de = document.documentElement;
-            const scrollWidth = Math.max(de.scrollWidth, document.body.scrollWidth);
-            // clientWidth excludes the scrollbar gutter, so `scrollWidth > clientWidth`
-            // is the scrollbar-independent definition of "the page scrolls sideways".
-            // Comparing to window.innerWidth (which includes the gutter) under- or
-            // over-counts by a scrollbar width between overlay-scrollbar (macOS) and
-            // classic-scrollbar (Linux CI) platforms; clientWidth is consistent.
-            const clientWidth = de.clientWidth;
-            if (scrollWidth <= clientWidth + 1) return { over: 0 };
-            // Name the elements that breach the content box, ignoring content that
-            // legitimately scrolls inside its own overflow-x container (wide code
-            // blocks, tables) — those are meant to scroll, not push the page.
-            const inScrollBox = (el) => {
-              for (let n = el.parentElement; n; n = n.parentElement) {
-                const ox = getComputedStyle(n).overflowX;
-                if (ox === "auto" || ox === "scroll" || ox === "hidden") return true;
-              }
-              return false;
-            };
-            const seen = new Set();
-            const offenders = [];
-            for (const el of document.querySelectorAll("body *")) {
-              const r = el.getBoundingClientRect();
-              if (r.width === 0 || r.right <= clientWidth + 1 || inScrollBox(el)) continue;
-              const cls = (el.className?.toString?.() || "").trim().replace(/\s+/g, ".").slice(0, 70);
-              const key = el.tagName + cls;
-              if (seen.has(key)) continue;
-              seen.add(key);
-              offenders.push(`<${el.tagName.toLowerCase()}${cls ? ` .${cls}` : ""}> right=${Math.round(r.right)}`);
-              if (offenders.length >= 6) break;
-            }
-            return { over: scrollWidth - clientWidth, scrollWidth, clientWidth, offenders };
-          });
+          let measure = await measureOverflow(page);
+          if (measure.over > OVERFLOW_TOLERANCE) {
+            // Re-measure after a settle window: Recharts' ResponsiveContainer
+            // reports a wide default for a frame before its ResizeObserver shrinks
+            // it, so a first-read overflow can be a transient flash. Only a
+            // persistent overflow is a real one.
+            await page.waitForTimeout(300);
+            await page.evaluate(() => document.fonts?.ready).catch(() => {});
+            measure = await measureOverflow(page);
+          }
           if (measure.over > OVERFLOW_TOLERANCE) {
             overflowFails.push({ theme, route, width, ...measure });
           }
