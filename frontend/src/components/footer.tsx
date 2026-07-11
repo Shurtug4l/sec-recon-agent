@@ -111,12 +111,17 @@ export function Footer() {
             <div className="mt-5 flex items-center gap-2">
               {CONTACTS.map((c) => {
                 const Icon = c.icon;
+                // Web links open in a new tab; protocol links (mailto:/tel:)
+                // must not - target=_blank on a mailto opens an empty browser
+                // tab before handing off to the mail client. Key off the
+                // protocol, not a per-entry flag, so future contacts are safe.
+                const newTab = c.external && !/^(mailto|tel):/.test(c.href);
                 return (
                   <a
                     key={c.label}
                     href={c.href}
-                    target={c.external ? "_blank" : undefined}
-                    rel={c.external ? "noopener noreferrer" : undefined}
+                    target={newTab ? "_blank" : undefined}
+                    rel={newTab ? "noopener noreferrer" : undefined}
                     aria-label={c.label}
                     className={`inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground ${RING}`}
                   >
