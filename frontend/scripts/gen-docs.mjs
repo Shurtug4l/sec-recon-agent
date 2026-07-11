@@ -45,6 +45,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const REPO_ROOT = resolve(root, "..");
 const DOCS_DIR = resolve(REPO_ROOT, "docs");
 const EXAMPLES_DIR = resolve(REPO_ROOT, "examples");
+const APP_DIR = resolve(root, "src", "app");
 const OUT_FILE = resolve(root, "src", "lib", "docs-generated.json");
 const GITHUB_BLOB = "https://github.com/Shurtug4l/sec-recon-agent/blob/main";
 
@@ -259,6 +260,30 @@ function collectSections(store) {
   };
 }
 
+// rehype collector (P12 completeness gate): after sanitize, record the FINAL
+// shipped link graph so main() can prove every P10-rewritten cross-link resolves.
+// Two products per doc, neither persisted to the JSON (validation-only, kept out
+// of the freshness diff): every element `id` (the set of valid anchor targets a
+// cross-link may point at) and every rewritten xref (a corpus link's target slug
+// + optional section anchor, or a routed link's route). Reading AFTER sanitize is
+// deliberate — it validates what actually reaches the browser, so a future schema
+// change that dropped a marker or an id would surface here, not silently pass.
+function collectLinkGraph(store) {
+  return (tree) => {
+    visit(tree, "element", (node) => {
+      const id = node.properties?.id;
+      if (id) store.anchorIds.push(String(id));
+      if (node.tagName !== "a") return;
+      const p = node.properties || {};
+      if (p.dataDocSlug) {
+        store.xrefs.push({ slug: String(p.dataDocSlug), section: p.dataDocSection ? String(p.dataDocSection) : "" });
+      } else if (p.dataDocRoute) {
+        store.xrefs.push({ route: String(p.dataDocRoute) });
+      }
+    });
+  };
+}
+
 // rehype plugin (P10 "docs mesh"): rewrite relative markdown cross-links so they
 // resolve IN-APP instead of dead-ending on a raw `.md` path the /docs route can't
 // serve. A link whose basename maps to a corpus slug becomes a basePath-agnostic
@@ -300,7 +325,7 @@ function rehypeRewriteXrefs({ validSlugs, docPath }) {
 
 async function renderDoc(slug, path, raw, validSlugs) {
   const meta = { title: slug, purpose: "" };
-  const store = { sections: [] };
+  const store = { sections: [], anchorIds: [], xrefs: [] };
   const file = await unified()
     .use(remarkParse)
     .use(remarkGfm)
@@ -315,9 +340,12 @@ async function renderDoc(slug, path, raw, validSlugs) {
     .use(rehypeRewriteXrefs, { validSlugs, docPath: path })
     .use(rehypeSanitize, SCHEMA)
     .use(collectSections, store)
+    .use(collectLinkGraph, store)
     .use(rehypeStringify)
     .process(raw);
-  return {
+  // `doc` is the persisted record; `anchorIds`/`xrefs` are validation-only and
+  // returned separately so they never bloat docs-generated.json or the diff.
+  const doc = {
     slug,
     path,
     title: meta.title,
@@ -328,6 +356,30 @@ async function renderDoc(slug, path, raw, validSlugs) {
     hasMermaid: raw.includes("```mermaid"),
     githubUrl: `${GITHUB_BLOB}/${path}`,
   };
+  return { doc, anchorIds: store.anchorIds, xrefs: store.xrefs };
+}
+
+// Discover the real Next.js App Router routes (a directory under src/app holding
+// a page.tsx). Used by the completeness gate to prove a P10 routed cross-link
+// (data-doc-route, e.g. SCORECARD -> /scorecard) points at a route that exists,
+// so a stale EXTERNAL_ROUTE entry fails the build instead of shipping a dead nav.
+// api/ holds route handlers, not pages; route groups ((x)) and private (_x) dirs
+// do not contribute path segments — the app is flat today, guarded for safety.
+async function discoverRoutes() {
+  const routes = new Set();
+  const walk = async (dir, rel) => {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        if (entry.name === "api" || entry.name.startsWith("_")) continue;
+        const seg = entry.name.startsWith("(") ? rel : rel ? `${rel}/${entry.name}` : entry.name;
+        await walk(resolve(dir, entry.name), seg);
+      } else if (entry.name === "page.tsx") {
+        routes.add(`/${rel}`);
+      }
+    }
+  };
+  if (existsSync(APP_DIR)) await walk(APP_DIR, "");
+  return routes;
 }
 
 // Discover every candidate markdown file across the three source roots, mapped
@@ -396,6 +448,8 @@ async function main() {
   // warns (a doc can be renamed/removed without a hard stop); the fatal
   // direction is present-but-unconfigured, handled above.
   const groups = [];
+  // slug -> { anchorIds: Set<string>, xrefs } for the completeness gate below.
+  const linkGraph = new Map();
   for (const g of GROUPS) {
     const docs = [];
     for (const slug of g.slugs) {
@@ -405,10 +459,48 @@ async function main() {
         continue;
       }
       const raw = await readFile(doc.absPath, "utf8");
-      docs.push(await renderDoc(slug, doc.path, raw, validSlugs));
+      const { doc: rendered, anchorIds, xrefs } = await renderDoc(slug, doc.path, raw, validSlugs);
+      docs.push(rendered);
+      linkGraph.set(slug, { anchorIds: new Set(anchorIds), xrefs });
     }
     if (docs.length) groups.push({ name: g.name, docs });
   }
+
+  // P12 completeness gate — dead cross-link detection. Every P10-rewritten link
+  // must resolve: a corpus link's target slug is in the corpus (the rewrite only
+  // stamps a marker when it is, asserted here as defense in depth) AND, when the
+  // link carries a section anchor, the target doc renders an element with that id;
+  // a routed link points at a real app route. A dead link fails the build (same
+  // contract as the present-but-unconfigured gate), so a renamed heading or a
+  // typo'd anchor cannot ship a cross-link that silently scrolls nowhere. This is
+  // the full corpus check the browser gate cannot do: the /docs export server-
+  // renders only the default doc, so the other docs' cross-links exist solely
+  // here, in the build-time HTML.
+  const appRoutes = await discoverRoutes();
+  const dead = [];
+  for (const [slug, { xrefs }] of linkGraph) {
+    for (const x of xrefs) {
+      if (x.route !== undefined) {
+        if (!appRoutes.has(x.route)) dead.push(`${slug}: routed link -> ${x.route} (no such app route)`);
+        continue;
+      }
+      const target = linkGraph.get(x.slug);
+      if (!target) {
+        dead.push(`${slug}: cross-link -> ${x.slug} (slug not in corpus)`);
+      } else if (x.section && !target.anchorIds.has(x.section)) {
+        dead.push(`${slug}: cross-link -> ${x.slug}#${x.section} (no such anchor in target doc)`);
+      }
+    }
+  }
+  if (dead.length) {
+    dead.sort();
+    throw new Error(
+      `gen-docs: ${dead.length} dead cross-link(s) in the docs corpus:\n` +
+        dead.map((d) => `  - ${d}`).join("\n") +
+        "\nThe target section heading was likely renamed or removed; fix the anchor in the source markdown.",
+    );
+  }
+
   // Stable 2-space JSON so the freshness diff is readable and deterministic.
   await writeFile(OUT_FILE, JSON.stringify({ groups }, null, 2) + "\n", "utf8");
   const count = groups.reduce((n, g) => n + g.docs.length, 0);
