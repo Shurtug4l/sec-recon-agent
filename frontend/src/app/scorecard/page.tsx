@@ -49,9 +49,17 @@ export default function ScorecardPage() {
         <ScorecardBands />
 
         <p className="mt-8 text-[11px] text-muted-foreground">
-          Token pricing: {provenance.pricing_note}. Source: {provenance.source}. The full
-          SCORECARD.md (with the deterministic SSVC decision table and the one-command
-          reproduce block) lives in the repository root.
+          Token pricing: {provenance.pricing_note}. Source: {provenance.source}. The full{" "}
+          <a
+            href="https://github.com/Shurtug4l/sec-recon-agent/blob/main/SCORECARD.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-mono text-foreground underline underline-offset-2 hover:decoration-2"
+          >
+            SCORECARD.md
+          </a>{" "}
+          (with the deterministic SSVC decision table and the one-command reproduce block)
+          lives in the repository root.
         </p>
       </main>
     </div>

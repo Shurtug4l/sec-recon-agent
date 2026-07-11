@@ -22,14 +22,26 @@ import { GithubLogo } from "@/components/icons/github-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 
-const TABS = [
-  { href: "/", label: "Home", icon: Home, match: (p: string) => p === "/" },
-  { href: "/triage", label: "Triage", icon: MessageSquare, match: (p: string) => p.startsWith("/triage") },
-  { href: "/dashboard", label: "Dashboard", icon: BarChart3, match: (p: string) => p.startsWith("/dashboard") },
-  { href: "/scorecard", label: "Scorecard", icon: ClipboardCheck, match: (p: string) => p.startsWith("/scorecard") },
-  { href: "/case-study", label: "Case study", icon: FileSearch, match: (p: string) => p.startsWith("/case-study") },
-  { href: "/docs", label: "Docs", icon: Library, match: (p: string) => p.startsWith("/docs") },
-  { href: "/guide", label: "Guide", icon: BookOpen, match: (p: string) => p.startsWith("/guide") },
+type Tab = {
+  href: string;
+  label: string;
+  icon: typeof Home;
+  match: (p: string) => boolean;
+};
+
+// Two clusters with a divider between them: the interactive product surfaces
+// first (Home leads), then the reading/learning surfaces. Guide leads the
+// learn cluster so onboarding is no longer the far-right tab behind Docs.
+const PRODUCT_TABS: Tab[] = [
+  { href: "/", label: "Home", icon: Home, match: (p) => p === "/" },
+  { href: "/triage", label: "Triage", icon: MessageSquare, match: (p) => p.startsWith("/triage") },
+  { href: "/dashboard", label: "Dashboard", icon: BarChart3, match: (p) => p.startsWith("/dashboard") },
+  { href: "/scorecard", label: "Scorecard", icon: ClipboardCheck, match: (p) => p.startsWith("/scorecard") },
+];
+const LEARN_TABS: Tab[] = [
+  { href: "/guide", label: "Guide", icon: BookOpen, match: (p) => p.startsWith("/guide") },
+  { href: "/case-study", label: "Case study", icon: FileSearch, match: (p) => p.startsWith("/case-study") },
+  { href: "/docs", label: "Docs", icon: Library, match: (p) => p.startsWith("/docs") },
 ];
 
 // Focus ring shared by every interactive element in the bar.
@@ -110,26 +122,13 @@ export function Header() {
         {/* Desktop primary nav: labelled tabs from lg up (they need the room;
             below lg the disclosure carries them). */}
         <nav aria-label="Primary" className="hidden items-center gap-1 lg:flex">
-          {TABS.map(({ href, label, icon: Icon, match }) => {
-            const active = match(pathname);
-            return (
-              <Link
-                key={href}
-                href={href}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors xl:px-3",
-                  RING,
-                  active
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-accent hover:text-foreground",
-                )}
-              >
-                <Icon className="h-3.5 w-3.5 shrink-0" />
-                {label}
-              </Link>
-            );
-          })}
+          {PRODUCT_TABS.map((tab) => (
+            <DesktopTab key={tab.href} tab={tab} pathname={pathname} />
+          ))}
+          <div className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden />
+          {LEARN_TABS.map((tab) => (
+            <DesktopTab key={tab.href} tab={tab} pathname={pathname} />
+          ))}
         </nav>
 
         <div className="flex items-center gap-1">
@@ -188,29 +187,58 @@ export function Header() {
           className="border-t border-border bg-background/95 backdrop-blur lg:hidden"
         >
           <nav aria-label="Primary" className="container flex flex-col gap-0.5 py-2">
-            {TABS.map(({ href, label, icon: Icon, match }) => {
-              const active = match(pathname);
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "inline-flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
-                    RING,
-                    active
-                      ? "bg-accent text-accent-foreground"
-                      : "text-muted-foreground hover:bg-accent hover:text-foreground",
-                  )}
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  {label}
-                </Link>
-              );
-            })}
+            {PRODUCT_TABS.map((tab) => (
+              <MobileTab key={tab.href} tab={tab} pathname={pathname} />
+            ))}
+            <div className="my-1 h-px bg-border" aria-hidden />
+            {LEARN_TABS.map((tab) => (
+              <MobileTab key={tab.href} tab={tab} pathname={pathname} />
+            ))}
           </nav>
         </div>
       )}
     </header>
+  );
+}
+
+function DesktopTab({ tab, pathname }: { tab: Tab; pathname: string }) {
+  const active = tab.match(pathname);
+  const Icon = tab.icon;
+  return (
+    <Link
+      href={tab.href}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors xl:px-3",
+        RING,
+        active
+          ? "bg-accent text-accent-foreground"
+          : "text-muted-foreground hover:bg-accent hover:text-foreground",
+      )}
+    >
+      <Icon className="h-3.5 w-3.5 shrink-0" />
+      {tab.label}
+    </Link>
+  );
+}
+
+function MobileTab({ tab, pathname }: { tab: Tab; pathname: string }) {
+  const active = tab.match(pathname);
+  const Icon = tab.icon;
+  return (
+    <Link
+      href={tab.href}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "inline-flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
+        RING,
+        active
+          ? "bg-accent text-accent-foreground"
+          : "text-muted-foreground hover:bg-accent hover:text-foreground",
+      )}
+    >
+      <Icon className="h-4 w-4 shrink-0" />
+      {tab.label}
+    </Link>
   );
 }

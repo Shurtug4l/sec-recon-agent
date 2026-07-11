@@ -34,7 +34,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 FROM python:3.14-slim AS runtime
 
 # Pull latest Debian security patches in the runtime stage. Without this,
-# the image inherits every CVE in whatever snapshot `python:3.13-slim` was
+# the image inherits every CVE in whatever snapshot `python:3.14-slim` was
 # built from, even when fixes are already in the Debian archive. Picks up
 # glibc / systemd / libcap2 / sed patches that `docker scout` flags.
 # curl is needed for the healthcheck; everything else lives in the venv.

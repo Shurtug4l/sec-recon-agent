@@ -211,14 +211,15 @@ The per-area breakdown - tool contracts, adversarial corpus, API, audit hash cha
 
 ## Frontend
 
-The browser is the primary interface, in a dual-theme "Editorial instrument" design system (dark instrument by default, light technical paper via the header toggle). Six tabs plus a permalink route:
+The browser is the primary interface, in a dual-theme "Editorial instrument" design system (dark instrument by default, light technical paper via the header toggle). Seven tabs plus a permalink route:
 
 - **Home (`/`)** - landing: SSVC ladder hero, design pillars, tool grid.
 - **Triage (`/triage`)** - query form with example chips, live SSE progress, the report view, and a localStorage history sidebar.
 - **Dashboard (`/dashboard`)** - statistics from local history, a measured per-node latency waterfall, a transparency tab showing the literal system prompt and tool inventory from `GET /v1/meta`, and an audit-trail tab that renders the tamper-evident hash chain from `GET /v1/audit` (chain-integrity status + digest-only rows).
 - **Scorecard (`/scorecard`)** - the reproducible scorecard rendered as tabbed bands.
 - **Case study (`/case-study`)** - the trust-boundary design narrative as a guided tour.
-- **Guide (`/guide`)** - one explainer per framework the agent grounds answers in (CVE / CVSS, KEV, EPSS, ATT&CK, ATLAS, SBOM, SSVC, MCP...).
+- **Guide (`/guide`)** - one explainer per framework the agent grounds answers in (CVE / CVSS, KEV, EPSS, SSVC, ATT&CK, ATLAS, SBOM, MCP...).
+- **Docs (`/docs`)** - the full `docs/*.md` set (design, threat model, OWASP LLM Top 10, MITRE ATLAS, ISO 42001, MCP self-audit, security findings, case study) rendered and searchable in-app, each with its own section table of contents.
 - **`/r`** - self-contained viewer for shared-report permalinks: the whole report is gzip-encoded in the URL fragment, decoded locally, never sent to a server.
 
 Reports stream live over SSE, render the untrusted-content fence semantically (vendor text is visibly quarantined), surface the server-side grounding verification, and export to Markdown, raw JSON, or print-to-PDF. Component map and SSE wire protocol in [docs/frontend.md](docs/frontend.md).

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
   AlertTriangle,
   Braces,
@@ -492,6 +493,12 @@ function SsvcVerdict({ ssvc }: { ssvc: SsvcAssessment }) {
         >
           deterministic · server-computed
         </span>
+        <Link
+          href="/guide#ssvc"
+          className="ml-auto shrink-0 rounded text-[10px] font-normal normal-case tracking-normal text-primary hover:underline print:hidden"
+        >
+          What is SSVC?
+        </Link>
       </div>
       <div
         className="grid grid-cols-4 gap-1"

@@ -102,6 +102,27 @@ const AUDIENCES = [
   },
 ];
 
+// In-app docs surfaced from the landing so the whole /docs site (and the
+// governance material in particular) is reachable from the narrative, not only
+// from the header tab. Slugs match the ?doc= deep link on the docs route.
+const DOC_CHIP =
+  "inline-flex items-center rounded-md border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground";
+
+const ENGINEERING_DOCS = [
+  { slug: "design", label: "Design & threat model" },
+  { slug: "tools", label: "Tool contracts" },
+  { slug: "evaluation", label: "Evaluation & red team" },
+  { slug: "running", label: "Running & deploy" },
+];
+
+const GOVERNANCE_DOCS = [
+  { slug: "owasp_llm_top10", label: "OWASP LLM Top 10" },
+  { slug: "mitre_atlas", label: "MITRE ATLAS" },
+  { slug: "iso_42001", label: "ISO/IEC 42001" },
+  { slug: "mcp_self_audit", label: "MCP self-audit" },
+  { slug: "security_findings", label: "Security findings" },
+];
+
 export default function Landing() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -269,14 +290,12 @@ export default function Landing() {
               vulnerable; sec-recon-agent is the reasoning layer that comes next,
               deciding which of those actually demand your morning and proving why
               in a{" "}
-              <a
-                href="https://github.com/Shurtug4l/sec-recon-agent/blob/main/SCORECARD.md"
-                target="_blank"
-                rel="noopener noreferrer"
+              <Link
+                href="/scorecard"
                 className="text-primary underline underline-offset-2 hover:decoration-2"
               >
                 reproducible scorecard
-              </a>
+              </Link>
               .
             </p>
 
@@ -359,6 +378,54 @@ export default function Landing() {
                   </p>
                 </div>
               ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Read the thinking - surfaces the in-app docs site (rendered and
+            searchable in-browser) and the governance material; the narrative
+            above otherwise never reveals that /docs exists. */}
+        <section className="border-b border-border/60">
+          <div className="container max-w-5xl py-12 md:py-16">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                Read the thinking
+              </h2>
+              <Link href="/docs" className="text-xs text-primary hover:underline">
+                Browse all docs in-app &rarr;
+              </Link>
+            </div>
+            <p className="mt-4 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+              The design record, the threat model, and the AI-risk frameworks
+              this system is measured against are rendered and searchable right
+              in the browser, no repo spelunking. Eleven documents, cross-linked
+              and version-checked against the code.
+            </p>
+            <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="rounded-lg border border-border bg-card/40 p-5">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  Design &amp; operations
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {ENGINEERING_DOCS.map((d) => (
+                    <Link key={d.slug} href={`/docs?doc=${d.slug}`} className={DOC_CHIP}>
+                      {d.label}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-lg border border-primary/40 bg-primary/[0.04] p-5">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">
+                  Security &amp; governance
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {GOVERNANCE_DOCS.map((d) => (
+                    <Link key={d.slug} href={`/docs?doc=${d.slug}`} className={DOC_CHIP}>
+                      {d.label}
+                    </Link>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </section>
