@@ -90,7 +90,13 @@ export function StatisticsTab({ entries }: { entries: HistoryEntry[] }) {
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      {/* min-w-0 on the grid items: a grid cell's default min-width:auto lets it
+          grow to its content's intrinsic size, and Recharts' ResponsiveContainer
+          briefly reports a wide default before its ResizeObserver measures the
+          parent — that flash made the cell (and the page) overflow on a 360px
+          phone. min-w-0 lets the cell shrink to the track, so width="100%"
+          resolves to the real column width with no flash. */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 [&>*]:min-w-0">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Severity distribution</CardTitle>
