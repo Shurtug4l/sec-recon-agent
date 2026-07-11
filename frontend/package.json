@@ -12,7 +12,9 @@
     "start": "next start -p 3000",
     "type-check": "tsc --noEmit",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "check:links": "node scripts/check-links.mjs",
+    "a11y:sweep": "node scripts/a11y-sweep.mjs"
   },
   "dependencies": {
     "@radix-ui/react-collapsible": "1.1.16",
