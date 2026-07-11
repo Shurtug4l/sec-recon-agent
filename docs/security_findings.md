@@ -3,12 +3,12 @@
 The Trivy workflow uploads a SARIF report to the GitHub Security tab on every successful image build and on a weekly schedule. The findings listed below are the **currently open** alerts on `main`; each one has been triaged with a documented decision.
 
 This document covers two sources:
-1. **Supply-chain findings** from Trivy / npm-audit / pip-audit (dependencies we ship in containers).
+1. **Supply-chain findings** from Trivy / npm-audit / pip-audit / Dependabot (dependencies we ship in containers or pin in lockfiles).
 2. **Internal audit findings** from periodic multi-agent review of our own code (MCP tool surface, agent flow, governance posture).
 
 **Posture**: open findings stay open. Dismissing a CVE that we technically own (it ships inside our container) without a fix would be optics, not security. Documenting them publicly is the more honest signal: a reviewer can see the analysis, agree or disagree, and we can revisit when an upstream fix lands. The same posture applies to internal findings: we list them with the current mitigation and the planned fix path, rather than hiding them until the fix lands.
 
-**Refresh cadence**: Trivy weekly Monday cron via `.github/workflows/ci-docker-scan.yml`. Internal audit is run on-demand (last: 2026-05-18) by spawning specialized review subagents in parallel against the code surface.
+**Refresh cadence**: Trivy weekly Monday cron via `.github/workflows/ci-docker-scan.yml`. Dependabot alerts are enabled repo-wide over the `pip` and `npm` lockfiles, with automated security-update PRs. Internal audit is run on-demand (last: 2026-05-18) by spawning specialized review subagents in parallel against the code surface.
 
 ---
 
@@ -18,6 +18,7 @@ This document covers two sources:
 
 | Severity | CVE / GHSA | Package | Path | Disposition | Reason |
 |---|---|---|---|---|---|
+| CRITICAL | CVE-2026-45829 / GHSA-f4j7-r4q5-qw2c | chromadb 1.5.9 | backend image (vector store) | accept + VEX `not_affected` | pre-auth vector not network-reachable; no upstream patch exists; see detailed triage + `security/vex/chromadb_cve_2026_45829.openvex.json` |
 | HIGH | GHSA picomatch ReDoS | picomatch | `frontend` build chain | accept | build-time tooling, no attacker-controlled input |
 | MEDIUM | postcss XSS via stringify | postcss | `frontend` build chain | accept | build-time CSS toolchain, output is static |
 | MEDIUM | picomatch POSIX bracket | picomatch | `frontend` build chain | accept | build-time tooling |
@@ -70,6 +71,18 @@ The Cargo.lock comes from a pre-compiled native bridge bundled inside ChromaDB's
 **Why we cannot bump it**: the dependency tree is frozen at ChromaDB build time and shipped as a binary wheel. Bumping requires ChromaDB to publish a new wheel built against a newer `rand`, which is upstream's responsibility.
 
 **What would change the disposition**: a new ChromaDB release that pins `rand >= <fixed-version>`. Dependabot will surface the Python-side bump when it lands.
+
+### ChromaDB pre-auth code injection (CVE-2026-45829, CRITICAL, no upstream fix)
+
+Dependabot flagged `chromadb` 1.5.9 for **CVE-2026-45829 / GHSA-f4j7-r4q5-qw2c**, a pre-authentication code-injection vulnerability. The advisory range is `>= 1.0.0 <= 1.5.9` with **no patched version published**, so there is nothing to bump to.
+
+**Reachability analysis (why the product is `not_affected`)**: the vulnerable path is pre-authentication code injection reached through ChromaDB's HTTP endpoint. In this deployment ChromaDB runs only as an internal service on the compose network (`mcp` / `agent-api` / `frontend`); its port is never published to the host, and egress is further constrained by the default-deny tinyproxy allowlist shipped in the S4 hardening. No untrusted principal can reach the ChromaDB endpoint, so an adversary cannot control the input to the vulnerable code. The OpenVEX justification is `vulnerable_code_cannot_be_controlled_by_adversary`.
+
+**Machine-readable attestation**: `security/vex/chromadb_cve_2026_45829.openvex.json` (OpenVEX v0.2.0, `status: not_affected`), authored directly rather than through `export/openvex.py` because that renderer emits `affected` only by design (automated triage never asserts reachability); the VEX reuses the tool's `@context`, `@id` namespace, and canonicalization so the artifact stays consistent with the ones the export path produces.
+
+**Trivy gate interaction (forward-looking)**: the container `scan backend` job did not flag this CVE (Trivy's DB has not picked up the 2026 advisory yet). When it does, the `ci-docker-scan.yml` CRITICAL gate would fail the weekly build; wire the VEX into the scan (`trivy --vex`) or add a scoped `.trivyignore` entry at that point, citing this section.
+
+**What would change the disposition**: a patched `chromadb` release (`> 1.5.9`) - Dependabot will surface the bump. Revisit the VEX and drop it once bumped.
 
 ---
 
