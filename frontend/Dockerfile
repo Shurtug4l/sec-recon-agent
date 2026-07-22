@@ -28,6 +28,16 @@ FROM node:22-alpine AS runtime
 # of creating a parallel one (the explicit `adduser` would collide on gid 1000).
 RUN apk add --no-cache curl tini
 
+# The base image bundles npm, corepack and yarn for build convenience, but this
+# stage only ever runs `node server.js`: no package manager is on any runtime
+# code path. Their vendored dependencies are exactly where base-image CVEs land
+# (CVE-2026-59873 hit npm's bundled node-tar), so drop them from the final
+# image instead of triaging each advisory as it arrives.
+RUN rm -rf /usr/local/lib/node_modules/npm \
+           /usr/local/lib/node_modules/corepack \
+           /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+           /opt/yarn* /usr/local/bin/yarn /usr/local/bin/yarnpkg
+
 WORKDIR /app
 
 # Standalone output ships everything the server needs in /app.
