@@ -19,6 +19,7 @@ This document covers two sources:
 | Severity | CVE / GHSA | Package | Path | Disposition | Reason |
 |---|---|---|---|---|---|
 | CRITICAL | CVE-2026-45829 / GHSA-f4j7-r4q5-qw2c | chromadb 1.5.9 | backend image (vector store) | accept + VEX `not_affected` | pre-auth vector not network-reachable; no upstream patch exists; see detailed triage + `security/vex/chromadb_cve_2026_45829.openvex.json` |
+| CRITICAL | CVE-2026-59873 | tar 7.5.11 (npm bundled) | frontend image, `node:22-alpine` base | **fixed (structural)** | npm/corepack/yarn removed from the runtime stage; no package manager on any runtime code path; see detailed triage |
 | HIGH | GHSA picomatch ReDoS | picomatch | `frontend` build chain | accept | build-time tooling, no attacker-controlled input |
 | MEDIUM | postcss XSS via stringify | postcss | `frontend` build chain | accept | build-time CSS toolchain, output is static |
 | MEDIUM | picomatch POSIX bracket | picomatch | `frontend` build chain | accept | build-time tooling |
@@ -61,6 +62,32 @@ All five findings live in `frontend/node_modules/` and reach the image because t
 - Next.js publishes a 15.x patch that bumps the transitive postcss.
 - The Next.js / Tailwind / ESLint chain refreshes picomatch to a fixed version.
 - We migrate the frontend off Next 15 (currently out of scope; tracked separately in the Dependabot ignore list for `next` major bumps).
+
+### npm bundled node-tar gzip-bomb DoS (CVE-2026-59873, CRITICAL, fixed structurally)
+
+Surfaced 2026-07-22: the `scan frontend` CRITICAL gate started failing on every PR,
+including a Python-only dependency bump, which is the signature of a fresh advisory
+against the base image rather than a change under review. Trivy flagged `tar` 7.5.11
+(fixed in 7.5.19) at `usr/local/lib/node_modules/npm/node_modules/tar/` - node-tar as
+vendored by the npm that `node:22-alpine` bundles, not a dependency of this project
+(`frontend/package-lock.json` has no `tar` entry).
+
+**Reachability**: the vulnerable path is tar extraction of a crafted gzip archive,
+exercised when npm installs packages. The runtime stage runs `node server.js` and a
+curl healthcheck; npm is never invoked after image build. Not exploitable in the
+running container - the exposure was gate noise, not runtime risk.
+
+**Fix (structural, this PR)**: the runtime stage now removes npm, corepack and yarn
+outright (`frontend/Dockerfile`). Build stages keep them (`npm ci` / `npm run build`
+happen there and never ship). This closes the whole class: future advisories against
+package-manager vendored deps cannot fire on the final image because the packages are
+no longer in it. Side effect: smaller image.
+
+**Why not the alternatives**: a base-image bump was not available (the CVE is
+same-day; node had not yet published images with npm bundling tar >= 7.5.19) and
+would reopen at the next npm-vendored advisory; a `.trivyignore` entry would have
+been justified (`not_affected`, vulnerable code not in execute path) but keeps dead
+weight in the image and needs manual expiry.
 
 ### Backend Rust findings (3 × rand LOW)
 
