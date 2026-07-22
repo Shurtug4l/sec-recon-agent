@@ -20,11 +20,12 @@ This document covers two sources:
 |---|---|---|---|---|---|
 | CRITICAL | CVE-2026-45829 / GHSA-f4j7-r4q5-qw2c | chromadb 1.5.9 | backend image (vector store) | accept + VEX `not_affected` | pre-auth vector not network-reachable; no upstream patch exists; see detailed triage + `security/vex/chromadb_cve_2026_45829.openvex.json` |
 | CRITICAL | CVE-2026-59873 | tar 7.5.11 (npm bundled) | frontend image, `node:22-alpine` base | **fixed (structural)** | npm/corepack/yarn removed from the runtime stage; no package manager on any runtime code path; see detailed triage |
-| HIGH | GHSA picomatch ReDoS | picomatch | `frontend` build chain | accept | build-time tooling, no attacker-controlled input |
-| MEDIUM | postcss XSS via stringify | postcss | `frontend` build chain | accept | build-time CSS toolchain, output is static |
-| MEDIUM | picomatch POSIX bracket | picomatch | `frontend` build chain | accept | build-time tooling |
-| MEDIUM | ip-address parsing | ip-address | `frontend` transitive | accept | build-time tooling |
-| MEDIUM | brace-expansion DoS via zero step | brace-expansion | `frontend` ESLint config parsing | accept | build-time, patterns from .eslintignore |
+| HIGH | GHSA-f88m-g3jw-g9cj | sharp | `frontend`, `next` transitive | **fixed (npm override)** | forced to 0.35.0 via package.json `overrides` - next's semver range caps at 0.34.x so Dependabot could not reach the fix; sharp is dormant here (no `next/image` usage in src, demo export runs `images.unoptimized`) |
+| HIGH | GHSA picomatch ReDoS | picomatch | `frontend` build chain | closed upstream | transitive parents refreshed over time; tree now at 2.3.2 / 4.0.4, alert no longer open (verified 2026-07-22) |
+| MEDIUM | postcss XSS via stringify | postcss | `frontend` build chain | accept | build-time CSS toolchain, output is static; top-level bumped to 8.5.20 (2026-07-22) but `next` still pins its own nested 8.4.31, which keeps the alert open |
+| MEDIUM | picomatch POSIX bracket | picomatch | `frontend` build chain | closed upstream | same transitive refresh as the ReDoS row |
+| MEDIUM | ip-address parsing | ip-address | `frontend` transitive | closed upstream | package no longer in the dependency tree (verified 2026-07-22) |
+| MEDIUM | brace-expansion DoS via zero step | brace-expansion | `frontend` ESLint config parsing | **fixed (bump)** | both copies bumped to fixed versions 1.1.16 / 5.0.7 (2026-07-22); the bump also covers the newer CVE-2026-13149 (HIGH) on the same package |
 | LOW (x3) | rand unsoundness with custom logger | rand (Rust) | backend image ChromaDB native bridge | accept | we do not use rand with a custom logger |
 
 ### Internal audit (multi-agent review 2026-05-18)
@@ -45,6 +46,14 @@ This document covers two sources:
 ## Detailed triage
 
 ### Frontend npm findings (5)
+
+**Reconciliation 2026-07-22**: the picomatch and ip-address alerts closed upstream
+(transitive refreshes; ip-address left the tree entirely), brace-expansion was bumped
+to fixed versions in the lockfile (also covering the newer CVE-2026-13149 HIGH on the
+same package), and sharp was forced to 0.35.0 with a package.json `overrides` entry.
+Of the original set only the postcss disposition remains open: `next` pins its own
+nested 8.4.31 copy, unchanged by the top-level bump to 8.5.20. The chain analysis
+below is kept for the record.
 
 All five findings live in `frontend/node_modules/` and reach the image because the Next.js build needs them at compile time. None of them are loaded at runtime by the user-facing Next.js server.
 
