@@ -1,6 +1,27 @@
-# Dependabot keeps every dependency ecosystem we ship aligned with
-# upstream security fixes. Weekly cadence is a deliberate trade-off:
-# daily creates churn, monthly leaves CVE windows open too long.
+# Dependabot keeps every dependency ecosystem we ship aligned with upstream
+# security fixes.
+#
+# Cadence is split on purpose. VERSION updates run monthly: they are hygiene,
+# and a weekly drip multiplies the occasions to babysit a batch without
+# shortening any exposure window. SECURITY updates ignore `schedule` entirely
+# and arrive as soon as an advisory lands, so the CVE window is governed by
+# GitHub, not by this file. (The earlier comment here defended weekly on
+# CVE-window grounds; that argument never applied to version updates.)
+#
+# Every ecosystem declares TWO groups. `groups` applies to version updates
+# ONLY unless `applies-to: security-updates` is set, so without the second
+# group a security bump arrives as its own PR alongside the version batch,
+# both touching the same lockfile. That is not theoretical: on 2026-07-28 a
+# solo `next` security PR and the npm group PR collided, and Dependabot closed
+# and RECREATED the group rather than rebasing it.
+#
+# `cooldown` suppresses the churn of versions superseded within days (`next`
+# 15.5.21 was replaced by 15.5.22 in under 24 hours, after costing a PR).
+#
+# Auto-merge lives in .github/workflows/dependabot-auto-merge.yml: patch and
+# minor only, never the schema-emitting set (pydantic-ai, pydantic-ai-slim,
+# pydantic-settings, fastapi, mcp) whose bumps can trip the record-replay
+# cassette gate. Majors always stay manual.
 
 version: 2
 
@@ -9,14 +30,23 @@ updates:
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
       day: "monday"
       time: "06:00"
       timezone: "Europe/Rome"
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+      semver-patch-days: 3
+      semver-major-days: 30
     groups:
-      python-minor-patch:
+      python-version:
+        applies-to: version-updates
+        patterns: ["*"]
         update-types: ["minor", "patch"]
+      python-security:
+        applies-to: security-updates
+        patterns: ["*"]
     labels:
       - "dependencies"
       - "python"
@@ -27,14 +57,23 @@ updates:
   - package-ecosystem: "npm"
     directory: "/frontend"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
       day: "monday"
       time: "06:00"
       timezone: "Europe/Rome"
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+      semver-patch-days: 3
+      semver-major-days: 30
     groups:
-      npm-minor-patch:
+      npm-version:
+        applies-to: version-updates
+        patterns: ["*"]
         update-types: ["minor", "patch"]
+      npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
     # eslint-config-next and typescript are tightly coupled to Next.js's
     # major: bumping them independently lands in CI red until Next itself
     # moves. Skip the major bump for both; minor/patch still come through.
@@ -68,11 +107,22 @@ updates:
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
       day: "monday"
       time: "06:00"
       timezone: "Europe/Rome"
     open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+    groups:
+      docker-backend-version:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+      docker-backend-security:
+        applies-to: security-updates
+        patterns: ["*"]
     labels:
       - "dependencies"
       - "docker"
@@ -82,11 +132,22 @@ updates:
   - package-ecosystem: "docker"
     directory: "/frontend"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
       day: "monday"
       time: "06:00"
       timezone: "Europe/Rome"
     open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+    groups:
+      docker-frontend-version:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+      docker-frontend-security:
+        applies-to: security-updates
+        patterns: ["*"]
     # Node.js uses even majors as LTS and odd majors as current. Skip
     # the auto-major bump so Dependabot does not propose node 23/25/27
     # (non-LTS) — we move to the next LTS manually when it has been GA
@@ -105,11 +166,22 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
       day: "monday"
       time: "06:00"
       timezone: "Europe/Rome"
     open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+    groups:
+      actions-version:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+      actions-security:
+        applies-to: security-updates
+        patterns: ["*"]
     labels:
       - "dependencies"
       - "ci"
@@ -124,11 +196,22 @@ updates:
   - package-ecosystem: "pre-commit"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
       day: "monday"
       time: "06:00"
       timezone: "Europe/Rome"
     open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+    groups:
+      precommit-version:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+      precommit-security:
+        applies-to: security-updates
+        patterns: ["*"]
     labels:
       - "dependencies"
       - "ci"
