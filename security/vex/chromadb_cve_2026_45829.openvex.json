@@ -1,9 +1,9 @@
 {
-  "@id": "https://openvex.dev/docs/public/vex-f681fdd4c463abce1605b6826a85fd120ee89c60095309ec876a57d105091ce4",
+  "@id": "https://openvex.dev/docs/public/vex-bf7a1330900279c8aa9b3b963358272c6ddf5bf4cf34d4b277185c210156ef5c",
   "@context": "https://openvex.dev/ns/v0.2.0",
   "author": "https://github.com/Shurtug4l/sec-recon-agent",
-  "timestamp": "2026-07-11T00:00:00+00:00",
-  "version": 1,
+  "timestamp": "2026-08-03T00:00:00+00:00",
+  "version": 2,
   "statements": [
     {
       "vulnerability": {
@@ -28,8 +28,8 @@
         }
       ],
       "status": "not_affected",
-      "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
-      "impact_statement": "ChromaDB runs only as an internal service on the compose network (mcp / agent-api / frontend); its port is never published to the host and egress is further constrained by the default-deny tinyproxy allowlist shipped in the S4 hardening. The pre-authentication vector requires an adversary to reach the ChromaDB HTTP endpoint directly, which no untrusted principal can do in this deployment. No patched chromadb release exists (the advisory range is >= 1.0.0 <= 1.5.9); this statement is revisited when a fixed version ships."
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "chromadb is used only as an embedded, file-backed store: mcp_server/tools/cve_search.py builds a chromadb.PersistentClient inside the MCP server process, and the deployment runs no ChromaDB service at all (docker-compose ships mcp-server, agent-api, seed-job, frontend and jaeger). The advisory's vector is pre-authentication, so it lives in the server's request-handling path, and that path is never started here: the vulnerable code ships inside the installed package but sits outside every execution path. Version 1 of this statement argued network unreachability of a ChromaDB endpoint, which described the deployment inaccurately - there is no endpoint to reach. No patched chromadb release exists (advisory range >= 1.0.0 <= 1.5.9; 1.5.9, released 2026-05-05, is still the latest on PyPI as of 2026-08-03), so this statement is revisited when a fixed version ships."
     }
   ]
 }
