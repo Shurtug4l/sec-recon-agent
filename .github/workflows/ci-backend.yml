@@ -78,7 +78,17 @@ jobs:
       - name: Lint (ruff)
         run: uv run --python ${{ matrix.python-version }} ruff check src tests
 
+      # Once, not per entry. `python_version = "3.12"` in pyproject pins the
+      # semantics mypy analyzes against, so every matrix entry would produce
+      # the identical result: only the interpreter RUNNING mypy differs, which
+      # is a mypy packaging concern and not a property of this codebase. It is
+      # not hypothetical either - mypy 2.1.0's mypyc-compiled wheel segfaults
+      # (exit 139) under CPython 3.14 on linux-x86_64, so a per-entry run would
+      # fail the matrix on the type checker's own runtime while the code it
+      # type-checks is fine. Pinned to the lowest entry, which is also the
+      # declared analysis target.
       - name: Type check (mypy --strict)
+        if: matrix.python-version == '3.12'
         run: uv run --python ${{ matrix.python-version }} mypy src
 
       # Skip @pytest.mark.slow (ChromaDB roundtrip + ONNX model load),
