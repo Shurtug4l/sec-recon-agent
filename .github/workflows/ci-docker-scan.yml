@@ -20,8 +20,18 @@ on:
   push:
     branches: [main]
     paths:
+      # Same set as the pull_request filter below, deliberately. An earlier
+      # asymmetry (Dockerfiles only) meant a dependency-only merge never
+      # refreshed the SARIF on main: the image content changed, the alerts on
+      # main did not, and the gap stayed open until the Monday cron. Since
+      # dependency PRs are most of the traffic here, that was the common case,
+      # not the edge case.
       - "Dockerfile"
       - "frontend/Dockerfile"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
       - ".github/workflows/ci-docker-scan.yml"
   pull_request:
     branches: [main]
