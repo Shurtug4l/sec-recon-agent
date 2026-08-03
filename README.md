@@ -197,7 +197,7 @@ Every HIGH finding from an independent security review is mapped to the code cha
 
 ## Testing
 
-**566 tests (563 fast + 3 slow ChromaDB round-trip tests, excluded from the fast run)**, all network-mocked, no LLM billing. Coverage on the fast suite holds at ~90% with a soft 70% floor. CI matrix-tests Python 3.12 + 3.13.
+**571 tests (568 fast + 3 slow ChromaDB round-trip tests, excluded from the fast run)**, all network-mocked, no LLM billing. Coverage on the fast suite holds at ~90% with a soft 70% floor. CI matrix-tests Python 3.12, 3.13 and 3.14 - the last one because the runtime images are built on `python:3.14-slim`, so the interpreter that ships is one the suite actually runs on.
 
 ```bash
 make test                        # full suite (includes the 3 slow tests)

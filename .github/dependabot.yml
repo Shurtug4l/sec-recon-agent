@@ -103,7 +103,7 @@ updates:
     commit-message:
       prefix: "chore(deps-js)"
 
-  # Container base images (python:3.13-slim, node:22-alpine).
+  # Container base images (python:3.14-slim, node:22-alpine).
   - package-ecosystem: "docker"
     directory: "/"
     schedule:

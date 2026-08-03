@@ -51,10 +51,13 @@ jobs:
     strategy:
       fail-fast: false
       # Confirms the declared `requires-python = ">=3.12"` actually holds.
-      # 3.14 is excluded for now because the uv-pinned interpreters lag
-      # the wider 3.14 wheel ecosystem on a few of our transitive deps.
+      # 3.14 is here because the runtime images are built on python:3.14-slim:
+      # without it, the only interpreter that ships to users is the one the
+      # suite never runs on. It was excluded while a few transitive deps had
+      # no 3.14 wheels; dropping the unused pydantic-ai provider extras took
+      # 48 packages out of the lock and with them that constraint.
       matrix:
-        python-version: ["3.12", "3.13"]
+        python-version: ["3.12", "3.13", "3.14"]
 
     steps:
       - uses: actions/checkout@v7
