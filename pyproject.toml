@@ -16,7 +16,15 @@ classifiers = [
 ]
 dependencies = [
     "pydantic>=2.9.0",
-    "pydantic-ai>=0.0.13",
+    # Slim + explicit extras, not the `pydantic-ai` umbrella: that meta-package
+    # pulls pydantic-ai-slim with ALL 20 provider extras, so the runtime image
+    # shipped nine unused model SDKs plus temporalio's Rust bridge (2 HIGH
+    # advisories in the weekly Trivy scan, on code this agent never calls).
+    # Anthropic is the only provider in ALLOWED_MODELS; `mcp` backs
+    # pydantic_ai.mcp.MCPToolset. Adding a provider means adding its extra here.
+    # Floor is the min-patched 1.x (CVE-2026-48782 SSRF blocklist bypass, fixed
+    # in 1.102.0), per the within-major pinning decision.
+    "pydantic-ai-slim[anthropic,mcp]>=1.102.0",
     "pydantic-settings>=2.6.0",
     "mcp>=1.28.1",
     "fastapi>=0.115.0",
