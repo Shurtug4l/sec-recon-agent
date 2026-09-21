@@ -48,6 +48,7 @@ from sec_recon_agent.export.openvex import DEFAULT_AUTHOR, ProductIdentityError,
 from sec_recon_agent.export.sarif import to_sarif
 from sec_recon_agent.mcp_server.errors import CveNotFoundError
 from sec_recon_agent.observability import setup_tracing
+from sec_recon_agent.version import package_version
 
 # Exceptions whose string form is safe to surface to the SSE client.
 # Everything else is replaced with a generic message: internal exception
@@ -60,7 +61,7 @@ log = structlog.get_logger()
 app = FastAPI(
     title="sec-recon-agent",
     description="Type-safe security triage via Pydantic AI + MCP.",
-    version="0.1.0",
+    version=package_version(),
 )
 
 # ---------------------------------------------------------------------------
