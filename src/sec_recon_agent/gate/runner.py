@@ -29,7 +29,6 @@ download.
 import asyncio
 import re
 from collections.abc import Awaitable, Callable
-from importlib.metadata import PackageNotFoundError, version
 from typing import get_args
 
 from sec_recon_agent.agent.schema import SsvcDecision
@@ -73,6 +72,7 @@ from sec_recon_agent.mcp_server.tools.exploits import exploit_check
 from sec_recon_agent.mcp_server.tools.kev import kev_check
 from sec_recon_agent.mcp_server.tools.osv import osv_lookup
 from sec_recon_agent.mcp_server.tools.sbom import SBOM_MAX_CONTENT_BYTES, sbom_ingest
+from sec_recon_agent.version import package_version
 
 _OSV_ECOSYSTEMS: frozenset[str] = frozenset(get_args(OsvEcosystem))
 _CVE_RE = re.compile(r"^CVE-\d{4}-\d{4,}$")
@@ -82,13 +82,6 @@ _FAIL_ON_DECISION: dict[str, SsvcDecision] = {
     "attend": SsvcDecision.ATTEND,
     "track_star": SsvcDecision.TRACK_STAR,
 }
-
-
-def _tool_version() -> str:
-    try:
-        return version("sec-recon-agent")
-    except PackageNotFoundError:
-        return "0.0.0"
 
 
 def _cve_alias(vuln: OsvVuln) -> str | None:
@@ -468,5 +461,5 @@ async def run_gate(
         findings=findings,
         ssvc=ssvc,
         policy=policy,
-        tool_version=_tool_version(),
+        tool_version=package_version(),
     )
