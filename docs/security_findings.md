@@ -23,6 +23,7 @@ This document covers two sources:
 | HIGH | CVE-2026-45830 / GHSA-2wm9-hf6c-p5cr | chromadb 1.5.9 | backend image (vector store) | accept + VEX `not_affected`, alert dismissed `not_used` | missing cross-tenant authorization in the HTTP server's request handling; no server, no tenants, no authenticated remote user here; see detailed triage + `security/vex/chromadb_cve_2026_45830.openvex.json` |
 | HIGH | CVE-2026-45831 / GHSA-xph7-9rjv-w5fr | chromadb 1.5.9 | backend image (vector store) | accept + VEX `not_affected`, alert dismissed `not_used` | `SimpleRBACAuthorizationProvider` ignores resource scope; the class is instantiated only under `chroma_server_authz_provider`, never configured here; see detailed triage + `security/vex/chromadb_cve_2026_45831.openvex.json` |
 | CRITICAL | CVE-2026-59873 | tar 7.5.11 (npm bundled) | frontend image, `node:22-alpine` base | **fixed (structural)** | npm/corepack/yarn removed from the runtime stage; no package manager on any runtime code path; see detailed triage |
+| HIGH (x2) + MEDIUM | GHSA-6v7p-g79w-8964, CVE-2025-47273, CVE-2026-59890 | msgpack 1.1.2, setuptools 70.3.0 (pip vendored) | backend image, `python:3.14-slim` base | **fixed (structural)** | copies vendored inside the base image's pip (`pip/_vendor/vendor.txt`), in no lockfile and so unreachable by any bump; pip removed from the runtime stage, which never invokes it (uv builds the venv in the builder stage); see detailed triage |
 | HIGH | GHSA-f88m-g3jw-g9cj | sharp | `frontend`, `next` transitive | **fixed (npm override)** | lifted via package.json `overrides` - next's semver range caps at 0.34.x so Dependabot could not reach the fix. The override is a floor (`^0.35.4`) since 2026-09-21: written as the exact `0.35.0` it blocked its own next fix (GHSA-rgj7-g3m4-5g8c, libheif), because Dependabot cannot edit `overrides`; sharp is dormant here (no `next/image` usage in src, demo export runs `images.unoptimized`) |
 | HIGH | GHSA picomatch ReDoS | picomatch | `frontend` build chain | closed upstream | transitive parents refreshed over time; tree now at 2.3.2 / 4.0.4, alert no longer open (verified 2026-07-22) |
 | MEDIUM | postcss XSS via stringify | postcss | `frontend` build chain | **fixed (npm override)** | build-time CSS toolchain, output is static; the project's own postcss was already 8.5.x but `next` vendored a nested 8.4.31 that Dependabot cannot reach by construction (security updates run `update-subdependencies: false`); closed 2026-07-28 with an `"postcss": "$postcss"` override that dedupes `next` onto the root copy - a literal range is rejected with `EOVERRIDE` because postcss is also a direct dependency |
@@ -100,6 +101,16 @@ same-day; node had not yet published images with npm bundling tar >= 7.5.19) and
 would reopen at the next npm-vendored advisory; a `.trivyignore` entry would have
 been justified (`not_affected`, vulnerable code not in execute path) but keeps dead
 weight in the image and needs manual expiry.
+
+### pip-vendored msgpack and setuptools in the backend image (2 HIGH + 1 MEDIUM, fixed structurally)
+
+Trivy flagged `msgpack` 1.1.2 (GHSA-6v7p-g79w-8964, HIGH) and `setuptools` 70.3.0 (CVE-2025-47273 HIGH, CVE-2026-59890 MEDIUM) in the backend image, open since 2026-08-08. Neither package is in `uv.lock`, and a streamed scan of the two published layers that carry Python packages (the base image's Python install and the copied venv) finds no `dist-info` for either. They are the copies pip vendors inside itself. `pip/_vendor/vendor.txt` at pip 26.2.1, the version the `python:3.14-slim` base ships, pins exactly `msgpack==1.1.2` and `setuptools==70.3.0`.
+
+**Why it could not be bumped**: a dependency that lives in no lockfile has no bump. Dependabot never saw it (no alert on that side), and the fix versions only arrive when pip re-vendors and the base image picks that pip up.
+
+**Fix**: the runtime stage uninstalls pip and removes the bundled ensurepip wheel (`Dockerfile`). Nothing there invokes pip: uv builds the venv in the builder stage and the runtime stage copies it. The ONNX model bake runs after the removal, importing chromadb and running one inference, so a venv that secretly depended on pip would fail the build instead of the deployment.
+
+This is the same decision as the frontend's node-tar entry above, for the same reason: a package manager in a runtime image is attack surface twice over. Its vendored dependencies collect advisories nobody can patch, and it hands an install primitive to whoever lands code execution in the container. The read-only root filesystem already blunts the second point; removing the tool removes it.
 
 ### Backend Rust findings (3 × rand LOW)
 
