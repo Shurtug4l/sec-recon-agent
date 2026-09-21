@@ -17,6 +17,14 @@
 #
 # `cooldown` suppresses the churn of versions superseded within days (`next`
 # 15.5.21 was replaced by 15.5.22 in under 24 hours, after costing a PR).
+# The per-semver cooldown keys exist only where the ecosystem has semver
+# (pip, npm). docker, github-actions and pre-commit take `default-days` alone:
+# `semver-major-days` there is a PARSE ERROR, and a config that fails to parse
+# stops version updates for every ecosystem, silently. Observed on 2026-09-21:
+# the 04:17 scheduled batch still ran with the key in place, a manual "Check
+# for updates" the same evening was rejected with exactly this error. Majors
+# in those ecosystems stay manual anyway (auto-merge policy below), so the
+# longer major cooldown bought nothing there.
 #
 # Auto-merge lives in .github/workflows/dependabot-auto-merge.yml: patch and
 # minor only, never the schema-emitting set (pydantic-ai, pydantic-ai-slim,
@@ -114,7 +122,6 @@ updates:
     open-pull-requests-limit: 3
     cooldown:
       default-days: 7
-      semver-major-days: 30
     groups:
       docker-backend-version:
         applies-to: version-updates
@@ -139,7 +146,6 @@ updates:
     open-pull-requests-limit: 3
     cooldown:
       default-days: 7
-      semver-major-days: 30
     groups:
       docker-frontend-version:
         applies-to: version-updates
@@ -173,7 +179,6 @@ updates:
     open-pull-requests-limit: 3
     cooldown:
       default-days: 7
-      semver-major-days: 30
     groups:
       actions-version:
         applies-to: version-updates
@@ -203,7 +208,6 @@ updates:
     open-pull-requests-limit: 3
     cooldown:
       default-days: 7
-      semver-major-days: 30
     groups:
       precommit-version:
         applies-to: version-updates
