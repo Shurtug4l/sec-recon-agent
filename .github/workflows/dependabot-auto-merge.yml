@@ -23,9 +23,16 @@
 # they exist for, while merges armed with the owner's token on the same day
 # ran all of them. The attribution rule is observed, not documented; what
 # GitHub documents is that App installation tokens and PATs trigger events
-# while GITHUB_TOKEN does not. The App token is therefore expected to behave
-# like the owner's: the step summary names the arming identity on every run,
-# and the first Dependabot merge after setup is the confirmation.
+# while GITHUB_TOKEN does not. Confirmed for the App on 2026-09-21: #233 was
+# armed and merged by sec-recon-automerge[bot] (9a9b633) and its push started
+# docker-scan with that bot as the triggering actor. The step summary names
+# the arming identity on every run.
+#
+# Where the key lives: the ACTIONS secret store. GitHub's docs say both that
+# Dependabot-triggered workflows only see Dependabot secrets and that
+# pull_request_target is exempt; measured here, `github.secret_source` reads
+# `Actions` on a Dependabot pull_request_target run, so no Dependabot-store
+# copy is needed. Rotation procedure: CONTRIBUTING.md.
 #
 # The App is optional by construction: without AUTOMERGE_APP_CLIENT_ID the job
 # falls back to GITHUB_TOKEN and says so in the step summary, so this workflow

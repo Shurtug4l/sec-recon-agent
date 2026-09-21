@@ -58,3 +58,12 @@ The version lives in `pyproject.toml` and nowhere else: `sec_recon_agent.version
 5. Verify as a consumer, not as the author: `docker buildx imagetools inspect ghcr.io/shurtug4l/sec-recon-agent:X.Y.Z` shows both platforms plus attestations, and the action installs from the tag (`git archive vX.Y.Z | tar -x`, then the three install commands from `action.yml`).
 
 If `release-images` fails on a tag, re-running it cannot help: a tag push always runs the workflow file frozen in the tagged commit. Fix the workflow on `main`, then dispatch it with `release-tag=vX.Y.Z` (and `only=<image>` when the other image already published, so its digest does not move).
+
+## The auto-merge GitHub App
+
+Dependabot PRs that clear the policy in `dependabot-auto-merge.yml` are armed by a GitHub App (`sec-recon-automerge`), not by `GITHUB_TOKEN`, so that the resulting merge triggers the `push` workflows (`docker-scan`, `sbom-gate`, attestations, the Pages redeploy). The App has Contents and Pull requests write, is installed on this repository only, and its token is minted per run, scoped down again, and revoked after the job.
+
+- Configuration: repository variable `AUTOMERGE_APP_CLIENT_ID`, Actions secret `AUTOMERGE_APP_PRIVATE_KEY`. Nothing else, and no copy of the key on disk.
+- **Self-test**: `gh workflow run "Dependabot auto-merge"`. It mints the token, asserts it can see exactly this repository, and arms nothing. Run it after any change to the App.
+- **Rotating the key**: App settings -> *Private keys* -> *Generate a private key*; `gh secret set AUTOMERGE_APP_PRIVATE_KEY < new.pem`; run the self-test; delete the old key on the same settings page; delete the `.pem`.
+- If minting fails, the job falls back to `GITHUB_TOKEN` with a `::warning::` rather than blocking dependency merges. A fallback run merges fine and triggers no push workflows, so treat that warning as a fault to fix, not as noise.
