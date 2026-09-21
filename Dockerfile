@@ -1,13 +1,24 @@
 # syntax=docker/dockerfile:1.7
 
 # ============================================================================
+# uv, as a named stage instead of an inline `COPY --from=<image>:<tag>`.
+# The inline form sat on the floating `uv:0.5` tag through every monthly
+# Dependabot docker batch without a single bump proposed, while CI ran 0.11.x
+# and the lock was written by 0.11.28: three uv versions across one resolution
+# contract. A FROM line is the form Dependabot demonstrably updates in this
+# repo (the python and node base images). The pin is exact and matches the uv
+# that writes uv.lock.
+# ============================================================================
+FROM ghcr.io/astral-sh/uv:0.11.28 AS uv
+
+# ============================================================================
 # Builder stage: install dependencies into a virtualenv using uv.
 # Kept separate from runtime so the final image does not carry uv or its cache.
 # ============================================================================
 FROM python:3.14-slim AS builder
 
-# Pull the uv binary from the official distroless image (small, signed).
-COPY --from=ghcr.io/astral-sh/uv:0.5 /uv /usr/local/bin/uv
+# The uv binary from the official distroless image (small, signed).
+COPY --from=uv /uv /usr/local/bin/uv
 
 ENV UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1 \
