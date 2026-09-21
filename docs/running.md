@@ -173,6 +173,8 @@ The full `GateReport` JSON (findings, per-feed coverage, skipped components, agg
 
 The gate ships as a composite action at the repository root; the action ref is the package source and its `uv.lock` is the dependency source (installed with `--require-hashes`), so pinning the action pins the gate and its whole dependency tree:
 
+Use `v0.1.2` or later. `v0.1.1` and `v0.1.0` installed their dependencies unlocked and no longer start: the resolver now picks mcp 2.x, where `FastMCP` does not exist.
+
 ```yaml
 permissions:
   contents: read
@@ -182,7 +184,7 @@ steps:
   - uses: actions/checkout@v7
   - uses: anchore/sbom-action@v0.24.0
     with: { path: ., format: cyclonedx-json, output-file: sbom.cdx.json, upload-artifact: false }
-  - uses: Shurtug4l/sec-recon-agent@v0.1.1
+  - uses: Shurtug4l/sec-recon-agent@v0.1.2
     with:
       sbom-path: sbom.cdx.json
       fail-on: act # act | attend | track-star | never
