@@ -77,6 +77,7 @@ jobs:
       prefix: ${{ steps.plan.outputs.prefix }}
       ref: ${{ steps.plan.outputs.ref }}
       version: ${{ steps.plan.outputs.version }}
+      tag-rules: ${{ steps.plan.outputs.tag-rules }}
     steps:
       - name: Resolve ref, version and image set
         id: plan
@@ -116,6 +117,16 @@ jobs:
             # GHCR names are lowercase; metadata-action normalizes on its own, the
             # raw `outputs:` and `imagetools` references below do not.
             echo "prefix=ghcr.io/${OWNER,,}"
+            # One definition of the tag rules: the build job needs them too, because
+            # metadata-action derives the image.version LABEL from the same rules.
+            echo "tag-rules<<RULES"
+            if [ -n "$version" ]; then
+              echo "type=semver,pattern={{version}},value=$version"
+              echo "type=semver,pattern={{major}}.{{minor}},value=$version"
+            else
+              echo "type=sha"
+            fi
+            echo "RULES"
           } >> "$GITHUB_OUTPUT"
           echo "ref \`$ref\`, version \`${version:-none (sha-* only)}\`, images \`${ONLY:-all}\`" >> "$GITHUB_STEP_SUMMARY"
 
@@ -148,11 +159,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # With `release-tag` the source is the tag's commit, not github.sha (the
+      # dispatching ref). metadata-action stamps github.sha into image.revision
+      # by default, which would label the image with a commit it was not built
+      # from; BuildKit provenance reads the checkout and was always right.
+      - name: Resolve the source commit
+        id: src
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Image labels
         id: meta
         uses: docker/metadata-action@v6
         with:
           images: ${{ needs.plan.outputs.prefix }}/${{ matrix.image.repository }}
+          tags: ${{ needs.plan.outputs.tag-rules }}
+          labels: |
+            org.opencontainers.image.revision=${{ steps.src.outputs.sha }}
 
       # Pushed by digest, untagged: nothing is reachable by name until the
       # merge job has every platform.
@@ -221,10 +243,7 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ needs.plan.outputs.prefix }}/${{ matrix.image.repository }}
-          tags: |
-            type=semver,pattern={{version}},value=${{ needs.plan.outputs.version }},enable=${{ needs.plan.outputs.version != '' }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ needs.plan.outputs.version }},enable=${{ needs.plan.outputs.version != '' }}
-            type=sha,enable=${{ needs.plan.outputs.version == '' }}
+          tags: ${{ needs.plan.outputs.tag-rules }}
 
       # Both platform digests or nothing: a missing leg fails here, before
       # any tag moves.
