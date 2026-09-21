@@ -55,6 +55,19 @@ updates:
       python-security:
         applies-to: security-updates
         patterns: ["*"]
+    # Majors that are capped in pyproject.toml on purpose. For a capped
+    # requirement Dependabot proposes WIDENING THE CAP, and that PR touches
+    # pyproject.toml only: uv.lock still pins 1.x, so every check is green while
+    # the protection is removed. The next `uv lock` then resolves the new major
+    # and breaks main (mcp 2.x has no FastMCP; pydantic-ai 1.x code against 2.x).
+    # The auto-merge policy already holds these as majors in the guarded set;
+    # this stops the monthly green-but-wrong PR from existing at all. Each entry
+    # goes when its migration lands: mcp #236, pydantic-ai-slim #237.
+    ignore:
+      - dependency-name: "mcp"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "pydantic-ai-slim"
+        update-types: ["version-update:semver-major"]
     labels:
       - "dependencies"
       - "python"
