@@ -42,8 +42,8 @@ This document covers two sources:
 | P1 | NVD reference URLs not marked untrusted in output | `mcp_server/tools/cve.py`, `tools/patch.py` | **fixed (PR1)** | docstring + Pydantic `Field(description=...)` mark `references` as untrusted on `CVEDetail` and `PatchAvailability`; agent system prompt repeats the contract |
 | P1 | SSE transport is legacy (Streamable HTTP is the post-2025-06-18 recommendation) | `mcp_server/server.py` | open, tracked (deprecation watch) | SDK still supports SSE; no breaking change forced yet |
 | P1 | `epss_score` silently returns empty score on upstream CVE-id mismatch | `mcp_server/tools/epss.py` | **fixed (S1)** | explicit `EpssScore.status` enum (`found` / `not_found` / `upstream_error`); a CVE-id mismatch returns `upstream_error`, surfaced in the report `signal_coverage` |
-| P1 | `path.write_bytes` blocks the event loop during 5-20MB cache refresh | `mcp_server/tools/exploits.py`, `tools/kev.py` | open, tracked | refresh runs at most once per cache TTL (7d Exploit-DB, 24h KEV) |
-| P1 | `asyncio.gather` paired with bare `create_task` leaves orphaned tasks on failure | `mcp_server/tools/exploits.py`, `tools/kev.py` | open, tracked | `AsyncClient` context exit cancels in-flight tasks; window is narrow |
+| P1 | `path.write_bytes` blocks the event loop during 5-20MB cache refresh | `mcp_server/tools/exploits.py`, `tools/kev.py` | **fixed (drift-sweep-scorecard)** | `await asyncio.to_thread(path.write_bytes, ...)` in both refresh paths; the loop keeps serving tool calls during a 5-20 MB refresh, which still runs at most once per cache TTL |
+| P1 | `asyncio.gather` paired with bare `create_task` leaves orphaned tasks on failure | `mcp_server/tools/exploits.py`, `tools/kev.py` | **fixed (#243)** | `AsyncClient` context exit cancels in-flight tasks; window is narrow |
 
 ---
 
@@ -222,21 +222,17 @@ The MCP spec revision dated 2025-06-18 introduces Streamable HTTP as the recomme
 
 **Fix landed**: the denylist is demoted to a query-side noise reducer plus a cheap backstop; the authority is now a positive-evidence filter (`_looks_like_poc`). A GitHub hit counts only when the artifact is organized around the exploit: the repository is named after the CVE (the dominant PoC-publishing convention; a mirror carries thousands of CVEs and never names its repo after one), or an explicit marker token (`exploit` / `poc` / `payload` / `metasploit` / `0day`) appears in the repo name or file path. Markers are matched against delimiter-split tokens, never raw substrings, so `source` / `resource` cannot trip an `rce`-like token. Contract tests pin the observed false-positive corpus (unlisted mirrors, a CVE-named data file inside a generic catalog repo) as rejected and genuine PoCs (repo named after the CVE, a metasploit-module path) as accepted. No schema change, so the record-replay staleness gate is untouched. NOTE: the committed replay cassettes were recorded before this fix and may carry pre-fix (inflated) exploit returns; replay stays valid because it recomputes verdicts from each cassette's own frozen tool outputs, and the values self-correct on the next re-record.
 
-### P1 - Event-loop blocking on cache refresh write
+### P1 - Event-loop blocking on cache refresh write (fixed)
 
 `tools/exploits.py` and `tools/kev.py` call sync `path.write_bytes(bytes(buffer))` on 5-20MB blobs inside their async cache-refresh paths. Each refresh momentarily blocks the asyncio event loop.
 
-**Current mitigation**: cache refresh runs at most once per TTL (7d Exploit-DB index, 24h KEV catalog), so the blocking window is rare in practice.
+**Fix landed (2026-09-22)**: both refresh paths hand the write to a worker thread (`await asyncio.to_thread(path.write_bytes, bytes(buffer))`), so the loop keeps serving other tool calls during a 5-20 MB refresh. The refresh still runs at most once per TTL (7d Exploit-DB index, 24h KEV catalog).
 
-**Planned fix**: `await asyncio.to_thread(path.write_bytes, bytes(buffer))`.
-
-### P1 - Orphaned tasks on `asyncio.gather` failure
+### P1 - Orphaned tasks on `asyncio.gather` failure (fixed)
 
 `tools/exploits.py` and `tools/kev.py` pair `asyncio.create_task(...)` with `asyncio.gather`. If one task raises, the other is not cancelled and continues running until the `AsyncClient` context exits.
 
-**Current mitigation**: the `AsyncClient` context exit cancels in-flight tasks via httpx connection teardown; the leak window is narrow.
-
-**Planned fix**: use `asyncio.gather(coro_a, coro_b)` directly (gather already manages the tasks), or `asyncio.TaskGroup` (Python 3.11+) which cancels siblings on first failure.
+**Fix landed (#243, 2026-09-22)**: `exploit_check` awaits `asyncio.gather(coro_a, coro_b, return_exceptions=True)` on the coroutines directly, so each arm settles on its own, nothing is left un-awaited, and a failing source is reported as an errored arm on the result instead of taking the other arm's answer down with it. `kev_check` has a single download path and no fan-out.
 
 ---
 
@@ -278,7 +274,7 @@ The MCP spec revision dated 2025-06-18 introduces Streamable HTTP as the recomme
 
 **Fix.** Both markers carry a random id minted once per server process (`FENCE_NONCE`), and the prompt states that only a pair with matching ids is a boundary; the text's author cannot know the id. Before wrapping, every marker-shaped token in the payload (any case, any id, with or without a slash) has its `<` escaped to `&lt;`, so the literal tag cannot exist between the real markers. Caps on fenced fields are the payload budget plus `FENCE_OVERHEAD`, and `fence_untrusted(max_chars=...)` truncates after neutralization, so a payload stuffed with forged closers cannot overflow a field. Tests: neutralization across casings and ids, exactly one real marker of each kind in any output, a Hypothesis property that a budgeted fence never exceeds budget plus overhead, and a sizing contract over the inventory of fenced fields checked against the security module's docstring.
 
-**Residual.** Semantic injection that never touches the markers is unchanged: fenced text is still data the model reads, and the battery's 15/18 stands. The id is per process, not per run; rotating it per run would require threading it from the agent into every tool call and buys nothing against an author who cannot see either.
+**Residual.** Semantic injection that never touches the markers is unchanged: fenced text is still data the model reads. The battery re-run on 2026-09-22 after this fix reads 17/18 (July: 15/18); the remaining miss is `marker-pseudo-xml-instructions`, delivered through the user query, which is the operator's own turn and is not fenced by design. The id is per process, not per run; rotating it per run would require threading it from the agent into every tool call and buys nothing against an author who cannot see either.
 
 ### P1 - Nmap output unbounded and only partly fenced (fixed)
 

@@ -95,7 +95,9 @@ async def _download_kev_catalog(path: Path) -> None:
         raise KevDownloadError(f"Transport error fetching KEV catalog: {exc}") from exc
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(bytes(buffer))
+    # The catalog is 5-20 MB: hand the write to a thread so the event loop
+    # keeps serving other tool calls during a refresh.
+    await asyncio.to_thread(path.write_bytes, bytes(buffer))
     log.info("kev_catalog_download_done", bytes=len(buffer), path=str(path))
 
 

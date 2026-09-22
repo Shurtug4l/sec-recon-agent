@@ -458,7 +458,11 @@ def build_scorecard(
         p50, p95 = _num(em.latency_p50, ".1f"), _num(em.latency_p95, ".1f")
         toks_in, toks_out = _num(em.mean_input_tokens, ".0f"), _num(em.mean_output_tokens, ".0f")
         a(f"- **Latency p50 / p95**: {p50}s / {p95}s")
-        a(f"- **Mean tokens (in / out)**: {toks_in} / {toks_out}")
+        a(
+            f"- **Mean tokens (in / out)**: {toks_in} / {toks_out} "
+            "(input is the total pydantic-ai reports, prompt-cache reads and writes "
+            "included; the cost line prices cache traffic at its multipliers)"
+        )
         total = em.total_cost_usd
         mean = (total / em.cases) if (total is not None and em.cases) else None
         a(f"- **Cost**: total ${_num(total, '.4f')}, mean ${_num(mean, '.4f')}/triage")
