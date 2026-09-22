@@ -6,7 +6,17 @@ side-effect imports, then starts the SSE HTTP transport.
 
 When `MCP_AUTH_TOKEN` is set, the SSE ASGI app is wrapped in a bearer-token
 gate before being served by uvicorn. When unset, the server runs open
-(legacy behavior, suitable for docker-compose-internal usage only).
+(suitable for docker-compose-internal and loopback usage only). The agent's
+MCP client reads the same setting and presents the token, so one variable
+enables the gate on both ends (agent/triage.py::_mcp_toolset).
+
+DNS-rebinding protection is on regardless of the token. FastMCP enables it
+by itself only when bound to a loopback host; in compose the server binds
+0.0.0.0 so the other container can reach it, which silently left the
+protection off and let a web page that rebinds its own domain to 127.0.0.1
+drive the published :8001 from a visitor's browser. It is therefore enabled
+explicitly, with the Host values legitimate clients send (loopback and the
+compose service name, any port) and no browser Origin allowed at all.
 """
 
 from typing import cast
@@ -14,6 +24,7 @@ from typing import cast
 import structlog
 import uvicorn
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 from sec_recon_agent.config import settings
 from sec_recon_agent.mcp_server.auth import ASGIApp, BearerAuthASGI
@@ -25,6 +36,13 @@ mcp = FastMCP(
     "sec-recon",
     host=settings.mcp_server_host,
     port=settings.mcp_server_port,
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=settings.mcp_allowed_hosts_list,
+        # Nothing browser-side is meant to talk to this server: a request
+        # that carries an Origin header at all is refused.
+        allowed_origins=[],
+    ),
 )
 
 
@@ -81,6 +99,7 @@ def main() -> None:
         port=settings.mcp_server_port,
         transport="sse",
         auth=settings.mcp_auth_token is not None,
+        allowed_hosts=settings.mcp_allowed_hosts_list,
     )
     app = build_app()
     config = uvicorn.Config(

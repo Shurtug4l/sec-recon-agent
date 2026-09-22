@@ -81,7 +81,7 @@ In docker-compose `KILL_SWITCH_FILE` defaults to a tmpfs path, so the file toggl
 
 ## MCP transport authentication
 
-The MCP server (`:8001`) is the more powerful surface in the stack: direct tool access, no agent guardrails. By default it has no auth of its own and relies on docker-compose internal-network isolation (the port is **not** published to the host). Whenever the port is reachable beyond that perimeter, set a shared bearer secret:
+The MCP server (`:8001`) is the more powerful surface in the stack: direct tool access, no agent guardrails. By default it has no auth of its own. docker-compose publishes it on the host loopback only (`127.0.0.1:8001`), so the open default is reachable by any process on the host and by any container on the compose network, nothing further. Whenever that is not acceptable, or the port is published beyond loopback, set a shared bearer secret:
 
 ```bash
 # In .env or the host environment
@@ -90,7 +90,9 @@ MCP_AUTH_TOKEN="long-random-string"
 
 With the token set, every HTTP request to the MCP server must carry `Authorization: Bearer long-random-string` or the response is `401 Unauthorized` with `WWW-Authenticate: Bearer realm="mcp"`. Comparison is constant-time (`secrets.compare_digest`). Lifespan and non-HTTP ASGI scopes pass through untouched. The token is held as `SecretStr` in `config.py` so it never leaks into structured logs.
 
-The `agent-api` process needs no extra configuration: it talks to the MCP server over the in-process Pydantic AI client and is co-deployed with the secret. Standalone callers (third-party MCP clients, manual smoke from a separate host) must attach the header explicitly.
+The transport crosses a container boundary (the agent's Pydantic AI client speaks HTTP+SSE to `mcp-server:8001`), so the same secret has to reach both processes: docker-compose forwards `MCP_AUTH_TOKEN` to `mcp-server`, which enforces it, and to `agent-api`, whose MCP client presents it as `Authorization: Bearer <token>` on every request. One variable in `.env` enables the gate end to end; an integration test in `tests/mcp_server/test_auth.py` serves the real ASGI app on an ephemeral port, lists tools through the authenticated client, and asserts the unauthenticated one is refused. Standalone callers (third-party MCP clients, manual smoke from a separate host) must attach the header explicitly.
+
+DNS-rebinding protection is on regardless of the token. FastMCP enables it by itself only when bound to a loopback address; in compose the server binds `0.0.0.0` so the other container can reach it, which would leave the protection off. The server therefore enables it explicitly: a request whose `Host` header is not in `MCP_ALLOWED_HOSTS` (default `127.0.0.1:*,localhost:*,[::1]:*,mcp-server:*`, `host:*` matching any port) is refused with `421`, and any request carrying a browser `Origin` header is refused outright, since nothing browser-side is meant to talk to this server. A web page that rebinds its own domain to `127.0.0.1` therefore cannot drive the published port from a visitor's browser. Extend the list if you rename the compose service or front the server with another hostname.
 
 ## Egress allowlist (opt-in)
 
