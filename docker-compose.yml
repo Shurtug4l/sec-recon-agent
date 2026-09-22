@@ -92,6 +92,14 @@ services:
       # Auth + rate limit. Empty values disable the controls.
       API_KEYS: "${API_KEYS:-}"
       RATE_LIMIT_PER_MINUTE: "${RATE_LIMIT_PER_MINUTE:-}"
+      # Per-run bounds. Empty keeps each built-in default (25 model rounds,
+      # 40 tool calls, 250k total tokens, 300 s wall clock), `off` disables
+      # one; a bound that is hit stops the run, and whatever it consumed is
+      # still charged to the budget window and sealed into the audit trail.
+      AGENT_REQUEST_LIMIT: "${AGENT_REQUEST_LIMIT:-}"
+      AGENT_TOOL_CALLS_LIMIT: "${AGENT_TOOL_CALLS_LIMIT:-}"
+      AGENT_TOTAL_TOKENS_LIMIT: "${AGENT_TOTAL_TOKENS_LIMIT:-}"
+      TRIAGE_DEADLINE_SECONDS: "${TRIAGE_DEADLINE_SECONDS:-}"
       # Operational safety rails (S4). Empty values disable each control.
       # DENIAL_OF_WALLET_USD_PER_DAY caps estimated LLM spend over a rolling
       # 24h window (in-process); over it /v1/triage returns 503.

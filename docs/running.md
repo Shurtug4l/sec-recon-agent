@@ -54,15 +54,29 @@ Every triage seals one row into an append-only, hash-chained SQLite log (`AUDIT_
 
 ## Operational safety rails
 
-Two guards in front of `/v1/triage`, both default off, both refusing with `503` **before** the agent is built (a refused request spends nothing on the LLM). They exist because an LLM endpoint reachable beyond localhost is a denial-of-wallet target: the per-request round cap (`AGENT_REQUEST_LIMIT`) bounds a single run, but nothing otherwise bounds the aggregate an attacker drives by repeating requests.
+Two guards in front of `/v1/triage`, both default off, both refusing with `503` **before** the agent is built (a refused request spends nothing on the LLM). They exist because an LLM endpoint reachable beyond localhost is a denial-of-wallet target: the per-run bounds cap a single run, but nothing otherwise bounds the aggregate an attacker drives by repeating requests.
+
+Every run is charged to the budget window and sealed into the audit trail from the SSE generator's cleanup, on every exit path: report delivered, agent error, bound hit, deadline hit, or client disconnect. The last one matters most: a client that aborts the connection one round before completion is billed by the provider in full, and a rail that recorded nothing for it would be defeated by the cheapest client behaviour there is. Such runs seal with `outcome=cancelled` (an aborted run is not a success with an empty report), and the audit row records the model the run actually used, including a per-request override.
+
+```bash
+# Per-run bounds. Each stops the run when hit; the run's consumption is still
+# charged and audited. Defaults sit well above the recorded golden runs
+# (max 8 rounds, ~110k tokens, 107 s) and well below the pathological case.
+AGENT_REQUEST_LIMIT=25          # model rounds
+AGENT_TOOL_CALLS_LIMIT=40       # tool calls (rounds alone do not bound them: several per turn)
+AGENT_TOTAL_TOKENS_LIMIT=250000 # input + output tokens, the cost driver
+TRIAGE_DEADLINE_SECONDS=300     # wall clock; one NVD call can take ~75 s with retries
+```
+
+An unset variable keeps the built-in default (compose forwards it as an empty string, which is treated as "default", never as "disabled"); `off` disables one bound explicitly.
 
 ```bash
 # Denial-of-wallet: hard ceiling on estimated LLM spend over a rolling 24h
 # window, summed in-process from each run's token usage x the per-model price
-# table (eval/cost.py). Over it, /v1/triage returns 503 until older spend ages
-# out. The window is in memory, so it resets on restart -- that still bounds
-# spend between restarts, which is the threat; a restart-durable counter is the
-# production evolution.
+# table (eval/cost.py), charged on every exit path. Over it, /v1/triage returns
+# 503 until older spend ages out. The window is in memory, so it resets on
+# restart -- that still bounds spend between restarts, which is the threat; a
+# restart-durable counter is the production evolution.
 DENIAL_OF_WALLET_USD_PER_DAY=5
 
 # Kill-switch (two forms):
