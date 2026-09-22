@@ -24,7 +24,13 @@ from sec_recon_agent.mcp_server.errors import (
     KevDownloadError,
     MalformedKevPayloadError,
 )
-from sec_recon_agent.mcp_server.models import CveIdStr, KevCheck
+from sec_recon_agent.mcp_server.models import (
+    KEV_NOTES_CHARS,
+    KEV_REQUIRED_ACTION_CHARS,
+    KEV_VULNERABILITY_NAME_CHARS,
+    CveIdStr,
+    KevCheck,
+)
 from sec_recon_agent.mcp_server.security import fence_untrusted
 from sec_recon_agent.mcp_server.server import mcp
 from sec_recon_agent.observability import get_tracer
@@ -201,15 +207,19 @@ async def kev_check(cve_id: CveIdStr) -> KevCheck:
             vendor_project=_coerce_str(entry.get("vendorProject"), 200),
             product=_coerce_str(entry.get("product"), 200),
             vulnerability_name=fence_untrusted(
-                _coerce_str(entry.get("vulnerabilityName"), 500),
+                _coerce_str(entry.get("vulnerabilityName"), KEV_VULNERABILITY_NAME_CHARS),
+                max_chars=KEV_VULNERABILITY_NAME_CHARS,
             ),
             date_added=_coerce_str(entry.get("dateAdded"), 32),
             due_date=_coerce_str(entry.get("dueDate"), 32),
             required_action=fence_untrusted(
-                _coerce_str(entry.get("requiredAction"), 1000),
+                _coerce_str(entry.get("requiredAction"), KEV_REQUIRED_ACTION_CHARS),
+                max_chars=KEV_REQUIRED_ACTION_CHARS,
             ),
             known_ransomware_use=_coerce_ransomware_flag(entry.get("knownRansomwareCampaignUse")),
-            notes=fence_untrusted(_coerce_str(entry.get("notes"), 2000)),
+            notes=fence_untrusted(
+                _coerce_str(entry.get("notes"), KEV_NOTES_CHARS), max_chars=KEV_NOTES_CHARS
+            ),
         )
         span.set_attribute("tool.success", True)
         span.set_attribute("kev.in_catalog", True)

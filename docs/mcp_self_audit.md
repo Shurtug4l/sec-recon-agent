@@ -39,9 +39,10 @@ should confirm.
   server-owned disk caches (KEV / Exploit-DB manifests) to fixed paths. This is
   the LLM08 posture: minimal agency by construction.
 - **Untrusted content**: free-text fields lifted from third parties are wrapped
-  in `<UNTRUSTED_CONTENT>` markers (`security.py::fence_untrusted`) so the agent
-  treats them as data, and the system prompt forbids following instructions
-  found inside them.
+  in `<UNTRUSTED_CONTENT id="...">` markers carrying a per-process random id
+  (`security.py::fence_untrusted`), marker-shaped tokens inside the payload are
+  neutralized, and the system prompt names the markers and forbids following
+  instructions found inside them.
 
 ## Per-tool audit
 
@@ -54,7 +55,7 @@ should confirm.
 | `epss_score` | FIRST.org (`api.first.org`, host-locked) | no free text (numeric + status enum) | host-lock, 4 MB response cap, typed errors | none (read) |
 | `patch_lookup` | NVD (shared client) | `references` marked UNTRUSTED | `CveIdStr` bounded, fixed-entries capped | none (read) |
 | `osv_lookup` | OSV.dev (`api.osv.dev`, host-locked) | `summary` fenced; `references` filtered to http(s) before `HttpUrl` bind | host-lock on redirect, response byte cap, ecosystem `Literal` (no unknown fallback) | none (read) |
-| `nmap_parse_xml` | none (in-process) | service banners are structured, not fenced (numeric/enum-ish) | `defusedxml(forbid_dtd=True)` (XXE-safe), 20 MB input cap, 1000-host cap, double-enforced | none (read) |
+| `nmap_parse_xml` | none (in-process) | `product` / `version` banners fenced (200-char budget); `service` / `protocol` / `state` / address / hostnames length-capped | `defusedxml(forbid_dtd=True)` (XXE-safe), 20 MB input cap, 1000-host cap, double-enforced | none (read) |
 | `attack_mapping` | none (bundled JSON) | curated table, no untrusted text | 200-CWE list cap, 40-char per-entry cap, raises `InvalidCweInputError` | none (read) |
 | `sbom_ingest` | none (in-process) | component names bounded, not fenced | JSON-only (no XML), 500-component cap, `truncated` flag | none (read) |
 
@@ -71,9 +72,13 @@ should confirm.
   regex-bounded; the OSV ecosystem is a closed `Literal` (an unknown value is
   rejected rather than silently returning an empty "not vulnerable").
 - **Untrusted-content fencing** (tool poisoning defense). Third-party free text
-  is fenced; a fence-coverage contract test walks the tool registrations and
-  asserts the markers are present, so adding a future tool cannot silently
-  bypass the boundary.
+  is fenced; each tool's contract tests assert the markers on its fenced fields,
+  and a sizing contract test (`tests/mcp_server/test_security.py`) pins the
+  inventory of fenced fields against the security module's docstring and checks
+  every cap is payload budget plus `FENCE_OVERHEAD`, so a new fenced field
+  cannot ship undocumented or with a hand-typed cap. (An earlier revision of
+  this note described a registration-walking coverage test that did not
+  exist; corrected 2026-09-22.)
 - **Host-locking** (SSRF / exfil defense). Every outbound feed pins its host and
   re-checks it after redirects (`*_TRUSTED_HOST`), so a hostile redirect cannot
   turn a tool into an SSRF pivot or a data-exfil channel.
@@ -132,7 +137,10 @@ should confirm.
   neither compose service and the agent's client sent no header, so the gate
   could not actually be turned on in the shipped topology; see
   [`security_findings.md`](security_findings.md).
-- **Free-text service banners from Nmap are not fenced.** They are treated as
-  structured (service/product/version) rather than prose; a crafted banner is a
-  lower-signal injection vector than a full NVD description, but it is not
-  fenced. Noted for a future hardening pass.
+- **Nmap output is attacker-controlled end to end.** `product` and `version`
+  banners are fenced with their own budget; `service`, `protocol`, `state`,
+  the address and the hostnames are short identifiers, length-capped but not
+  fenced. A crafted scan can still put up to 200 characters of prose inside
+  each fenced banner, which is a proportionate injection window, not a
+  megabyte one (the caps landed 2026-09-22; before that only the banners were
+  fenced and nothing was capped).

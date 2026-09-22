@@ -31,7 +31,7 @@ import structlog
 
 from sec_recon_agent.config import settings
 from sec_recon_agent.mcp_server.hybrid import Bm25Index, cosine_similarity, rrf_fuse
-from sec_recon_agent.mcp_server.models import CVECandidate
+from sec_recon_agent.mcp_server.models import CVE_CANDIDATE_SUMMARY_CHARS, CVECandidate
 from sec_recon_agent.mcp_server.nvd_client import HTTP_TIMEOUT_SECONDS, nvd_get
 from sec_recon_agent.mcp_server.security import fence_untrusted
 from sec_recon_agent.mcp_server.server import mcp
@@ -285,11 +285,12 @@ async def cve_semantic_search(query: str, top_k: int = 5) -> list[CVECandidate]:
 
         candidates: list[CVECandidate] = []
         for cve_id, doc, similarity in triples:
-            raw_summary = doc[:500]
+            raw_summary = doc[:CVE_CANDIDATE_SUMMARY_CHARS]
             candidates.append(
                 CVECandidate(
                     cve_id=cve_id,
-                    summary=fence_untrusted(raw_summary) or "",
+                    summary=fence_untrusted(raw_summary, max_chars=CVE_CANDIDATE_SUMMARY_CHARS)
+                    or "",
                     similarity=similarity,
                 ),
             )

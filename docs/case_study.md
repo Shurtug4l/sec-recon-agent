@@ -96,9 +96,21 @@ inflates the token bill for absent fields.
 
 A subtle attack on this layer is marker forgery: the payload itself contains a
 literal `</UNTRUSTED_CONTENT>` to close the fence early and "escape" into trusted
-context. The wrapper defeats this structurally by applying once around the entire
-field, so a forged closing tag lands *inside* the fenced region as more data. The
-test `test_marker_forgery_in_payload_does_not_truncate_fence` pins exactly this.
+context. Two mechanisms make that structurally impossible rather than merely
+unlikely. Every marker carries a random id minted once per server process
+(`<UNTRUSTED_CONTENT id="3f9a1c2e">`), the prompt tells the model that only a pair
+with matching ids is a boundary, and the text's author cannot know the id. And
+before wrapping, any marker-shaped token already inside the payload has its `<`
+escaped to `&lt;`, so the literal tag cannot appear between the real markers at
+all, whatever id it claims. The text stays legible; only the boundary is
+sanitized, never the content. Field caps are sized as payload budget plus the
+fence overhead, and the payload is truncated *after* neutralization, so a
+description stuffed with forged closers cannot push a field over its limit
+either. `test_marker_forgery_in_payload_does_not_truncate_fence` and the fence
+tests in `tests/mcp_server/test_security.py` pin all of this. An earlier revision
+applied the wrapper once and called that structural; the September 2026 self-audit
+pointed out that a flat text convention has no nesting to lean on, and the id plus
+the neutralization are the fix.
 
 ### Layer 2: name the boundary in the system prompt
 

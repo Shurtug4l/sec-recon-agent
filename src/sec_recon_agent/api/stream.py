@@ -770,6 +770,10 @@ def _extract_usage(run: object) -> str | None:
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
                 "requests": requests,
+                # Prompt-cache traffic, priced at its own multipliers by the
+                # budget rail and the eval scorecard; absent on fakes.
+                "cache_read_tokens": _pick("cache_read_tokens"),
+                "cache_write_tokens": _pick("cache_write_tokens"),
             },
         )
     except Exception:
@@ -797,6 +801,8 @@ def _charge_run(model_id: str, usage_json: str | None) -> None:
             model=model_id,
             input_tokens=payload.get("input_tokens"),
             output_tokens=payload.get("output_tokens"),
+            cache_read_tokens=payload.get("cache_read_tokens"),
+            cache_write_tokens=payload.get("cache_write_tokens"),
         ),
     )
 
