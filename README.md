@@ -133,7 +133,7 @@ Each tool has a typed Pydantic contract: validated input, typed result model, ty
 |---|---|---|
 | `cve_lookup` | NVD CVE 2.0 API | `CVEDetail`: CVSS v3, severity, CWEs, affected CPEs, references |
 | `cve_semantic_search` | local ChromaDB index | ranked `CVECandidate` hits for fuzzy descriptions (hybrid dense + BM25, RRF-fused) |
-| `exploit_check` | Exploit-DB CSV + GitHub code search | `ExploitCheck`: public-PoC availability |
+| `exploit_check` | Exploit-DB CSV + GitHub code search, corroborated | `ExploitCheck`: public-PoC availability with a status per source |
 | `kev_check` | CISA KEV catalog | `KevCheck`: exploited-in-the-wild, remediation deadline, ransomware flag |
 | `epss_score` | FIRST.org EPSS API | `EpssScore`: 30-day exploitation probability + percentile |
 | `patch_lookup` | NVD CPE configurations | `PatchAvailability`: fixed-in versions per affected product |

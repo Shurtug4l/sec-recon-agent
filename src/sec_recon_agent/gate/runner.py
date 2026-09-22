@@ -38,7 +38,6 @@ from sec_recon_agent.agent.ssvc import (
     decide_for_signals,
     decision_rank,
 )
-from sec_recon_agent.config import settings
 from sec_recon_agent.gate.models import (
     FailOn,
     FeedCoverage,
@@ -60,6 +59,7 @@ from sec_recon_agent.mcp_server.errors import (
 from sec_recon_agent.mcp_server.models import (
     EpssScore,
     EpssStatus,
+    ExploitArmStatus,
     ExploitCheck,
     KevCheck,
     OsvEcosystem,
@@ -213,9 +213,15 @@ def _exploit_coverage(
         return FeedCoverage.NOT_APPLICABLE
     if skipped_kev_act:
         return FeedCoverage.SKIPPED
-    if isinstance(result, Exception):
+    if isinstance(result, Exception) or result is None:
         return FeedCoverage.ERROR
-    if settings.github_token is None:
+    # The tool no longer raises for one failing source: it reports per arm.
+    # An arm in ERROR is a coverage gap even when the other arm found
+    # something; an arm SKIPPED by configuration (no GITHUB_TOKEN) is honest
+    # partial coverage.
+    if not result.arms_conclusive():
+        return FeedCoverage.ERROR
+    if result.github is ExploitArmStatus.SKIPPED:
         return FeedCoverage.DEGRADED
     return FeedCoverage.OK
 

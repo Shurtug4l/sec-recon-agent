@@ -161,15 +161,7 @@ def _check_cve(collector: _Collector, evidence: Evidence, cve: CVEReference) -> 
     collector.record(cve_id, "cve_id", GroundingClaimStatus.SUPPORTED)
 
     _check_cvss(collector, evidence, cve_id, cve.cvss_v3_score)
-    _check_bool_signal(
-        collector,
-        cve_id,
-        "exploits_public",
-        cve.exploits_public,
-        [e.has_public_exploit for e in evidence.exploits.get(cve_id, [])],
-        evidence,
-        tool="exploit_check",
-    )
+    _check_exploit_signal(collector, evidence, cve_id, cve.exploits_public)
     _check_bool_signal(
         collector,
         cve_id,
@@ -212,6 +204,42 @@ def _check_cvss(
             _absence_status(evidence, "cve_lookup", cve_id),
             "no cve_lookup return carries a CVSS score for this CVE",
         )
+
+
+def _check_exploit_signal(
+    collector: _Collector,
+    evidence: Evidence,
+    cve_id: str,
+    claimed: bool,
+) -> None:
+    """exploits_public, with the per-source statuses honoured.
+
+    A return whose sources all answered is evidence either way. A return with
+    a source in ERROR and nothing accepted is inconclusive: it cannot back a
+    positive claim, and it must not be read as contradicting one either, so
+    a positive claim over such returns degrades to UNVERIFIABLE.
+    """
+    entries = evidence.exploits.get(cve_id, [])
+    observed = [
+        e.has_public_exploit for e in entries if e.has_public_exploit or e.arms_conclusive()
+    ]
+    if not observed and claimed and entries:
+        collector.record(
+            cve_id,
+            "exploits_public",
+            GroundingClaimStatus.UNVERIFIABLE,
+            "exploit_check could not conclude: a source was in error",
+        )
+        return
+    _check_bool_signal(
+        collector,
+        cve_id,
+        "exploits_public",
+        claimed,
+        observed,
+        evidence,
+        tool="exploit_check",
+    )
 
 
 def _check_bool_signal(
