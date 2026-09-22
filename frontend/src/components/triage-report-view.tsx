@@ -520,10 +520,11 @@ function SsvcVerdict({ ssvc }: { ssvc: SsvcAssessment }) {
             deterministic · server-computed
           </TooltipTrigger>
           <TooltipContent>
-            Computed by a fixed server-side rule from the collected signals (KEV,
-            EPSS, public exploits, ransomware use, CVSS) after the model returns.
-            The LLM does not pick this verdict; the same signals always produce the
-            same decision.
+            Computed by a fixed server-side rule from the signals the tools
+            returned (KEV, EPSS, public exploits, ransomware use, CVSS), read from
+            the run&apos;s own trajectory rather than from the fields the model
+            wrote, after the model returns. The LLM does not pick this verdict; the
+            same tool returns always produce the same decision.
           </TooltipContent>
         </Tooltip>
         <Link
@@ -581,10 +582,41 @@ function SsvcVerdict({ ssvc }: { ssvc: SsvcAssessment }) {
               </>
             ) : null}
           </p>
+          <SsvcBasisNote ssvc={ssvc} />
         </div>
       </div>
       <SsvcDecisionTrace ssvc={ssvc} />
     </div>
+  );
+}
+
+// The verdict is computed from the tool returns in the run's trajectory, not
+// from the fields the model wrote. When a signal had no usable evidence the
+// server falls back to the report for it and says so: this note is the
+// operator-facing form of that stamp. Silent when every signal came from a
+// tool return (the common case) or when the capture predates the field.
+function SsvcBasisNote({ ssvc }: { ssvc: SsvcAssessment }) {
+  if (!ssvc.basis || ssvc.basis === "evidence") return null;
+  const unverified = ssvc.unverified_signals ?? [];
+  const text =
+    ssvc.basis === "report"
+      ? "no trajectory was available; every signal was taken from the model's report"
+      : `${unverified.length} signal${unverified.length === 1 ? "" : "s"} taken from the model's report, not from a tool return`;
+  return (
+    <p className="flex items-start gap-1.5 text-[11px] text-warning" role="note">
+      <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+      <span>
+        <span className="font-medium">verdict basis: {ssvc.basis}</span>
+        {" · "}
+        {text}
+        {unverified.length > 0 ? (
+          <>
+            {": "}
+            <span className="font-mono">{unverified.join(", ")}</span>
+          </>
+        ) : null}
+      </span>
+    </p>
   );
 }
 

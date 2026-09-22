@@ -517,14 +517,14 @@ async def triage(request: Request, req: TriageRequest) -> EventSourceResponse:
                 messages = _extract_messages(run)
             # Stamp the deterministic verdicts onto the report AFTER the model
             # returns. The LLM is told to leave `ssvc` and `grounding` null;
-            # these are the authoritative, reproducible forms and the ones the
-            # audit trail records.
-            from sec_recon_agent.agent.ssvc import assess_ssvc
-
+            # both are computed from the captured trajectory (what the tools
+            # returned), not from the fields the model wrote, and they are the
+            # authoritative, reproducible forms the audit trail records.
+            invocations = _invocations_for(messages)
             result_output = result_output.model_copy(
                 update={
-                    "ssvc": assess_ssvc(result_output.cves),
-                    "grounding": _grounding_for(result_output, messages),
+                    "ssvc": _ssvc_for(result_output, invocations),
+                    "grounding": _grounding_for(result_output, invocations),
                 },
             )
             result_json = result_output.model_dump_json()
@@ -750,7 +750,42 @@ def _extract_messages(run: object) -> list[Any] | None:
         return None
 
 
-def _grounding_for(report: Any, messages: list[Any] | None) -> Any:
+def _invocations_for(messages: list[Any] | None) -> list[Any] | None:
+    """Typed tool invocations off the message history; None when unavailable.
+
+    None is the one "no trajectory" signal both stamps understand: grounding
+    becomes NOT_EVALUATED and the SSVC verdict falls back to the report,
+    stamped `basis=report`. An extraction failure degrades the same way
+    instead of failing a triage the model already completed.
+    """
+    if messages is None:
+        return None
+    try:
+        from sec_recon_agent.agent.trajectory import extract_tool_invocations
+
+        return extract_tool_invocations(messages)
+    except Exception:
+        log.warning("trajectory_extract_failed", exc_info=True)
+        return None
+
+
+def _ssvc_for(report: Any, invocations: list[Any] | None) -> Any:
+    """SSVC verdict over the trajectory evidence; never raises.
+
+    A failure inside the evidence path degrades to the report-only verdict,
+    which is stamped `basis=report` so the downgrade is visible to every
+    consumer rather than silently presented as evidence-backed.
+    """
+    from sec_recon_agent.agent.ssvc import assess_ssvc
+
+    try:
+        return assess_ssvc(report.cves, invocations)
+    except Exception:
+        log.warning("ssvc_evidence_failed", exc_info=True)
+        return assess_ssvc(report.cves, None)
+
+
+def _grounding_for(report: Any, invocations: list[Any] | None) -> Any:
     """Grounding assessment for the final report; never raises.
 
     Any unexpected failure downgrades to an honest NOT_EVALUATED stamp: the
@@ -759,12 +794,11 @@ def _grounding_for(report: Any, messages: list[Any] | None) -> Any:
     from sec_recon_agent.agent.schema import GroundingAssessment, GroundingStatus
 
     try:
-        if messages is None:
+        if invocations is None:
             return GroundingAssessment(status=GroundingStatus.NOT_EVALUATED)
         from sec_recon_agent.agent.grounding import verify_grounding
-        from sec_recon_agent.agent.trajectory import extract_tool_invocations
 
-        return verify_grounding(report, extract_tool_invocations(messages))
+        return verify_grounding(report, invocations)
     except Exception:
         log.warning("grounding_verify_failed", exc_info=True)
         return GroundingAssessment(status=GroundingStatus.NOT_EVALUATED)

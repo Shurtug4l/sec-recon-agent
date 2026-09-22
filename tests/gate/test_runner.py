@@ -13,7 +13,7 @@ import pytest
 from pydantic import SecretStr
 
 import sec_recon_agent.gate.runner as runner_mod
-from sec_recon_agent.agent.schema import Severity, SsvcDecision
+from sec_recon_agent.agent.schema import Severity, SsvcBasis, SsvcDecision
 from sec_recon_agent.config import settings
 from sec_recon_agent.gate.models import FeedCoverage, SkipReason
 from sec_recon_agent.gate.runner import run_gate
@@ -130,6 +130,9 @@ class TestKevActPath:
         assert f.coverage.kev is FeedCoverage.OK
         assert report.ssvc.decision is SsvcDecision.ACT
         assert report.ssvc.driving_cve == "CVE-2021-0001"
+        # The gate feeds typed tool results: never the model's word.
+        assert report.ssvc.basis is SsvcBasis.EVIDENCE
+        assert report.ssvc.unverified_signals == []
         assert report.policy.passed is False
         assert report.policy.triggered == ["CVE-2021-0001"]
 

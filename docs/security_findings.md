@@ -47,6 +47,12 @@ This document covers two sources:
 
 ---
 
+### Internal audit (multi-agent review 2026-09-22)
+
+| Severity | Finding | Surface | Disposition | Current mitigation |
+|---|---|---|---|---|
+| P0 | SSVC verdict on the agent path was computed from the model's own CVE fields: deterministic, but not independent of the model, and a suppressed lookup left no trace | `agent/ssvc.py`, `api/stream.py` | **fixed (ssvc-from-evidence)** | signals read from the typed tool returns in the run's trajectory through the shared `agent/evidence.py` index; a signal with no usable evidence falls back to the report and is stamped `basis: mixed` with the fallback named in `unverified_signals`; no trajectory is stamped `basis: report`. The gate path was already evidence-driven. |
+
 ## Detailed triage
 
 ### Frontend npm findings (5)
@@ -226,6 +232,14 @@ The MCP spec revision dated 2025-06-18 introduces Streamable HTTP as the recomme
 **Planned fix**: use `asyncio.gather(coro_a, coro_b)` directly (gather already manages the tasks), or `asyncio.TaskGroup` (Python 3.11+) which cancels siblings on first failure.
 
 ---
+
+### P0 - SSVC verdict fed by model-authored signal fields (fixed)
+
+**Finding.** `api/stream.py` stamped the verdict as `assess_ssvc(report.cves)`, and `agent/ssvc.py` read `in_kev_catalog`, `exploits_public`, `epss_*` and `severity` off the model's own `CVEReference` entries. The decision function was pure and the verdict reproducible from the same report, but every input traversed the model: an injection, or plain transcription drift, that flipped `in_kev_catalog` in the report flipped Act to Track. The grounding verifier flagged an inflated positive claim after the fact, but by its claim policy it does not judge a negative claim without evidence, so the cheapest attack (talk the model out of calling `kev_check`, report `false`) produced a Track verdict next to a `grounded` badge, sealed into the audit chain and exported to SARIF. The SBOM gate never had this gap: `gate/runner.py` builds `SsvcSignals` from typed `KevCheck` / `EpssScore` / `ExploitCheck` results.
+
+**Fix.** The evidence index the grounding verifier already built from the trajectory moved into `agent/evidence.py` and now feeds both stamps. `assess_ssvc(cves, invocations)` reads each signal from the tool returns; where several returns exist for a CVE the most urgent reading wins; an EPSS `not_found` answer and a CVE record without a CVSS score count as evidence-backed absences. A signal with no usable evidence (feed never called, failed, or unparseable) falls back to the report for that signal and the fallback is named on the verdict: `SsvcAssessment.basis` is `evidence`, `mixed` or `report`, and `unverified_signals` lists each `<CVE-ID>:<kev|exploit|epss|severity>` taken on the model's word. The rationale text carries the same caveat so SARIF and OpenVEX notes travel with it, and the frontend renders it on the verdict card. Replaying the eleven committed cassettes through the new code reproduces every recorded decision and rule with `basis: evidence`, so no legitimate verdict moved; only the model's route to it closed.
+
+**Residual.** The fallback still takes the report's value for a signal nobody checked, visibly. The alternative, treating an unchecked signal as absent, would silently drop a real signal the model may have carried from a fenced description and make the verdict disagree with the CVE card the operator is reading. Visibility over suppression is the chosen trade; a consumer that wants the strict form can refuse any verdict whose basis is not `evidence`.
 
 ## How to read the Security tab against this document
 

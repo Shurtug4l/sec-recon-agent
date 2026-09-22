@@ -31,7 +31,7 @@ import re
 from collections.abc import Awaitable, Callable
 from typing import get_args
 
-from sec_recon_agent.agent.schema import SsvcDecision
+from sec_recon_agent.agent.schema import SsvcBasis, SsvcDecision
 from sec_recon_agent.agent.ssvc import (
     SsvcSignals,
     assess_from_signals,
@@ -436,19 +436,25 @@ async def run_gate(
             )
         )
 
+    # Every signal above was read from a typed tool result (or is an honest
+    # absence recorded in `coverage`); nothing on this path comes from a model,
+    # so the verdict's basis is evidence by construction.
     ssvc = assess_from_signals(
         (
-            f.cve_id or f.osv_id,
-            SsvcSignals(
-                in_kev=f.in_kev,
-                known_ransomware=f.known_ransomware_use,
-                exploit_public=f.exploits_public,
-                epss_probability=f.epss_probability,
-                epss_percentile=f.epss_percentile,
-                severity=f.severity,
-            ),
-        )
-        for f in findings
+            (
+                f.cve_id or f.osv_id,
+                SsvcSignals(
+                    in_kev=f.in_kev,
+                    known_ransomware=f.known_ransomware_use,
+                    exploit_public=f.exploits_public,
+                    epss_probability=f.epss_probability,
+                    epss_percentile=f.epss_percentile,
+                    severity=f.severity,
+                ),
+            )
+            for f in findings
+        ),
+        basis=SsvcBasis.EVIDENCE,
     )
     policy = _evaluate_policy(findings, skipped, fail_on=fail_on, strict=strict)
 
