@@ -43,7 +43,7 @@ def capture_frames(query: str, model: str | None) -> tuple[list[dict[str, Any]],
     )
     frames: list[dict[str, Any]] = []
     start = time.monotonic()
-    with urllib.request.urlopen(req, timeout=300) as resp:  # noqa: S310 - localhost only
+    with urllib.request.urlopen(req, timeout=300) as resp:
         buf = ""
         for chunk in resp:
             buf += chunk.decode("utf-8", errors="replace")
