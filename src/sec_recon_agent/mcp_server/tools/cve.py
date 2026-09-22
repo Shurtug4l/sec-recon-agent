@@ -9,7 +9,7 @@ from sec_recon_agent.mcp_server.errors import (
     CveNotFoundError,
     MalformedNvdPayloadError,
 )
-from sec_recon_agent.mcp_server.models import CVEDetail, CveIdStr
+from sec_recon_agent.mcp_server.models import CVE_DESCRIPTION_CHARS, CVEDetail, CveIdStr
 from sec_recon_agent.mcp_server.nvd_client import (
     HTTP_TIMEOUT_SECONDS,
     NVD_BASE_URL,
@@ -92,7 +92,7 @@ def _parse_cve_payload(cve_id: str, payload: dict[str, Any]) -> CVEDetail:
     description = _extract_english_description(cve)
     return CVEDetail(
         cve_id=cve.get("id", cve_id),
-        description=fence_untrusted(description) or "",
+        description=fence_untrusted(description, max_chars=CVE_DESCRIPTION_CHARS) or "",
         cvss_v3_score=score,
         cvss_v3_severity=severity,
         published=str(cve.get("published", "")),

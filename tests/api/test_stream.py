@@ -1380,3 +1380,59 @@ def test_budget_record_now_is_synchronous_and_respects_the_guard(monkeypatch: Mo
     tracker.record_now(0.5)
     assert [usd for _, usd in tracker._events] == [0.5]
     tracker.reset()
+
+
+def test_usage_event_and_charge_carry_cache_tokens(
+    monkeypatch: MonkeyPatch,
+    fake_report: TriageReport,
+    priced_budget_and_audit: Any,
+) -> None:
+    """With prompt caching on, most input is cache traffic priced at its own
+    multipliers; the usage event exposes it and the budget rail prices it."""
+
+    class _CachedUsage:
+        # Total input as pydantic-ai reports it: 10k uncached + the cache traffic.
+        input_tokens = 130_000
+        output_tokens = 1_000
+        requests = 3
+        cache_read_tokens = 100_000
+        cache_write_tokens = 20_000
+
+    class _FakeResult:
+        def __init__(self) -> None:
+            self.output = fake_report
+
+        def all_messages(self) -> list[Any]:
+            return []
+
+    class _FakeRun:
+        def __init__(self) -> None:
+            self.result = _FakeResult()
+
+        def usage(self) -> _CachedUsage:
+            return _CachedUsage()
+
+        def __aiter__(self) -> Any:
+            async def gen() -> Any:
+                yield object()
+
+            return gen()
+
+    class _FakeAgent:
+        @asynccontextmanager
+        async def iter(self, query: str, usage_limits: Any = None) -> Any:
+            del usage_limits
+            yield _FakeRun()
+
+    monkeypatch.setattr(stream_module, "build_agent", lambda model_override=None: _FakeAgent())
+    client = TestClient(app)
+    with client.stream("POST", "/v1/triage", json={"query": "test"}) as response:
+        body = "".join(response.iter_text())
+
+    usage_line = next(line for line in body.splitlines() if '"cache_read_tokens"' in line)
+    payload = json.loads(usage_line[len("data: ") :])
+    assert payload["cache_read_tokens"] == 100_000
+    assert payload["cache_write_tokens"] == 20_000
+    # haiku: 10k uncached at $1/M + 100k reads at $0.1/M + 20k writes at $1.25/M + 1k out at $5/M
+    expected = 0.01 + 0.01 + 0.025 + 0.005
+    assert asyncio.run(stream_module.budget_tracker.spent_usd()) == pytest.approx(expected)

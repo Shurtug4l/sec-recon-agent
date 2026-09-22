@@ -184,7 +184,7 @@ What CI does gate on is the **record-replay harness**: committed cassettes (`tes
 Every HIGH finding from an independent security review is mapped to the code change that addressed it in [docs/design.md](docs/design.md#threat-model), including a diagram of where each control sits on the untrusted-data path. Highlights:
 
 - **Strict typing at the model boundary** - every tool I/O is a Pydantic model; `mypy --strict` enforced.
-- **Untrusted-content fencing** - every free-text vendor field is wrapped with `<UNTRUSTED_CONTENT>` markers at the code boundary (`mcp_server/security.py`); the system prompt instructs the LLM to treat fenced content as data, never as instructions.
+- **Untrusted-content fencing** - every free-text vendor field is wrapped with `<UNTRUSTED_CONTENT id="...">` markers at the code boundary (`mcp_server/security.py`), the id is random per server process so a forged closing tag cannot match, marker-shaped tokens inside the payload are neutralized, and the system prompt names the markers and instructs the LLM to treat fenced content as data, never as instructions.
 - **XXE-safe XML parsing** - `defusedxml` with explicit `forbid_dtd=True`, tested against classic, external-DTD, parameter-entity, and billion-laughs payloads.
 - **Bounded resource consumption** - every input crossing the MCP boundary is double-capped (schema `max_length` + runtime pre-flight); outbound feeds are host-locked with size caps and post-redirect host checks.
 - **Error-payload allowlist** - the SSE `error` event surfaces a generic message unless the exception type is explicitly allowlisted; internal messages never leak to the client.

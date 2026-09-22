@@ -82,6 +82,8 @@ async def record_case(case: GoldenCase, model_alias: str, surface_hash: str) -> 
             "input_tokens": getattr(usage, "input_tokens", None),
             "output_tokens": getattr(usage, "output_tokens", None),
             "requests": getattr(usage, "requests", None),
+            "cache_read_tokens": getattr(usage, "cache_read_tokens", None),
+            "cache_write_tokens": getattr(usage, "cache_write_tokens", None),
         },
         messages=ModelMessagesTypeAdapter.dump_python(messages, mode="json"),
         report=report.model_dump(mode="json"),

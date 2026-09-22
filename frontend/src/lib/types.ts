@@ -114,9 +114,11 @@ export interface TriageReport {
 // Token usage for one run, emitted by api/stream.py as a `usage` SSE event
 // after `final`. Any field may be null when pydantic-ai does not surface it.
 export interface TokenUsage {
-  input_tokens: number | null;
+  input_tokens: number | null;   // total input, cache traffic included
   output_tokens: number | null;
   requests: number | null;
+  cache_read_tokens?: number | null;  // prompt-cache reads, priced at 0.1x input
+  cache_write_tokens?: number | null; // prompt-cache writes, priced at 1.25x input
 }
 
 // One streamed agent `node` event, timestamped on arrival (client-side) so the

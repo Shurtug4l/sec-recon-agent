@@ -5,6 +5,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, HttpUrl
 
+from sec_recon_agent.mcp_server.security import FENCE_OVERHEAD
+
 CveIdStr = Annotated[
     str,
     Field(pattern=r"^CVE-\d{4}-\d{4,}$", examples=["CVE-2021-41773"]),
@@ -32,18 +34,34 @@ PackageNameStr = Annotated[str, Field(min_length=1, max_length=200, examples=["n
 PackageVersionStr = Annotated[str, Field(min_length=1, max_length=100, examples=["1.22.0"])]
 
 
+# Payload budgets for the fenced free-text fields. Each model cap below is
+# budget + FENCE_OVERHEAD, and the tool that fills the field passes the same
+# budget to fence_untrusted(max_chars=...), which truncates AFTER neutralizing
+# marker-shaped tokens. One place to change, and the cap holds for any input.
+CVE_DESCRIPTION_CHARS = 4000
+CVE_CANDIDATE_SUMMARY_CHARS = 500
+KEV_VULNERABILITY_NAME_CHARS = 500
+KEV_REQUIRED_ACTION_CHARS = 1000
+KEV_NOTES_CHARS = 2000
+OSV_SUMMARY_CHARS = 1000
+NMAP_BANNER_CHARS = 200
+# Short identifiers that are bounded but not fenced.
+NMAP_NAME_CHARS = 64
+NMAP_HOSTNAME_CHARS = 253
+NMAP_HOSTNAMES_MAX = 50
+
+
 class CVECandidate(BaseModel):
     """Lightweight CVE hit returned by semantic search.
 
-    `summary` is the CVE description, truncated to 500 chars in
-    cve_search.py and then wrapped in UNTRUSTED_CONTENT markers. `max_length`
-    includes ~41 chars of marker overhead on top of that 500-char payload, so a
-    fenced full-length description validates (same convention as KevCheck /
-    OsvVuln free-text fields).
+    `summary` is the CVE description, truncated to CVE_CANDIDATE_SUMMARY_CHARS
+    in cve_search.py and wrapped in UNTRUSTED_CONTENT markers. `max_length` is
+    that budget plus FENCE_OVERHEAD, so a fenced full-length payload validates
+    (same convention as every fenced free-text field).
     """
 
     cve_id: CveIdStr
-    summary: str = Field(max_length=550)
+    summary: str = Field(max_length=CVE_CANDIDATE_SUMMARY_CHARS + FENCE_OVERHEAD)
     similarity: float = Field(ge=0.0, le=1.0)
 
 
@@ -58,7 +76,9 @@ class CVEDetail(BaseModel):
     """
 
     cve_id: CveIdStr
-    description: str
+    # Fenced; capped so a multi-kilobyte NVD description (or one stuffed with
+    # forged markers) cannot flood the model context through this field.
+    description: str = Field(max_length=CVE_DESCRIPTION_CHARS + FENCE_OVERHEAD)
     cvss_v3_score: float | None = Field(default=None, ge=0.0, le=10.0)
     cvss_v3_severity: str | None = None
     published: str
@@ -133,7 +153,7 @@ class KevCheck(BaseModel):
 
     Free-text fields (`vulnerability_name`, `required_action`, `notes`)
     arrive wrapped in UNTRUSTED_CONTENT markers from the tool boundary —
-    `max_length` includes ~41 chars of marker overhead on top of the
+    `max_length` is the payload budget plus FENCE_OVERHEAD on top of the
     intended payload length.
     """
 
@@ -141,12 +161,16 @@ class KevCheck(BaseModel):
     in_catalog: bool
     vendor_project: str | None = None
     product: str | None = None
-    vulnerability_name: str | None = Field(default=None, max_length=550)
+    vulnerability_name: str | None = Field(
+        default=None, max_length=KEV_VULNERABILITY_NAME_CHARS + FENCE_OVERHEAD
+    )
     date_added: str | None = None
     due_date: str | None = None
-    required_action: str | None = Field(default=None, max_length=1050)
+    required_action: str | None = Field(
+        default=None, max_length=KEV_REQUIRED_ACTION_CHARS + FENCE_OVERHEAD
+    )
     known_ransomware_use: bool | None = None
-    notes: str | None = Field(default=None, max_length=2050)
+    notes: str | None = Field(default=None, max_length=KEV_NOTES_CHARS + FENCE_OVERHEAD)
 
 
 class PatchEntry(BaseModel):
@@ -261,13 +285,13 @@ class OsvVuln(BaseModel):
     ecosystem-specific IDs) so the agent can pivot to cve_lookup.
 
     `summary` is upstream-authored free text and arrives wrapped in
-    UNTRUSTED_CONTENT markers (max_length includes ~41 chars of marker
-    overhead). `introduced` / `fixed` are the version-range boundaries for the
+    UNTRUSTED_CONTENT markers (max_length is the payload budget plus
+    FENCE_OVERHEAD). `introduced` / `fixed` are the version-range boundaries for the
     queried package, mirroring patch_lookup's fixed-version semantics.
     """
 
     id: str = Field(max_length=100)
-    summary: str | None = Field(default=None, max_length=1050)
+    summary: str | None = Field(default=None, max_length=OSV_SUMMARY_CHARS + FENCE_OVERHEAD)
     aliases: list[str] = Field(default_factory=list, max_length=20)
     severity: str | None = Field(
         default=None,
@@ -307,17 +331,24 @@ class OsvScanResult(BaseModel):
 
 
 class NmapPort(BaseModel):
+    """One port of a parsed Nmap scan. Every string is attacker-controlled
+    (the scan XML is caller-supplied), so every one is length-capped;
+    `product` and `version` are free-text banners and are fenced as well.
+    """
+
     portid: int = Field(ge=1, le=65535)
-    protocol: str
-    state: str
-    service: str | None = None
-    product: str | None = None
-    version: str | None = None
+    protocol: str = Field(max_length=NMAP_NAME_CHARS)
+    state: str = Field(max_length=NMAP_NAME_CHARS)
+    service: str | None = Field(default=None, max_length=NMAP_NAME_CHARS)
+    product: str | None = Field(default=None, max_length=NMAP_BANNER_CHARS + FENCE_OVERHEAD)
+    version: str | None = Field(default=None, max_length=NMAP_BANNER_CHARS + FENCE_OVERHEAD)
 
 
 class NmapHost(BaseModel):
-    ip: str
-    hostnames: list[str] = Field(default_factory=list, max_length=50)
+    ip: str = Field(max_length=NMAP_NAME_CHARS)
+    hostnames: list[Annotated[str, Field(max_length=NMAP_HOSTNAME_CHARS)]] = Field(
+        default_factory=list, max_length=NMAP_HOSTNAMES_MAX
+    )
     ports: list[NmapPort] = Field(default_factory=list, max_length=200)
 
 

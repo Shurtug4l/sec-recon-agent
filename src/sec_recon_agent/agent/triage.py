@@ -15,6 +15,7 @@ import os
 
 from pydantic_ai import Agent
 from pydantic_ai.mcp import MCPToolset
+from pydantic_ai.models.anthropic import AnthropicModelSettings
 
 from sec_recon_agent.agent.prompts import SYSTEM_PROMPT
 from sec_recon_agent.agent.schema import TriageReport
@@ -98,6 +99,23 @@ def _mcp_toolset() -> MCPToolset:
     return MCPToolset(f"{settings.mcp_server_url}/sse", headers=mcp_client_headers())
 
 
+# Prompt caching. Every round of the ReAct loop re-sends the whole
+# conversation: the system prompt, the eleven tool schemas, the output schema
+# and every earlier tool return. On the recorded golden runs 74% of the billed
+# input was that re-sent prefix (log4shell: 102,652 input tokens billed for a
+# final context of 26,170). Three breakpoints, out of Anthropic's four:
+# instructions, tool definitions, and the automatic one that follows the
+# conversation as it grows, so round n reads rounds 1..n-1 from cache.
+# Cache reads are priced at a tenth of input, writes at 1.25x (eval/cost.py
+# carves both out of the total input pydantic-ai reports); the budget rail
+# therefore charges what is actually billed.
+CACHING_MODEL_SETTINGS = AnthropicModelSettings(
+    anthropic_cache=True,
+    anthropic_cache_instructions=True,
+    anthropic_cache_tool_definitions=True,
+)
+
+
 def build_agent(model_override: str | None = None) -> Agent[None, TriageReport]:
     """Construct the triage agent wired to the local MCP server.
 
@@ -117,4 +135,5 @@ def build_agent(model_override: str | None = None) -> Agent[None, TriageReport]:
         output_type=TriageReport,
         toolsets=[_mcp_toolset()],
         system_prompt=SYSTEM_PROMPT,
+        model_settings=CACHING_MODEL_SETTINGS,
     )
