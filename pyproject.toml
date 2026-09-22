@@ -69,6 +69,7 @@ dev = [
     "hypothesis>=6.100.0",
     "types-defusedxml>=0.7.0",
     "pre-commit>=4.0.0",
+    "pyyaml>=6.0.3",
 ]
 
 [project.scripts]
@@ -139,6 +140,13 @@ filterwarnings = [
     # Scoped to the exact message so genuine DeprecationWarnings still surface.
     # Remove once the pinned upstreams move to inspect.iscoroutinefunction.
     "ignore:'asyncio.iscoroutinefunction' is deprecated:DeprecationWarning",
+    # uvicorn still imports websockets' legacy server protocol at startup; the
+    # live MCP auth tests (tests/mcp_server/test_auth.py) start a real uvicorn
+    # on a loopback socket, so the import runs inside the suite. Two exact
+    # messages, both raised from site-packages, none from this codebase.
+    # Remove once the pinned uvicorn drops websockets.legacy.
+    "ignore:websockets.legacy is deprecated:DeprecationWarning",
+    "ignore:websockets.server.WebSocketServerProtocol is deprecated:DeprecationWarning",
 ]
 
 [tool.coverage.run]

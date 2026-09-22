@@ -4,7 +4,7 @@ import pytest
 from _pytest.monkeypatch import MonkeyPatch
 
 from sec_recon_agent.agent.prompts import SYSTEM_PROMPT
-from sec_recon_agent.agent.triage import build_agent
+from sec_recon_agent.agent.triage import build_agent, mcp_client_headers
 
 
 @pytest.fixture(autouse=True)
@@ -175,3 +175,33 @@ def test_system_prompt_constrains_output_to_triagereport() -> None:
         "reasoning_chain",
     ):
         assert field in SYSTEM_PROMPT, f"Field {field} missing from system prompt"
+
+
+def test_mcp_client_sends_no_header_when_auth_is_off(monkeypatch: MonkeyPatch) -> None:
+    from sec_recon_agent.agent import triage
+
+    monkeypatch.setattr(triage.settings, "mcp_auth_token", None)
+    assert mcp_client_headers() is None
+
+
+def test_mcp_client_presents_the_bearer_token_when_set(monkeypatch: MonkeyPatch) -> None:
+    """MCP_AUTH_TOKEN gates a transport that crosses a container boundary: the
+    server enforces it, and this client must present the same secret or the
+    SSE handshake is refused and no tool is reachable."""
+    from pydantic import SecretStr
+
+    from sec_recon_agent.agent import triage
+
+    monkeypatch.setattr(triage.settings, "mcp_auth_token", SecretStr("s3cret"))
+    assert mcp_client_headers() == {"Authorization": "Bearer s3cret"}
+
+
+def test_mcp_client_treats_blank_token_as_off(monkeypatch: MonkeyPatch) -> None:
+    """compose forwards MCP_AUTH_TOKEN as an empty string when unset; an
+    empty bearer must not be sent (the server treats blank as open too)."""
+    from pydantic import SecretStr
+
+    from sec_recon_agent.agent import triage
+
+    monkeypatch.setattr(triage.settings, "mcp_auth_token", SecretStr(""))
+    assert mcp_client_headers() is None

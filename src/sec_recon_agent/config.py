@@ -6,6 +6,16 @@ from typing import Annotated
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+# Loopback in both IP families plus the docker-compose service name, each with
+# any port: the complete set of Host values a legitimate client of the MCP
+# server sends. Everything else is a rebinding attempt or a misconfiguration.
+DEFAULT_MCP_ALLOWED_HOSTS: tuple[str, ...] = (
+    "127.0.0.1:*",
+    "localhost:*",
+    "[::1]:*",
+    "mcp-server:*",
+)
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -69,6 +79,13 @@ class Settings(BaseSettings):
 
     mcp_server_host: str = "127.0.0.1"
     mcp_server_port: int = Field(default=8001, ge=1024, le=65535)
+    # Host header values the MCP server accepts (DNS-rebinding protection,
+    # always on). Comma-separated; `host:*` matches any port. Blank means the
+    # default below, so an operator cannot lock every client out by exporting
+    # an empty variable. The compose service name is listed because that is
+    # the Host the agent-api container sends; a browser page rebinding its own
+    # domain to 127.0.0.1 sends that domain instead and is refused with 421.
+    mcp_allowed_hosts: str = ""
     agent_api_host: str = "127.0.0.1"
     agent_api_port: int = Field(default=8000, ge=1024, le=65535)
 
@@ -148,6 +165,12 @@ class Settings(BaseSettings):
     @property
     def mcp_server_url(self) -> str:
         return f"http://{self.mcp_server_host}:{self.mcp_server_port}"
+
+    @property
+    def mcp_allowed_hosts_list(self) -> list[str]:
+        """Parsed `mcp_allowed_hosts`; the built-in default when blank."""
+        entries = [h.strip() for h in self.mcp_allowed_hosts.split(",") if h.strip()]
+        return entries or list(DEFAULT_MCP_ALLOWED_HOSTS)
 
 
 settings = Settings()

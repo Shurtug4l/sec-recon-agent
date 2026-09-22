@@ -20,9 +20,15 @@ should confirm.
 
 - **Transport**: FastMCP over HTTP+SSE (`server.py::build_app`). Optional bearer
   auth via `MCP_AUTH_TOKEN` (`auth.py::BearerAuthASGI`, `secrets.compare_digest`,
-  constant-time). Default off: the server relies on the docker-compose internal
-  network / localhost binding, and the token is meant to be set whenever `:8001`
-  is published beyond the compose network.
+  constant-time), enforced by the server and presented by the agent's MCP client
+  from the same setting (`agent/triage.py::_mcp_toolset`), so one variable gates
+  both ends; an integration test drives the real app on a live socket. Default
+  off: compose publishes `:8001` on the host loopback only, and the token is
+  meant to be set whenever that is not acceptable or the port is published
+  further. DNS-rebinding protection is always on (`TransportSecuritySettings`:
+  Host allowlist from `MCP_ALLOWED_HOSTS`, no browser Origin accepted), because
+  binding `0.0.0.0` in compose would otherwise leave FastMCP's loopback-only
+  auto-enable off.
 - **Primitives exposed**: tools only. The server exposes **no** MCP `resources`,
   `prompts`, `sampling`, `elicitation`, or `roots` primitives. Those are the
   primitives most abused for confused-deputy and prompt-injection-via-resource
@@ -120,9 +126,12 @@ should confirm.
   raises the bar; it does not eliminate the class. Tracked in
   [`security_findings.md`](security_findings.md).
 - **Auth is opt-in.** `MCP_AUTH_TOKEN` defaults off for frictionless local dev.
-  Publishing `:8001` without setting it exposes the tools unauthenticated on the
-  network - an explicit deployment decision, documented in the README and
-  `.env.example`.
+  Publishing `:8001` beyond loopback without setting it exposes the tools
+  unauthenticated on the network - an explicit deployment decision, documented
+  in the README and `.env.example`. Until 2026-09-22 the variable reached
+  neither compose service and the agent's client sent no header, so the gate
+  could not actually be turned on in the shipped topology; see
+  [`security_findings.md`](security_findings.md).
 - **Free-text service banners from Nmap are not fenced.** They are treated as
   structured (service/product/version) rather than prose; a crafted banner is a
   lower-signal injection vector than a full NVD description, but it is not

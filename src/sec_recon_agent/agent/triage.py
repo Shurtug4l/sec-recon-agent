@@ -76,6 +76,28 @@ def resolve_model(override: str | None) -> str:
     return candidate
 
 
+def mcp_client_headers() -> dict[str, str] | None:
+    """HTTP headers the agent's MCP client sends, or None when the gate is off.
+
+    The transport crosses a container boundary (agent-api -> mcp-server), so
+    when the server is gated by MCP_AUTH_TOKEN this client has to present the
+    same secret on every request; without the header the SSE handshake is
+    refused with 401 and no tool is reachable. Both processes read the token
+    from the same setting, so enabling the gate is one variable, not a code
+    change on either side. A blank token means off on both ends: compose
+    forwards the variable as an empty string when the operator left it unset.
+    """
+    token = settings.mcp_auth_token
+    if token is None or not token.get_secret_value():
+        return None
+    return {"Authorization": f"Bearer {token.get_secret_value()}"}
+
+
+def _mcp_toolset() -> MCPToolset:
+    """The HTTP+SSE toolset for the co-deployed MCP server."""
+    return MCPToolset(f"{settings.mcp_server_url}/sse", headers=mcp_client_headers())
+
+
 def build_agent(model_override: str | None = None) -> Agent[None, TriageReport]:
     """Construct the triage agent wired to the local MCP server.
 
@@ -89,11 +111,10 @@ def build_agent(model_override: str | None = None) -> Agent[None, TriageReport]:
     override goes through `resolve_model` which enforces an allowlist.
     """
     model = resolve_model(model_override)
-    toolset = MCPToolset(f"{settings.mcp_server_url}/sse")
 
     return Agent(
         model=f"{settings.llm_provider}:{model}",
         output_type=TriageReport,
-        toolsets=[toolset],
+        toolsets=[_mcp_toolset()],
         system_prompt=SYSTEM_PROMPT,
     )
