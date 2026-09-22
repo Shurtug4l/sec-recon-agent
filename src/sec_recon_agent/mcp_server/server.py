@@ -46,12 +46,6 @@ mcp = FastMCP(
 )
 
 
-@mcp.tool()
-def ping() -> str:
-    """Liveness probe; returns 'pong'."""
-    return "pong"
-
-
 def _register_tools() -> None:
     """Side-effect imports so tool modules execute their @mcp.tool decorators."""
     from sec_recon_agent.mcp_server.tools import (

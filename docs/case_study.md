@@ -229,11 +229,11 @@ Every claim above has a test whose job is to prove the claim false:
   against the live stack, each tagged with the MITRE ATLAS technique it
   exercises, producing a per-technique resistance rate rather than a single
   green checkmark. The stamped rate is published in
-  [`SCORECARD.md`](../SCORECARD.md), currently 15/18, with the three payloads
+  [`SCORECARD.md`](../SCORECARD.md), currently 17/18, with the one payload
   that got through documented rather than hidden.
 - 11 recorded real trajectories replay bit-exact inside the required CI suite:
   the deterministic verdict and the grounding assessment are recomputed from the
-  recorded evidence on every merge (150 of 150 claims grounded at recording
+  recorded evidence on every merge (161 of 161 claims grounded at recording
   time). A staleness hash over the system prompt, the tool schemas, and the
   report schema refuses to certify behavior the recordings have not seen, so any
   behavior-bearing edit forces a re-record against the live model.
@@ -263,8 +263,9 @@ and the verdict and grounding layers stand behind the schema. The grounding
 verifier checks structured, tool-derived claims; the free-text summary is
 length-capped and eval-scored but not fact-checked line by line, so a grounded
 report can still phrase things badly. The red-team resistance rate is a
-measurement, not a proof: 15/18 means three payloads worked, and the honest
-response is documenting them and re-running the battery on change, not rounding
+measurement, not a proof: 17/18 means one payload worked (15/18 on the July
+run, before the fence carried an id and the prompt named it), and the honest
+response is documenting it and re-running the battery on change, not rounding
 up to "resistant". The audit trail (a SHA-256 hash chain over each triage) is
 tamper-evident, not tamper-proof, and is demo-grade rather than a production
 WORM store. Eleven golden cases is a smoke-grade sample; the calibration numbers
