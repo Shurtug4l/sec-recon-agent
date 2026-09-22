@@ -54,3 +54,50 @@ def test_allowed_hosts_blank_means_the_default(monkeypatch: MonkeyPatch) -> None
 def test_allowed_hosts_parses_a_csv(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "mcp_allowed_hosts", "recon.internal:*, 10.0.0.5:8001 ")
     assert settings.mcp_allowed_hosts_list == ["recon.internal:*", "10.0.0.5:8001"]
+
+
+def test_run_bounds_are_operator_tunable_in_compose() -> None:
+    env = _compose_env("agent-api")
+    for name in (
+        "AGENT_REQUEST_LIMIT",
+        "AGENT_TOOL_CALLS_LIMIT",
+        "AGENT_TOTAL_TOKENS_LIMIT",
+        "TRIAGE_DEADLINE_SECONDS",
+    ):
+        assert name in env, f"agent-api does not receive {name}"
+
+
+def test_blank_run_bounds_keep_the_defaults() -> None:
+    """compose forwards an unset host variable as "". A safety bound that reads
+    "" as "disabled" ships disabled by default, which is how the first cut of
+    this wiring behaved inside the container; blank must mean default."""
+    from sec_recon_agent.config import Settings
+
+    blank = Settings(
+        _env_file=None,
+        agent_request_limit="",
+        agent_tool_calls_limit="",
+        agent_total_tokens_limit="",
+        triage_deadline_seconds="",
+    )
+    assert blank.agent_request_limit == 25
+    assert blank.agent_tool_calls_limit == 40
+    assert blank.agent_total_tokens_limit == 250_000
+    assert blank.triage_deadline_seconds == 300.0
+
+
+def test_run_bounds_are_disabled_only_by_an_explicit_off() -> None:
+    from sec_recon_agent.config import Settings
+
+    off = Settings(
+        _env_file=None,
+        agent_tool_calls_limit="off",
+        agent_total_tokens_limit="OFF",
+        triage_deadline_seconds="none",
+    )
+    assert off.agent_tool_calls_limit is None
+    assert off.agent_total_tokens_limit is None
+    assert off.triage_deadline_seconds is None
+    tuned = Settings(_env_file=None, agent_tool_calls_limit="12", triage_deadline_seconds="45.5")
+    assert tuned.agent_tool_calls_limit == 12
+    assert tuned.triage_deadline_seconds == 45.5

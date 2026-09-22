@@ -5,7 +5,9 @@ to verify SSE wiring at the HTTP level. End-to-end agent behavior is
 covered manually with curl against a running stack.
 """
 
+import asyncio
 import json
+from collections import deque
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -20,6 +22,8 @@ from sec_recon_agent.agent.schema import (
 )
 from sec_recon_agent.api import stream as stream_module
 from sec_recon_agent.api.stream import app
+from sec_recon_agent.audit.models import sha256_hex
+from sec_recon_agent.audit.store import AuditStore
 
 
 @pytest.fixture
@@ -438,8 +442,8 @@ def test_triage_round_cap_emits_clean_error(monkeypatch: MonkeyPatch) -> None:
     payload = json.loads(err_line[len("data: ") :])
     assert payload["type"] == "UsageLimitExceeded"
     # Tailored, safe message -- not the generic internal-error fallback.
-    assert "step budget" in payload["message"]
-    assert f"{settings.agent_request_limit} model rounds" in payload["message"]
+    assert "usage budget" in payload["message"]
+    assert f"request_limit of {settings.agent_request_limit}" in payload["message"]
     assert "Internal error" not in payload["message"]
 
 
@@ -1140,3 +1144,239 @@ def test_triage_ssvc_names_the_feed_the_model_never_called(monkeypatch: MonkeyPa
     assert "CVE-2021-41773:kev" in ssvc["unverified_signals"]
     assert "CVE-2021-41773:epss" not in ssvc["unverified_signals"]
     assert ssvc["rationale"].endswith("not verified against tool returns.")
+
+
+# --- run accounting on every exit path ---------------------------------------
+#
+# The denial-of-wallet rail used to charge a run only after the `final` event,
+# and the outcome was "success" unless an Exception arrived. A client that
+# dropped the connection one round early therefore cost the provider the full
+# run, cost the window nothing, and sealed into the audit chain as a success.
+# These tests drive the generator through each exit path and assert that the
+# window grew and the audit sealed the honest outcome.
+
+
+class _RunUsage:
+    input_tokens = 20_000
+    output_tokens = 1_000
+    requests = 3
+
+
+def _accounting_agent(
+    report: TriageReport,
+    *,
+    nodes: int = 2,
+    fail_at: int | None = None,
+    sleep: float = 0.0,
+    captured: dict[str, Any] | None = None,
+) -> Any:
+    """A fake agent whose run exposes usage, with optional mid-stream failure
+    or slowness so the error and deadline paths can be exercised."""
+
+    class _FakeResult:
+        def __init__(self) -> None:
+            self.output = report
+
+        def all_messages(self) -> list[Any]:
+            return []
+
+    class _FakeRun:
+        def __init__(self) -> None:
+            self.result = _FakeResult()
+
+        def usage(self) -> _RunUsage:
+            return _RunUsage()
+
+        def __aiter__(self) -> Any:
+            async def gen() -> Any:
+                for index in range(nodes):
+                    if sleep:
+                        await asyncio.sleep(sleep)
+                    if fail_at is not None and index >= fail_at:
+                        raise RuntimeError("boom mid-run")
+                    yield object()
+
+            return gen()
+
+    class _FakeAgent:
+        @asynccontextmanager
+        async def iter(self, query: str, usage_limits: Any = None) -> Any:
+            if captured is not None:
+                captured["usage_limits"] = usage_limits
+            yield _FakeRun()
+
+    return _FakeAgent()
+
+
+@pytest.fixture
+def priced_budget_and_audit(monkeypatch: MonkeyPatch, tmp_path: Any) -> Any:
+    """A live budget ceiling, a priced default model, and an audit db in tmp."""
+    from sec_recon_agent.config import settings
+
+    monkeypatch.setattr(settings, "denial_of_wallet_usd_per_day", 100.0)
+    monkeypatch.setattr(settings, "llm_model", "claude-haiku-4-5-20251001")
+    monkeypatch.setattr(settings, "audit_db_path", tmp_path / "audit.db")
+    monkeypatch.setattr(settings, "audit_log_enabled", True)
+    stream_module.budget_tracker.reset()
+    stream_module._reset_audit_store()
+    yield tmp_path / "audit.db"
+    stream_module.budget_tracker.reset()
+    stream_module._reset_audit_store()
+
+
+def _last_audit_row(audit_path: Any) -> Any:
+    store = AuditStore(audit_path)
+    try:
+        assert store.count() == 1
+        return store.tail(1)[0]
+    finally:
+        store.close()
+
+
+# 20k input at $1/M plus 1k output at $5/M on haiku.
+_HAIKU_RUN_USD = 0.025
+
+
+async def test_client_disconnect_mid_stream_is_charged_and_sealed_as_cancelled(
+    monkeypatch: MonkeyPatch,
+    fake_report: TriageReport,
+    priced_budget_and_audit: Any,
+) -> None:
+    """Closing the generator at a yield is what a dropped connection looks
+    like from inside: the run must still be charged, and the audit row must
+    say cancelled, not success."""
+    monkeypatch.setattr(
+        stream_module, "build_agent", lambda model_override=None: _accounting_agent(fake_report)
+    )
+    events = stream_module._triage_events(stream_module.TriageRequest(query="test"))
+    assert (await events.__anext__())["event"] == "started"
+    assert (await events.__anext__())["event"] == "node"
+    await events.aclose()  # the client is gone
+
+    assert await stream_module.budget_tracker.spent_usd() == pytest.approx(_HAIKU_RUN_USD)
+    row = _last_audit_row(priced_budget_and_audit)
+    assert row.outcome == "cancelled"
+    assert row.error_class is None
+    assert row.report_sha256 == sha256_hex("")
+    assert row.model == "anthropic:claude-haiku-4-5-20251001"
+
+
+def test_mid_run_failure_is_charged_and_sealed_as_error(
+    monkeypatch: MonkeyPatch,
+    fake_report: TriageReport,
+    priced_budget_and_audit: Any,
+) -> None:
+    monkeypatch.setattr(
+        stream_module,
+        "build_agent",
+        lambda model_override=None: _accounting_agent(fake_report, fail_at=1),
+    )
+    client = TestClient(app)
+    with client.stream("POST", "/v1/triage", json={"query": "test"}) as response:
+        body = "".join(response.iter_text())
+    assert "event: error" in body
+
+    assert asyncio.run(stream_module.budget_tracker.spent_usd()) == pytest.approx(_HAIKU_RUN_USD)
+    row = _last_audit_row(priced_budget_and_audit)
+    assert row.outcome == "error"
+    assert row.error_class == "RuntimeError"
+
+
+def test_delivered_run_is_charged_and_sealed_as_success(
+    monkeypatch: MonkeyPatch,
+    fake_report: TriageReport,
+    priced_budget_and_audit: Any,
+) -> None:
+    monkeypatch.setattr(
+        stream_module, "build_agent", lambda model_override=None: _accounting_agent(fake_report)
+    )
+    client = TestClient(app)
+    with client.stream("POST", "/v1/triage", json={"query": "test"}) as response:
+        body = "".join(response.iter_text())
+    assert "event: final" in body and "event: usage" in body
+
+    assert asyncio.run(stream_module.budget_tracker.spent_usd()) == pytest.approx(_HAIKU_RUN_USD)
+    assert _last_audit_row(priced_budget_and_audit).outcome == "success"
+
+
+def test_audit_row_and_charge_use_the_overridden_model(
+    monkeypatch: MonkeyPatch,
+    fake_report: TriageReport,
+    priced_budget_and_audit: Any,
+) -> None:
+    """A per-request override must be what the audit attests and what the
+    budget prices: sonnet at $3/M in, $15/M out on the same token counts."""
+    monkeypatch.setattr(
+        stream_module, "build_agent", lambda model_override=None: _accounting_agent(fake_report)
+    )
+    client = TestClient(app)
+    with client.stream("POST", "/v1/triage", json={"query": "test", "model": "sonnet"}) as response:
+        "".join(response.iter_text())
+
+    assert asyncio.run(stream_module.budget_tracker.spent_usd()) == pytest.approx(0.075)
+    assert _last_audit_row(priced_budget_and_audit).model == "anthropic:claude-sonnet-4-6"
+
+
+def test_deadline_stops_a_slow_run_charges_it_and_names_the_cause(
+    monkeypatch: MonkeyPatch,
+    fake_report: TriageReport,
+    priced_budget_and_audit: Any,
+) -> None:
+    from sec_recon_agent.config import settings
+
+    monkeypatch.setattr(settings, "triage_deadline_seconds", 0.05)
+    monkeypatch.setattr(
+        stream_module,
+        "build_agent",
+        lambda model_override=None: _accounting_agent(fake_report, nodes=3, sleep=0.5),
+    )
+    client = TestClient(app)
+    with client.stream("POST", "/v1/triage", json={"query": "test"}) as response:
+        body = "".join(response.iter_text())
+
+    error_line = next(line for line in body.splitlines() if '"type": "TimeoutError"' in line)
+    assert "time budget" in error_line
+    assert "0.05" in error_line
+    assert asyncio.run(stream_module.budget_tracker.spent_usd()) == pytest.approx(_HAIKU_RUN_USD)
+    row = _last_audit_row(priced_budget_and_audit)
+    assert row.outcome == "error"
+    assert row.error_class == "TriageDeadlineExceeded"
+
+
+def test_run_bounds_reach_the_agent(monkeypatch: MonkeyPatch, fake_report: TriageReport) -> None:
+    """Rounds, tool calls and tokens are bounded independently, from settings."""
+    from sec_recon_agent.config import settings
+
+    monkeypatch.setattr(settings, "agent_request_limit", 7)
+    monkeypatch.setattr(settings, "agent_tool_calls_limit", 11)
+    monkeypatch.setattr(settings, "agent_total_tokens_limit", 12_345)
+    captured: dict[str, Any] = {}
+    monkeypatch.setattr(
+        stream_module,
+        "build_agent",
+        lambda model_override=None: _accounting_agent(fake_report, captured=captured),
+    )
+    client = TestClient(app)
+    with client.stream("POST", "/v1/triage", json={"query": "test"}) as response:
+        "".join(response.iter_text())
+
+    limits = captured["usage_limits"]
+    assert limits.request_limit == 7
+    assert limits.tool_calls_limit == 11
+    assert limits.total_tokens_limit == 12_345
+
+
+def test_budget_record_now_is_synchronous_and_respects_the_guard(monkeypatch: MonkeyPatch) -> None:
+    from sec_recon_agent.config import settings
+
+    tracker = stream_module.budget_tracker
+    tracker.reset()
+    monkeypatch.setattr(settings, "denial_of_wallet_usd_per_day", None)
+    tracker.record_now(1.0)
+    assert tracker._events == deque()
+    monkeypatch.setattr(settings, "denial_of_wallet_usd_per_day", 10.0)
+    tracker.record_now(None)
+    tracker.record_now(0.0)
+    tracker.record_now(0.5)
+    assert [usd for _, usd in tracker._events] == [0.5]
+    tracker.reset()
