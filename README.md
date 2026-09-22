@@ -10,7 +10,7 @@
 **An LLM vulnerability-triage agent designed the way an AI Solutions Architect would build it and an AI Security Engineer would attack it.** Built on Pydantic AI + a custom Model Context Protocol (MCP) server, behind a Next.js frontend.
 
 - **Grounded** - every answer is built from live authoritative feeds (NVD, CISA KEV, FIRST EPSS, OSV.dev, Exploit-DB) through ten typed MCP tools, into a schema-bounded `TriageReport`.
-- **Deterministic where it matters** - the prioritization verdict (SSVC) is computed server-side from the collected signals and stamped onto the report, never LLM-guessed.
+- **Deterministic where it matters** - the prioritization verdict (SSVC) is computed server-side from the signals the tools returned, read from the run's own trajectory rather than from the fields the model wrote, and stamped onto the report with its evidence basis, never LLM-guessed.
 - **Verified, not just instructed** - after every run a server-side verifier re-checks each tool-derived claim in the report against what the tools actually returned.
 - **Adversary-aware** - the untrusted-data boundary is a first-class design concern, exercised by a falsifiable 18-payload red-team battery and sealed into a hash-chained audit trail.
 
@@ -46,7 +46,7 @@ Three processes, one trust design: the browser only ever sees `:3000` (no CORS o
 
 ## The verdict is deterministic
 
-Prioritization follows SSVC (Stakeholder-Specific Vulnerability Categorization, CISA's decision framework), a four-step urgency ladder: **Act / Attend / Track\* / Track**, where Track\* is Track with closer monitoring. The verdict is a pure server-side function (`agent/ssvc.py`) of the signals the tools collected - same signals in, same verdict out. The LLM echoes the decision in prose; it cannot change it.
+Prioritization follows SSVC (Stakeholder-Specific Vulnerability Categorization, CISA's decision framework), a four-step urgency ladder: **Act / Attend / Track\* / Track**, where Track\* is Track with closer monitoring. The verdict is a pure server-side function (`agent/ssvc.py`) of the signals read from the tool returns captured in the run's trajectory, not from the fields the model wrote: same tool returns in, same verdict out. Where a signal has no usable tool evidence (a feed the model never called, or one that failed), the verdict falls back to the report for that signal and says so on the record (`basis: mixed`, each fallback named in `unverified_signals`); with no trajectory at all it is stamped `basis: report`. The LLM echoes the decision in prose; it cannot change it, and it cannot pass a verdict on its own word off as one on the tools' word.
 
 ```mermaid
 flowchart TD

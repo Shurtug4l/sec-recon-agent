@@ -143,21 +143,39 @@ A schema bounds the shape of the output, not its content: a fully persuaded
 model can still choose a wrong-but-valid severity. So the highest-stakes call in
 the report, the SSVC remediation verdict, was removed from the model entirely.
 `agent/ssvc.py` computes it server-side, in code, from the signals the tools
-actually collected: KEV membership, ransomware association, public exploit
-availability, EPSS probability and percentile, CVSS severity. The API stamps the
-result onto the report after the run; the model echoes the verdict, it does not
-decide it. Every verdict carries the rule that fired and the driving CVE, so the
-decision is auditable rather than oracular.
+actually returned: KEV membership, ransomware association, public exploit
+availability, EPSS probability and percentile, CVSS severity, each read from the
+typed tool returns captured in the run's trajectory (the same evidence index the
+grounding verifier uses), never from the fields the model wrote. The API stamps
+the result onto the report after the run; the model echoes the verdict, it does
+not decide it. Every verdict carries the rule that fired, the driving CVE, and
+its `basis`: `evidence` when every signal came from a tool return, `mixed` when
+a signal had no usable evidence and was taken from the report (each one named in
+`unverified_signals`), `report` when no trajectory was available at all. A
+verdict on the model's word is never presented as one on the tools' word.
 
 This changes the attacker's problem qualitatively. An injection that fully
 persuades the model cannot move `Act` to `Track`, because the model does not
-hold that pen. To corrupt the verdict, an attacker has to corrupt the typed tool
-results themselves (compromise a feed, forge a KEV entry), which is a different
-and much harder attack than talking a language model into something, and one the
-host-locked, size-capped tool clients are built against. The same
-authority-outside-the-model pattern is reused wherever a decision matters: the
-SBOM gate computes its per-finding verdicts with the same rule engine, and the
-next layer applies it to factual claims.
+hold that pen: writing `in_kev_catalog: false` into the report changes nothing
+when `kev_check` returned `true`, and talking the model out of calling
+`kev_check` at all yields a verdict stamped `mixed` with `kev` named as
+unverified, not a clean one. To corrupt the verdict, an attacker has to corrupt
+the typed tool results themselves, which is what the host-locked, size-capped
+tool clients are built against (how hard that is varies by feed: KEV and EPSS
+are authoritative catalogs, the public-exploit signal is the softest and is
+worth Attend on its own). The same authority-outside-the-model pattern is reused
+wherever a decision matters: the SBOM gate computes its per-finding verdicts
+with the same rule engine, and the next layer applies it to factual claims.
+
+Honesty note: an earlier revision of this layer fed the rule engine the report's
+own CVE fields. The function was pure and the verdict reproducible, but its
+inputs traversed the model, which is exactly the property an injection exploits.
+The grounding verifier caught inflated claims after the fact, but by its own
+claim policy it does not judge a lookup that was simply skipped, so a suppressed
+`kev_check` left the verdict on the model's word with nothing on the record
+saying so. A self-audit in September 2026 found the gap; the evidence-derived
+inputs and the `basis` stamp described above are the fix. The gate path had been
+evidence-driven from the start; the agent path now is too.
 
 ### Layer 5: claims verified against the trajectory (evidence boundary)
 

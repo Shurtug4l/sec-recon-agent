@@ -42,11 +42,20 @@ export interface AttackTechnique {
 // does not produce it). Ordered most- to least-urgent.
 export type SsvcDecision = "Act" | "Attend" | "Track*" | "Track";
 
+// Where the verdict's signals came from. "evidence": every signal was read
+// from a tool return captured in the run's trajectory. "mixed": at least one
+// signal had no usable tool evidence and was taken from the report as the
+// model wrote it (named in unverified_signals). "report": no trajectory was
+// available, every signal came from the report.
+export type SsvcBasis = "evidence" | "mixed" | "report";
+
 export interface SsvcAssessment {
   decision: SsvcDecision;
   rule: string;          // stable id of the rule that fired (audit / regression)
   rationale: string;     // one-sentence human explanation
   driving_cve: string | null; // the CVE whose signals drove the report-level call
+  basis?: SsvcBasis;     // optional: captures recorded before the field existed
+  unverified_signals?: string[]; // "<CVE-ID>:<kev|exploit|epss|severity>"
 }
 
 // Deterministic post-run grounding verification, computed server-side in

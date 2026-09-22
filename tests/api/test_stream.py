@@ -179,6 +179,8 @@ def test_triage_stamps_ssvc_on_final_report(
     # Fake report has no CVEs -> the deterministic verdict is Track.
     assert payload["ssvc"]["decision"] == "Track"
     assert payload["ssvc"]["rule"] == "no-cves"
+    # An empty-but-present history is a real (tool-less) trajectory.
+    assert payload["ssvc"]["basis"] == "evidence"
 
 
 def test_triage_stamps_grounding_on_final_report(
@@ -333,6 +335,8 @@ def test_triage_grounding_not_evaluated_without_message_history(
     )
     payload = json.loads(final_line[len("data: ") :])
     assert payload["grounding"]["status"] == "not_evaluated"
+    # No trajectory: the verdict rests on the report and says so.
+    assert payload["ssvc"]["basis"] == "report"
 
 
 def test_triage_emits_usage_event(
@@ -974,3 +978,165 @@ async def test_budget_tracker_prunes_outside_window(monkeypatch: MonkeyPatch) ->
     clock["now"] = 1000.0 + 101.0
     assert await tracker.spent_usd() == 0.0
     assert await tracker.would_block() is False
+
+
+def _agent_with_history(report: TriageReport, messages: list[Any]) -> Any:
+    """A fake agent whose run yields `report` and replays `messages` as its history."""
+
+    class _FakeResult:
+        def __init__(self) -> None:
+            self.output = report
+
+        def all_messages(self) -> list[Any]:
+            return list(messages)
+
+    class _FakeRun:
+        def __init__(self) -> None:
+            self.result = _FakeResult()
+
+        def __aiter__(self) -> Any:
+            async def gen() -> Any:
+                yield object()
+
+            return gen()
+
+    class _FakeAgent:
+        @asynccontextmanager
+        async def iter(self, query: str, usage_limits: Any = None) -> Any:
+            del usage_limits
+            yield _FakeRun()
+
+    return _FakeAgent()
+
+
+def _final_payload(body: str, marker: str) -> dict[str, Any]:
+    final_line = next(
+        line for line in body.splitlines() if line.startswith("data: ") and marker in line
+    )
+    return json.loads(final_line[len("data: ") :])  # type: ignore[no-any-return]
+
+
+def _one_cve_report(summary: str, **cve_overrides: Any) -> TriageReport:
+    from sec_recon_agent.agent.schema import CVEReference
+
+    base: dict[str, Any] = {
+        "cve_id": "CVE-2021-41773",
+        "summary": "Apache path traversal.",
+        "severity": Severity.HIGH,
+        "exploits_public": False,
+        "nvd_url": "https://nvd.nist.gov/vuln/detail/CVE-2021-41773",
+    }
+    base.update(cve_overrides)
+    return TriageReport(
+        summary=summary,
+        severity=Severity.HIGH,
+        confidence=Confidence.HIGH,
+        recommended_action="Patch.",
+        cves=[CVEReference(**base)],
+    )
+
+
+def test_triage_ssvc_reads_kev_from_the_tool_return_not_the_report(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """The model downplays KEV (in_kev_catalog=False) while kev_check said True:
+    the stamped verdict must be Act on the tool's word, basis evidence."""
+    from pydantic_ai.messages import (
+        ModelRequest,
+        ModelResponse,
+        ToolCallPart,
+        ToolReturnPart,
+    )
+
+    report = _one_cve_report("KEV downplayed by the model.", in_kev_catalog=False)
+    messages = [
+        ModelResponse(
+            parts=[
+                ToolCallPart(
+                    tool_name="kev_check", args={"cve_id": "CVE-2021-41773"}, tool_call_id="k1"
+                ),
+            ],
+        ),
+        ModelRequest(
+            parts=[
+                ToolReturnPart(
+                    tool_name="kev_check",
+                    content={"cve_id": "CVE-2021-41773", "in_catalog": True},
+                    tool_call_id="k1",
+                ),
+            ],
+        ),
+    ]
+    monkeypatch.setattr(
+        stream_module,
+        "build_agent",
+        lambda model_override=None: _agent_with_history(report, messages),
+    )
+
+    client = TestClient(app)
+    with client.stream("POST", "/v1/triage", json={"query": "test"}) as response:
+        assert response.status_code == 200
+        body = "".join(response.iter_text())
+
+    ssvc = _final_payload(body, "KEV downplayed")["ssvc"]
+    assert ssvc["decision"] == "Act"
+    assert ssvc["rule"] == "kev-active-exploitation"
+    # KEV came from evidence; the three feeds never called are named, not hidden.
+    assert ssvc["basis"] == "mixed"
+    assert "CVE-2021-41773:kev" not in ssvc["unverified_signals"]
+    assert set(ssvc["unverified_signals"]) == {
+        "CVE-2021-41773:exploit",
+        "CVE-2021-41773:epss",
+        "CVE-2021-41773:severity",
+    }
+
+
+def test_triage_ssvc_names_the_feed_the_model_never_called(monkeypatch: MonkeyPatch) -> None:
+    """Suppressing kev_check cannot silently produce an evidence-backed verdict."""
+    from pydantic_ai.messages import (
+        ModelRequest,
+        ModelResponse,
+        ToolCallPart,
+        ToolReturnPart,
+    )
+
+    report = _one_cve_report("KEV lookup suppressed.", in_kev_catalog=False)
+    messages = [
+        ModelResponse(
+            parts=[
+                ToolCallPart(
+                    tool_name="epss_score", args={"cve_id": "CVE-2021-41773"}, tool_call_id="e1"
+                ),
+            ],
+        ),
+        ModelRequest(
+            parts=[
+                ToolReturnPart(
+                    tool_name="epss_score",
+                    content={
+                        "cve_id": "CVE-2021-41773",
+                        "status": "found",
+                        "probability": 0.02,
+                        "percentile": 0.5,
+                    },
+                    tool_call_id="e1",
+                ),
+            ],
+        ),
+    ]
+    monkeypatch.setattr(
+        stream_module,
+        "build_agent",
+        lambda model_override=None: _agent_with_history(report, messages),
+    )
+
+    client = TestClient(app)
+    with client.stream("POST", "/v1/triage", json={"query": "test"}) as response:
+        assert response.status_code == 200
+        body = "".join(response.iter_text())
+
+    ssvc = _final_payload(body, "KEV lookup suppressed")["ssvc"]
+    assert ssvc["basis"] == "mixed"
+    assert "CVE-2021-41773:kev" in ssvc["unverified_signals"]
+    assert "CVE-2021-41773:epss" not in ssvc["unverified_signals"]
+    assert ssvc["rationale"].endswith("not verified against tool returns.")

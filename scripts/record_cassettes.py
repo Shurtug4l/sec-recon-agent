@@ -66,7 +66,7 @@ async def record_case(case: GoldenCase, model_alias: str, surface_hash: str) -> 
     report = result.output
     messages = result.all_messages()
     invocations = extract_tool_invocations(messages)
-    ssvc = assess_ssvc(report.cves)
+    ssvc = assess_ssvc(report.cves, invocations)
     grounding = verify_grounding(report, invocations)
     stamped = report.model_copy(update={"ssvc": ssvc, "grounding": grounding})
     verdict = score(case, stamped)

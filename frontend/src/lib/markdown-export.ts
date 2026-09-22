@@ -103,6 +103,11 @@ function renderSsvc(ssvc: SsvcAssessment): string {
   if (ssvc.driving_cve) {
     lines.push(`- **Driving CVE**: ${ssvc.driving_cve}`);
   }
+  if (ssvc.basis && ssvc.basis !== "evidence") {
+    const unverified = ssvc.unverified_signals ?? [];
+    const suffix = unverified.length > 0 ? ` (unverified: ${unverified.join(", ")})` : "";
+    lines.push(`- **Basis**: ${ssvc.basis}${suffix}`);
+  }
   lines.push("");
   lines.push(ssvc.rationale);
   lines.push("");
