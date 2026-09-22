@@ -206,9 +206,11 @@ def signals_from_evidence(cve: CVEReference, evidence: Evidence) -> DerivedSigna
     with no usable evidence (never called, failed, unparseable) yields the
     report's value plus the signal's name in `unverified`. Where several
     returns exist for the same CVE the most urgent reading wins, consistent
-    with the ladder's most-urgent-first evaluation. Two absences are evidence
-    in their own right and do not fall back: an EPSS `not_found` answer (the
-    CVE is not in the dataset) and a CVE record without a CVSS v3 score.
+    with the ladder's most-urgent-first evaluation. Three absences are
+    evidence in their own right and do not fall back: an EPSS `not_found`
+    answer (the CVE is not in the dataset), a CVE record without a CVSS v3
+    score, and an exploit_check whose sources all answered with nothing
+    accepted (a source in ERROR makes the return inconclusive instead).
     """
     cve_id = cve.cve_id.upper()
     unverified: list[str] = []
@@ -224,9 +226,14 @@ def signals_from_evidence(cve: CVEReference, evidence: Evidence) -> DerivedSigna
         unverified.append(SIGNAL_KEV)
 
     exploit_entries = evidence.exploits.get(cve_id, [])
-    if exploit_entries:
-        exploit_public = any(e.has_public_exploit for e in exploit_entries)
+    if any(e.has_public_exploit for e in exploit_entries):
+        exploit_public = True
+    elif any(e.arms_conclusive() for e in exploit_entries):
+        # Both sources answered (or one was skipped by configuration) and
+        # nothing was accepted: an evidence-backed absence.
+        exploit_public = False
     else:
+        # Never called, or every return has a source in ERROR: unknown.
         exploit_public = cve.exploits_public
         unverified.append(SIGNAL_EXPLOIT)
 

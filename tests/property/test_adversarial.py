@@ -218,14 +218,24 @@ def isolated_exploitdb_state(monkeypatch, tmp_path) -> None:
 
 
 @respx.mock
-async def test_exploitdb_oversized_response_aborts() -> None:
+async def test_exploitdb_oversized_response_aborts(tmp_path) -> None:
     """An ExploitDB response above EXPLOITDB_MAX_BYTES must abort the
-    download (streaming check), not buffer the whole thing into memory."""
+    download (streaming check), not buffer the whole thing into memory. The
+    tool itself no longer raises for one failing source: it reports the
+    Exploit-DB arm as errored, so the False is read as unknown downstream."""
+    from sec_recon_agent.mcp_server.models import ExploitArmStatus
+    from sec_recon_agent.mcp_server.tools.exploits import _download_exploitdb_csv
+
     huge = b"x" * (EXPLOITDB_MAX_BYTES + 4096)
     respx.get(EXPLOITDB_CSV_URL).mock(return_value=Response(200, content=huge))
 
     with pytest.raises(ExploitDbDownloadError, match="exceeded"):
-        await exploit_check("CVE-2021-41773")
+        await _download_exploitdb_csv(tmp_path / "exploitdb.csv")
+
+    result = await exploit_check("CVE-2021-41773")
+    assert result.exploit_db is ExploitArmStatus.ERROR
+    assert result.has_public_exploit is False
+    assert not result.arms_conclusive()
 
 
 def test_nmap_caps_huge_hostname_list() -> None:

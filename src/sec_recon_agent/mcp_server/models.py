@@ -75,13 +75,52 @@ class CVEDetail(BaseModel):
     )
 
 
+class ExploitArmStatus(StrEnum):
+    """Coverage status of one exploit_check source, so a False signal is never
+    ambiguous between "looked, nothing there" and "could not look".
+
+    FOUND: the source has at least one accepted hit for the CVE.
+    NOT_FOUND: the source was consulted successfully and has nothing accepted.
+    ERROR: the source could not be consulted or could not be concluded on
+        (download failure, rate limit, unusable response, repository
+        metadata unavailable for every candidate).
+    SKIPPED: the source was not consulted by configuration (GitHub without
+        GITHUB_TOKEN). A conclusive "did not look", not a failure.
+    """
+
+    FOUND = "found"
+    NOT_FOUND = "not_found"
+    ERROR = "error"
+    SKIPPED = "skipped"
+
+
 class ExploitCheck(BaseModel):
-    """Result of exploit-availability lookup."""
+    """Result of exploit-availability lookup, with per-source status.
+
+    `has_public_exploit` is True when either source has an accepted hit. The
+    per-arm statuses say what that False rests on: a False with an arm in
+    ERROR is "unknown", not "no exploit", and downstream consumers (the SSVC
+    verdict, the grounding verifier, the gate's coverage) treat it as such.
+
+    `github_poc_urls` are REPOSITORY URLs (https://github.com/owner/repo),
+    never file URLs: a file path is attacker-chosen free text and would reach
+    the model unfenced inside a validated URL. A GitHub hit is accepted only
+    when the repository is established (a minimum star count or age), so a
+    throwaway repository named after the CVE cannot flip the signal;
+    candidates that failed that bar are counted in `github_unverified_hits`.
+    """
 
     cve_id: CveIdStr
     has_public_exploit: bool
-    exploit_db_ids: list[str] = Field(default_factory=list)
+    exploit_db: ExploitArmStatus
+    github: ExploitArmStatus
+    exploit_db_ids: list[str] = Field(default_factory=list, max_length=20)
     github_poc_urls: list[HttpUrl] = Field(default_factory=list, max_length=10)
+    github_unverified_hits: int = Field(default=0, ge=0)
+
+    def arms_conclusive(self) -> bool:
+        """True when no source is in ERROR: a False signal is then evidence."""
+        return ExploitArmStatus.ERROR not in (self.exploit_db, self.github)
 
 
 class KevCheck(BaseModel):

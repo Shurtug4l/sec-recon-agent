@@ -49,7 +49,7 @@ should confirm.
 |---|---|---|---|---|
 | `cve_lookup` | NVD (shared rate-limited client) | `references` marked UNTRUSTED (docstring + Field + prompt); description is data | `CveIdStr` regex-bounded | none (read) |
 | `cve_semantic_search` | none at query (local ChromaDB) | `summary` fenced via `fence_untrusted` | query truncated (`MAX_QUERY_CHARS`), `top_k` clamped, offloaded to a thread | none (read) |
-| `exploit_check` | Exploit-DB (`gitlab.com`, host-locked) + optional GitHub Code Search | PoC URLs bound to `HttpUrl`, capped | host-lock on redirect (`EXPLOITDB_TRUSTED_HOST`), cached manifest | local cache write only |
+| `exploit_check` | Exploit-DB (`gitlab.com`, host-locked) + optional GitHub Code Search + GitHub repository metadata (`api.github.com`) | per-source status (`found` / `not_found` / `error` / `skipped`); GitHub hits as repository URLs only, from established repositories (5 stars or 30 days), bound to `HttpUrl`, capped; unverified candidates counted | host-lock on redirect (`EXPLOITDB_TRUSTED_HOST`), cached manifest, arms settle independently | local cache write only |
 | `kev_check` | CISA (`cisa.gov`, host-locked) | `vulnerability_name` / `required_action` / `notes` fenced, `max_length` includes marker overhead | host-lock on redirect (`KEV_TRUSTED_HOST`), 24h disk cache | local cache write only |
 | `epss_score` | FIRST.org (`api.first.org`, host-locked) | no free text (numeric + status enum) | host-lock, 4 MB response cap, typed errors | none (read) |
 | `patch_lookup` | NVD (shared client) | `references` marked UNTRUSTED | `CveIdStr` bounded, fixed-entries capped | none (read) |

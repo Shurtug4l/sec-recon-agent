@@ -76,9 +76,16 @@ def _epss(
     )
 
 
-def _exploit(*, has: bool = False, cve_id: str = CVE) -> ToolInvocation:
+def _exploit(*, has: bool = False, cve_id: str = CVE, github: str = "skipped") -> ToolInvocation:
     return _invocation(
-        "exploit_check", {"cve_id": cve_id, "has_public_exploit": has}, cve_id=cve_id
+        "exploit_check",
+        {
+            "cve_id": cve_id,
+            "has_public_exploit": has,
+            "exploit_db": "found" if has else "not_found",
+            "github": github,
+        },
+        cve_id=cve_id,
     )
 
 
@@ -279,3 +286,32 @@ def test_gate_path_declares_its_basis() -> None:
     assert assessment.basis is SsvcBasis.EVIDENCE
     assert assessment.unverified_signals == []
     assert "taken from the report" not in assessment.rationale
+
+
+def test_exploit_arm_in_error_is_not_evidence_of_absence() -> None:
+    """exploit_check answered, but one source errored and nothing was accepted:
+    the exploit signal is unknown, so the report's value is used and named."""
+    trajectory = [_detail(score=5.0), _kev(in_catalog=False), _epss(), _exploit(github="error")]
+    assessment = assess_ssvc([_cve(exploits_public=True)], trajectory)
+    assert assessment.rule == "public-exploit"
+    assert assessment.basis is SsvcBasis.MIXED
+    assert assessment.unverified_signals == [f"{CVE}:exploit"]
+
+
+def test_exploit_arm_skipped_by_configuration_is_conclusive() -> None:
+    trajectory = [_detail(score=5.0), _kev(in_catalog=False), _epss(), _exploit(github="skipped")]
+    assessment = assess_ssvc([_cve(exploits_public=True)], trajectory)
+    assert assessment.rule == "baseline"
+    assert assessment.basis is SsvcBasis.EVIDENCE
+
+
+def test_exploit_found_on_one_arm_wins_even_if_the_other_errored() -> None:
+    trajectory = [
+        _detail(score=5.0),
+        _kev(in_catalog=False),
+        _epss(),
+        _exploit(has=True, github="error"),
+    ]
+    assessment = assess_ssvc([_cve(exploits_public=False)], trajectory)
+    assert assessment.rule == "public-exploit"
+    assert assessment.basis is SsvcBasis.EVIDENCE

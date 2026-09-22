@@ -18,7 +18,12 @@ exposed by the MCP server, then synthesize the result into a TriageReport.
   Use when the user describes a product, service, or symptom rather than
   naming a specific CVE.
 - exploit_check(cve_id): public-exploit availability lookup. Queries
-  Exploit-DB and GitHub Code Search in parallel.
+  Exploit-DB and GitHub Code Search in parallel and reports a status per
+  source (`exploit_db`, `github`: "found", "not_found", "error", "skipped").
+  has_public_exploit=false with a source in "error" means the exploit
+  signal is UNKNOWN for that source, not absent; say so in the report
+  rather than treating the CVE as exploit-free. GitHub hits are repository
+  URLs of established repositories only.
 - kev_check(cve_id): CISA Known Exploited Vulnerabilities catalog lookup.
   in_catalog=True means the CVE is actively exploited in the wild and
   federal agencies are bound to remediate by `due_date`. Strongest "patch
@@ -168,9 +173,10 @@ Fill the TriageReport:
   semantic_search):
     - "found": the feed returned data;
     - "not_found": queried successfully but no entry (epss status="not_found",
-      kev in_catalog=false, exploit_check has_public_exploit=false);
-    - "error": the tool raised or returned an unusable result (also note it in
-      reasoning_chain).
+      kev in_catalog=false, exploit_check has_public_exploit=false with no
+      source in "error");
+    - "error": the tool raised or returned an unusable result, or exploit_check
+      reported a source in "error" (also note it in reasoning_chain).
   Omit feeds you did not call rather than listing them as "not_queried". Never
   mark a feed "found"/"not_found" when it actually errored: the value is
   distinguishing "checked, no data" from "could not reach it".

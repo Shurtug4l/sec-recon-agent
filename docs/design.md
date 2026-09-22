@@ -350,7 +350,7 @@ Environment variables of note (full list in `.env.example`):
 |---|---|---|
 | `ANTHROPIC_API_KEY` | yes | Pydantic AI's Anthropic provider reads this from env |
 | `NVD_API_KEY` | no | Raises NVD rate limit from 5 to 50 req / 30 s |
-| `GITHUB_TOKEN` | no | Enables GitHub Code Search in `exploit_check`; without it the GitHub side returns `[]` |
+| `GITHUB_TOKEN` | no | Enables the GitHub arm of `exploit_check` (code search plus repository metadata); without it the arm reports `skipped` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | no | Switch from console exporter to OTLP/HTTP (e.g. `http://jaeger:4318`) |
 | `LLM_MODEL` | no | Default `claude-haiku-4-5-20251001` (cheapest tier, sufficient for tool calling + structured output). Override to `claude-sonnet-4-6` for richer prose or `claude-opus-4-7` for strongest reasoning at higher cost. |
 | `CHROMA_PERSIST_DIR` | no | Default `./data/cve_index`; on disk |
