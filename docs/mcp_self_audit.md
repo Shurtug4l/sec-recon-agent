@@ -36,8 +36,18 @@ should confirm.
 - **Side effects**: every tool is **read-only** with respect to the caller.
   There is no tool that writes to a user-controlled path, sends a message,
   executes a command, or mutates external state. The only writes are local,
-  server-owned disk caches (KEV / Exploit-DB manifests) to fixed paths. This is
-  the LLM08 posture: minimal agency by construction.
+  server-owned state at fixed paths (KEV / Exploit-DB manifests, the Chroma
+  index directory). This is the LLM08 posture: minimal agency by construction.
+  The declarations behind the table below are checked; the table itself is
+  not. Each tool's egress hosts and server-state writes are declared in
+  `mcp_server/effects.py`; tests (`tests/mcp_server/test_effects.py`) pin that
+  declaration to the served tool set, to each feed URL and `*_TRUSTED_HOST`,
+  and to the egress-proxy allowlist, and assert that no tool mutates external
+  state. The advertised MCP annotations (`readOnlyHint`, `destructiveHint`,
+  `idempotentHint`, `openWorldHint`) are derived from it, and a tool without
+  an entry fails registration. Whether a declaration is true remains a review
+  property: a new outbound call inside a tool is caught in review, not by a
+  test.
 - **Untrusted content**: free-text fields lifted from third parties are wrapped
   in `<UNTRUSTED_CONTENT id="...">` markers carrying a per-process random id
   (`security.py::fence_untrusted`), marker-shaped tokens inside the payload are
@@ -49,7 +59,7 @@ should confirm.
 | Tool | Network egress | Untrusted free-text handling | Input caps / hardening | Side effects |
 |---|---|---|---|---|
 | `cve_lookup` | NVD (shared rate-limited client) | `references` marked UNTRUSTED (docstring + Field + prompt); description is data | `CveIdStr` regex-bounded | none (read) |
-| `cve_semantic_search` | none at query (local ChromaDB) | `summary` fenced via `fence_untrusted` | query truncated (`MAX_QUERY_CHARS`), `top_k` clamped, offloaded to a thread | none (read) |
+| `cve_semantic_search` | none at query (local ChromaDB) | `summary` fenced via `fence_untrusted` | query truncated (`MAX_QUERY_CHARS`), `top_k` clamped, offloaded to a thread | local index write only (a cold volume creates the Chroma collection) |
 | `exploit_check` | Exploit-DB (`gitlab.com`, host-locked) + optional GitHub Code Search + GitHub repository metadata (`api.github.com`) | per-source status (`found` / `not_found` / `error` / `skipped`); GitHub hits as repository URLs only, from established repositories (5 stars or 30 days), bound to `HttpUrl`, capped; unverified candidates counted | host-lock on redirect (`EXPLOITDB_TRUSTED_HOST`), cached manifest, arms settle independently | local cache write only |
 | `kev_check` | CISA (`cisa.gov`, host-locked) | `vulnerability_name` / `required_action` / `notes` fenced, `max_length` includes marker overhead | host-lock on redirect (`KEV_TRUSTED_HOST`), 24h disk cache | local cache write only |
 | `epss_score` | FIRST.org (`api.first.org`, host-locked) | no free text (numeric + status enum) | host-lock, 4 MB response cap, typed errors | none (read) |

@@ -17,6 +17,7 @@ from defusedxml import ElementTree as ET  # noqa: N817  # ET is the conventional
 from defusedxml.common import DefusedXmlException
 from pydantic import Field
 
+from sec_recon_agent.mcp_server.effects import declared_tool
 from sec_recon_agent.mcp_server.errors import MalformedNmapXmlError
 from sec_recon_agent.mcp_server.models import (
     NMAP_BANNER_CHARS,
@@ -28,7 +29,6 @@ from sec_recon_agent.mcp_server.models import (
     NmapScanResult,
 )
 from sec_recon_agent.mcp_server.security import fence_untrusted
-from sec_recon_agent.mcp_server.server import mcp
 from sec_recon_agent.observability import get_tracer
 
 log = structlog.get_logger()
@@ -108,7 +108,7 @@ def _parse_host(host_el: XmlElement) -> NmapHost | None:
     return NmapHost(ip=ip[:NMAP_NAME_CHARS], hostnames=hostnames, ports=ports)
 
 
-@mcp.tool()
+@declared_tool()
 def nmap_parse_xml(xml_content: NmapXmlStr) -> NmapScanResult:
     """Parse Nmap XML output into a typed scan result.
 
