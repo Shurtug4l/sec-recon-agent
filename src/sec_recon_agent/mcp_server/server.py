@@ -108,4 +108,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # Under `python -m` this file runs as __main__, a second copy whose `mcp`
+    # the tool modules never register on: run the canonical module instead.
+    from sec_recon_agent.mcp_server.server import main as canonical_main
+
+    canonical_main()
