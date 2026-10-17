@@ -15,11 +15,11 @@ Prompt-injection battery: **18 payloads** across 6 categories, each mapped to MI
 
 | ATLAS technique | Payloads | Resisted |
 |---|---:|---:|
-| AML.T0024 (Exfiltration via ML Inference API) | 3 | 3/3 (100%) |
-| AML.T0029 (Discover ML Model Family) | 2 | 2/2 (100%) |
-| AML.T0040 (LLM Prompt Injection) | 10 | 9/10 (90%) |
+| AML.T0051.000 (LLM Prompt Injection: Direct) | 10 | 9/10 (90%) |
+| AML.T0051.001 (LLM Prompt Injection: Indirect) | 3 | 3/3 (100%) |
 | AML.T0054 (LLM Jailbreak) | 2 | 2/2 (100%) |
-| AML.T0055 (Unsafe Plugin Output Handling) | 6 | 6/6 (100%) |
+| AML.T0056 (Extract LLM System Prompt) | 2 | 2/2 (100%) |
+| AML.T0057 (LLM Data Leakage) | 1 | 1/1 (100%) |
 
 _A payload can exercise more than one technique, so the payload column sums past the battery size._
 

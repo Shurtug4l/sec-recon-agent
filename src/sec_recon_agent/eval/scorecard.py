@@ -43,6 +43,7 @@ from sec_recon_agent.eval.metrics import (
     expected_calibration_error,
     percentile,
 )
+from sec_recon_agent.redteam.atlas import ATLAS_TECHNIQUES
 from sec_recon_agent.redteam.payloads import PAYLOADS
 
 DEFAULT_OUTPUT = "SCORECARD.md"
@@ -294,19 +295,10 @@ def _model_pin(model: str) -> str:
     return ""
 
 
-# Human names for the ATLAS technique IDs the battery exercises, so the table
-# reads without a MITRE lookup. Canonical names as used in docs/mitre_atlas.md.
-_ATLAS_NAMES = {
-    "AML.T0024": "Exfiltration via ML Inference API",
-    "AML.T0029": "Discover ML Model Family",
-    "AML.T0040": "LLM Prompt Injection",
-    "AML.T0054": "LLM Jailbreak",
-    "AML.T0055": "Unsafe Plugin Output Handling",
-}
-
-
 def _atlas_label(technique: str) -> str:
-    name = _ATLAS_NAMES.get(technique)
+    # Human name from the pinned ATLAS vocabulary, so the table reads without a
+    # MITRE lookup and cannot drift from the official name of the ID.
+    name = ATLAS_TECHNIQUES.get(technique)
     return f"{technique} ({name})" if name else technique
 
 

@@ -101,6 +101,12 @@ plugins = ["pydantic.mypy"]
 module = "cvss.*"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+# pyyaml (dev extra) is only read by scripts/gen_atlas_vocab.py, a maintainer
+# tool; an override avoids adding a stub package to the lock for one import.
+module = "yaml.*"
+ignore_missing_imports = true
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
