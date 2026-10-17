@@ -126,7 +126,7 @@ def _parse_cyclonedx(payload: dict[str, Any]) -> list[SbomComponent]:
         out.append(
             SbomComponent(
                 name=name.strip()[:200],
-                version=(version.strip()[:100] if version else None),
+                version=((version.strip()[:100] or None) if version else None),
                 ecosystem=_ecosystem_from_purl(purl),
                 purl=(purl[:500] if purl else None),
             ),
@@ -156,7 +156,7 @@ def _parse_spdx(payload: dict[str, Any]) -> list[SbomComponent]:
         out.append(
             SbomComponent(
                 name=name.strip()[:200],
-                version=(version.strip()[:100] if version else None),
+                version=((version.strip()[:100] or None) if version else None),
                 ecosystem=_ecosystem_from_purl(purl),
                 purl=(purl[:500] if purl else None),
             ),
