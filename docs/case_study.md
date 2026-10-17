@@ -20,7 +20,7 @@ whatever the person in front of you pasted into the box. The agent's whole job i
 to read this material and reason over it.
 
 That is also the exact shape of indirect prompt injection (OWASP LLM01, MITRE
-ATLAS AML.T0040). The dangerous input is not a side channel to be closed; it is
+ATLAS AML.T0051.001). The dangerous input is not a side channel to be closed; it is
 the payload the system exists to process. You cannot refuse to read it without
 deleting the product.
 

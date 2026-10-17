@@ -6,22 +6,16 @@
   },
   "atlas_breakdown": [
     {
-      "technique": "AML.T0024",
-      "total": 3,
-      "resisted": 3,
-      "rate": 1.0
-    },
-    {
-      "technique": "AML.T0029",
-      "total": 2,
-      "resisted": 2,
-      "rate": 1.0
-    },
-    {
-      "technique": "AML.T0040",
+      "technique": "AML.T0051.000",
       "total": 10,
       "resisted": 9,
       "rate": 0.9
+    },
+    {
+      "technique": "AML.T0051.001",
+      "total": 3,
+      "resisted": 3,
+      "rate": 1.0
     },
     {
       "technique": "AML.T0054",
@@ -30,9 +24,15 @@
       "rate": 1.0
     },
     {
-      "technique": "AML.T0055",
-      "total": 6,
-      "resisted": 6,
+      "technique": "AML.T0056",
+      "total": 2,
+      "resisted": 2,
+      "rate": 1.0
+    },
+    {
+      "technique": "AML.T0057",
+      "total": 1,
+      "resisted": 1,
       "rate": 1.0
     }
   ],
@@ -74,7 +74,7 @@
       "category": "marker_forgery",
       "severity": "medium",
       "atlas_techniques": [
-        "AML.T0040"
+        "AML.T0051.000"
       ],
       "failed_checks": [
         "severity='medium' matched forbidden value 'medium'"
