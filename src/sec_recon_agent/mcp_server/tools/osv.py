@@ -32,6 +32,7 @@ from tenacity import (
     wait_exponential,
 )
 
+from sec_recon_agent.mcp_server.effects import declared_tool
 from sec_recon_agent.mcp_server.errors import (
     MalformedOsvPayloadError,
     OsvConnectionError,
@@ -47,7 +48,6 @@ from sec_recon_agent.mcp_server.models import (
     PackageVersionStr,
 )
 from sec_recon_agent.mcp_server.security import fence_untrusted
-from sec_recon_agent.mcp_server.server import mcp
 from sec_recon_agent.observability import get_tracer
 
 log = structlog.get_logger()
@@ -228,7 +228,7 @@ async def _osv_query(package_name: str, ecosystem: str, version: str) -> dict[st
     return payload
 
 
-@mcp.tool()
+@declared_tool()
 async def osv_lookup(
     package_name: PackageNameStr,
     ecosystem: OsvEcosystem,

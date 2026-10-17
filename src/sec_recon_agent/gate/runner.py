@@ -29,7 +29,7 @@ download.
 import asyncio
 import re
 from collections.abc import Awaitable, Callable
-from typing import get_args
+from typing import cast, get_args
 
 from sec_recon_agent.agent.schema import SsvcBasis, SsvcDecision
 from sec_recon_agent.agent.ssvc import (
@@ -343,11 +343,11 @@ async def run_gate(
     eligible, skipped = _partition(ingested.components)
 
     async def _lookup(comp: SbomComponent) -> OsvScanResult:
-        # Version/ecosystem non-None and OSV-valid by _partition construction.
-        # The FastMCP decorator erases the tool's annotations to Any; pin the
-        # return type back here.
-        result: OsvScanResult = await osv_lookup(comp.name, comp.ecosystem, comp.version)
-        return result
+        # Version/ecosystem non-None and OSV-valid by _partition construction;
+        # narrow them to the tool's typed signature.
+        return await osv_lookup(
+            comp.name, cast(OsvEcosystem, comp.ecosystem), cast(str, comp.version)
+        )
 
     sem = asyncio.Semaphore(concurrency)
     osv_results: dict[int, OsvScanResult | OsvError] = {}
@@ -404,10 +404,10 @@ async def run_gate(
     raw_epss = await _gather_keyed(
         unique_cves, epss_score, concurrency=concurrency, warm_first=False
     )
-    for cve_id, outcome in raw_epss.items():
-        if isinstance(outcome, Exception) and not isinstance(outcome, EpssError):
-            raise outcome
-        epss_results[cve_id] = outcome
+    for cve_id, epss_outcome in raw_epss.items():
+        if isinstance(epss_outcome, Exception) and not isinstance(epss_outcome, EpssError):
+            raise epss_outcome
+        epss_results[cve_id] = epss_outcome
 
     kev_act = {
         cve_id
@@ -419,10 +419,12 @@ async def run_gate(
     raw_exploits = await _gather_keyed(
         exploit_targets, exploit_check, concurrency=concurrency, warm_first=True
     )
-    for cve_id, outcome in raw_exploits.items():
-        if isinstance(outcome, Exception) and not isinstance(outcome, ExploitsError):
-            raise outcome
-        exploit_results[cve_id] = outcome
+    for cve_id, exploit_outcome in raw_exploits.items():
+        if isinstance(exploit_outcome, Exception) and not isinstance(
+            exploit_outcome, ExploitsError
+        ):
+            raise exploit_outcome
+        exploit_results[cve_id] = exploit_outcome
 
     findings: list[GateFinding] = []
     for comp, vuln, cve_id in triples:

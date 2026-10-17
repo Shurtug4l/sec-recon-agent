@@ -23,6 +23,7 @@ from typing import Annotated, Any
 import structlog
 from pydantic import Field
 
+from sec_recon_agent.mcp_server.effects import declared_tool
 from sec_recon_agent.mcp_server.errors import (
     MalformedSbomPayloadError,
     UnsupportedSbomFormatError,
@@ -31,7 +32,6 @@ from sec_recon_agent.mcp_server.models import (
     SbomComponent,
     SbomComponentList,
 )
-from sec_recon_agent.mcp_server.server import mcp
 from sec_recon_agent.observability import get_tracer
 
 log = structlog.get_logger()
@@ -199,7 +199,7 @@ def _dedupe(components: list[SbomComponent]) -> list[SbomComponent]:
     return out
 
 
-@mcp.tool()
+@declared_tool()
 def sbom_ingest(
     content: Annotated[
         str,

@@ -1,8 +1,10 @@
 """MCP server entry point.
 
-This module owns the FastMCP instance. Tool modules import `mcp` from here
-and register handlers via @mcp.tool. main() triggers tool registration via
-side-effect imports, then starts the SSE HTTP transport.
+This module owns the FastMCP instance. Tool modules register through
+`effects.declared_tool`, which wraps `mcp.tool` with annotations derived from
+TOOL_EFFECTS. main() triggers tool registration via side-effect imports, then
+starts the SSE HTTP transport. Never import effects or tools at this module's
+top level: effects imports `mcp` from here.
 
 When `MCP_AUTH_TOKEN` is set, the SSE ASGI app is wrapped in a bearer-token
 gate before being served by uvicorn. When unset, the server runs open
@@ -47,7 +49,7 @@ mcp = FastMCP(
 
 
 def _register_tools() -> None:
-    """Side-effect imports so tool modules execute their @mcp.tool decorators."""
+    """Side-effect imports so tool modules execute their @declared_tool decorators."""
     from sec_recon_agent.mcp_server.tools import (
         attack,  # noqa: F401
         cve,  # noqa: F401

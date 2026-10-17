@@ -20,6 +20,7 @@ import httpx
 import structlog
 
 from sec_recon_agent.config import settings
+from sec_recon_agent.mcp_server.effects import declared_tool
 from sec_recon_agent.mcp_server.errors import (
     KevDownloadError,
     MalformedKevPayloadError,
@@ -32,7 +33,6 @@ from sec_recon_agent.mcp_server.models import (
     KevCheck,
 )
 from sec_recon_agent.mcp_server.security import fence_untrusted
-from sec_recon_agent.mcp_server.server import mcp
 from sec_recon_agent.observability import get_tracer
 
 log = structlog.get_logger()
@@ -167,7 +167,7 @@ def _coerce_ransomware_flag(value: Any) -> bool | None:
     return None
 
 
-@mcp.tool()
+@declared_tool()
 async def kev_check(cve_id: CveIdStr) -> KevCheck:
     """Check whether a CVE is on the CISA Known Exploited Vulnerabilities catalog.
 
