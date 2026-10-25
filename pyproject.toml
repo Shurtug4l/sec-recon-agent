@@ -32,7 +32,9 @@ dependencies = [
     # construction. The `<2` cap is the within-major pinning decision made
     # explicit: lock, tests and cassettes are all built on 1.x, upstream is at
     # 2.46, and without the cap an unlocked install ran 2.x for weeks unnoticed.
-    "pydantic-ai-slim[anthropic,mcp]>=1.107.6,<2",
+    # Floor at 1.107.7: earlier 1.x releases are affected by the nested-HTML
+    # resource exhaustion in local web fetching (CVE-2026-107287).
+    "pydantic-ai-slim[anthropic,mcp]>=1.107.7,<2",
     # The old >=2.6.0 floor spanned the 2.12.0-2.14.1 window affected by
     # CVE-2026-58203 (NestedSecretsSettingsSource follows symlinks out of the
     # secrets dir). Floor moved to the fixed release, where the lock already sat.
@@ -41,7 +43,9 @@ dependencies = [
     # written against the 1.x API. Without the cap any unlocked install (the
     # gate action before it read uv.lock, a plain `pip install`) resolves 2.x
     # and dies at import. Lift it with the 2.x migration, not before.
-    "mcp>=1.28.1,<2",
+    # Floor at 1.30.0: earlier releases accumulate StreamableHTTP sessions
+    # without bound (CVE-2026-59951).
+    "mcp>=1.30.0,<2",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "httpx>=0.27.0",
