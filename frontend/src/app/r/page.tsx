@@ -86,21 +86,6 @@ export default function SharedReportPage() {
                 </Link>
               </Button>
             </div>
-            {/* Anyone can mint a permalink with any content, so the page says
-                so before the report renders: verdict and grounding are shown
-                as claims (TriageReportView shared mode), not as checks. */}
-            <div
-              role="note"
-              className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm"
-            >
-              <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
-              <p className="leading-relaxed">
-                <span className="font-medium">Unverified content.</span> Everything below
-                comes from the link itself. Anyone can write one, and this site did not
-                produce or check it: the SSVC verdict and the grounding badge are claims.
-                Run the triage yourself for a result this deployment computed.
-              </p>
-            </div>
             {shared.query && (
               <div className="rounded-lg border border-border bg-card/50 p-3">
                 <div className="mb-1 flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -120,6 +105,9 @@ export default function SharedReportPage() {
                 </p>
               </div>
             )}
+            {/* Anyone can mint a permalink with any content: shared mode opens
+                the report with an "unverified" note (kept in print) and shows
+                the verdict and grounding as claims, not as checks. */}
             <TriageReportView report={shared.report} query={shared.query} shared />
           </div>
         )}

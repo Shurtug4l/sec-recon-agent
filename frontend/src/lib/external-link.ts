@@ -9,7 +9,10 @@ export function allowedHref(url: string | null | undefined): string | null {
   if (!url) return null;
   try {
     const parsed = new URL(url);
-    return parsed.protocol === "https:" && ALLOWED_HOSTS.has(parsed.hostname)
+    // No userinfo and no explicit port: neither belongs in a reference link,
+    // and userinfo is a classic way to make an href read as another host.
+    const plain = !parsed.username && !parsed.password && parsed.port === "";
+    return parsed.protocol === "https:" && plain && ALLOWED_HOSTS.has(parsed.hostname)
       ? parsed.href
       : null;
   } catch {
