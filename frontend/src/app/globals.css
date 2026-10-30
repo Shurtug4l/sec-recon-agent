@@ -409,8 +409,11 @@
   border: 0;
   border-top: 1px solid hsl(var(--border));
 }
-/* Inline code: quiet tint, monospace, does not wrap mid-token in tables. */
+/* Inline code: quiet tint, monospace, does not wrap mid-token in tables.
+ * break-word, not anywhere: it splits a token only when the token would overflow
+ * its line, and leaves min-content alone, so table columns keep their width. */
 .docs-prose :not(pre) > code {
+  overflow-wrap: break-word;
   font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 0.85em;
   padding: 0.1em 0.35em;

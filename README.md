@@ -229,7 +229,7 @@ Every HIGH finding from an independent security review is mapped to the code cha
 - **XXE-safe XML parsing** - `defusedxml` with explicit `forbid_dtd=True`, tested against classic, external-DTD, parameter-entity, and billion-laughs payloads.
 - **Bounded resource consumption** - every input crossing the MCP boundary is double-capped (schema `max_length` + runtime pre-flight); outbound feeds are host-locked with size caps and post-redirect host checks.
 - **Error-payload allowlist** - the SSE `error` event surfaces a generic message unless the exception type is explicitly allowlisted; internal messages never leak to the client.
-- **Container hardening** - non-root users, `read_only: true` rootfs, `no-new-privileges`, ports bound to `127.0.0.1`, `tmpfs:/tmp`.
+- **Container hardening** - non-root users in the project images, `no-new-privileges` on every service, ports bound to `127.0.0.1`; `mcp-server`, `agent-api` and the egress proxy also run a `read_only: true` rootfs with `tmpfs:/tmp`. The `frontend` container does not, yet.
 - **Trivy in CI** - both images scanned on dependency changes plus a weekly cron; CRITICAL findings fail the scan, HIGH findings land as SARIF in the Security tab. Open findings are triaged with accept rationale in [docs/security_findings.md](docs/security_findings.md).
 - **SBOM gate in CI** - the repository's own dependency tree is scanned by the deterministic gate on dependency changes plus a weekly cron; an Act-grade advisory fails the run.
 - **Opt-in API auth and per-IP rate limiting**; the MCP port takes a bearer token whenever it is published beyond the compose network - setup in [docs/running.md](docs/running.md).
