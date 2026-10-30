@@ -106,7 +106,7 @@ const REPORT_ACTIONS: PaletteCommand[] = [
     visible: hasReport,
     run: async ({ report, query }) => {
       if (!report) return;
-      // buildPermalink returns null for oversized reports; without a toast
+      // buildPermalink returns null for reports it cannot share; without a toast
       // surface the palette stays silent, same accepted tradeoff as closing
       // before the clipboard write resolves.
       const url = await buildPermalink(report, window.location.origin, query);
