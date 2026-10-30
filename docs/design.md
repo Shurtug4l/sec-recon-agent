@@ -17,24 +17,51 @@ Built as a portfolio piece, not a production deployment. The design choices are 
 
 ## System architecture
 
+The compose topology. Solid edges run on every `make up`; dashed edges belong to an opt-in profile or override. Which tool reaches which host is in [`tools.md`](tools.md#tool-surface).
+
 ```mermaid
-flowchart TD
-    B(["Browser"]) -->|"HTTP, same origin - no CORS opened on the backend"| FE
-    FE["frontend - Next.js 15 + React 19 - :3000<br/>/api/triage proxies the SSE stream byte-for-byte"] -->|"HTTP+SSE"| API
-    API["agent-api - FastAPI - :8000<br/>POST /v1/triage (SSE) - GET /v1/meta - GET /v1/health - GET /v1/audit - POST /v1/export/*<br/>Pydantic AI agent - stamps ssvc + grounding - audit hook"] -->|"LLM calls, allowlisted models"| ANTH["Anthropic API"]
-    API -->|"MCPToolset (HTTP+SSE)"| MCP["mcp-server - FastMCP - :8001<br/>10 typed tools"]
-    MCP -->|"cve_lookup - async, rate-limited, retry"| NVD["NVD CVE 2.0 API"]
-    MCP -->|"patch_lookup - shared NVD rate budget"| CPE["NVD CPE configurations"]
-    MCP -->|"kev_check - 24h disk cache, host-locked"| KEV["CISA KEV catalog"]
-    MCP -->|"epss_score - single-shot"| EPSS["FIRST EPSS API"]
-    MCP -->|"osv_lookup - package at version"| OSV["OSV.dev"]
-    MCP -->|"exploit_check - parallel fan-out"| EXP["Exploit-DB CSV + GitHub Code Search"]
-    MCP -->|"cve_semantic_search - dense + BM25, RRF-fused"| CHROMA[("ChromaDB<br/>ONNX MiniLM-L6")]
-    MCP -->|"attack_mapping - bundled JSON, in-process"| ATTACK["MITRE ATT&CK mapping"]
-    MCP -->|"sbom_ingest / nmap_parse_xml - local parse, no network"| PARSE["CycloneDX / SPDX / requirements.txt<br/>defusedxml, forbid_dtd"]
+flowchart TB
+    accTitle: Compose topology
+    accDescr: Frontend, agent API and MCP server run in one compose network with ports published on loopback. The MCP server and a one-shot seed job share the data volume; the agent API owns a separate audit volume. Three optional additions: the seed job, a Jaeger sidecar, and an egress proxy that allowlists outbound HTTPS.
+
+    H(["Browser on the host"]) -->|"127.0.0.1:3000"| FE
+
+    subgraph net["compose network"]
+        FE["frontend<br/>Next.js 15 + React 19<br/>/api/triage - /api/meta - /api/audit"]
+        API["agent-api - :8000<br/>/v1/triage - /v1/meta - /v1/audit<br/>/v1/export/* - /v1/health"]
+        MCP["mcp-server - :8001<br/>10 typed tools"]
+        SEED["seed-job<br/>one-shot, profile seed"]
+        JAEGER["jaeger<br/>profile observability"]
+        EGRESS["egress-proxy<br/>docker-compose.egress.yml<br/>no published port"]
+        FE -->|"HTTP+SSE, server-side key"| API
+        API -->|"MCP over HTTP+SSE<br/>optional bearer token"| MCP
+    end
+
+    DATA[("sec-recon-data<br/>ChromaDB, KEV + Exploit-DB caches")]
+    AUD[("sec-recon-audit<br/>append-only SQLite")]
+    ANTH["Anthropic API"]
+    FEEDS["public feeds"]
+
+    MCP --- DATA
+    SEED --- DATA
+    API --- AUD
+    API -->|"model calls"| ANTH
+    MCP -->|"tool calls"| FEEDS
+    SEED -.->|"NVD pull"| FEEDS
+    API -.->|"OTLP"| JAEGER
+    MCP -.->|"OTLP"| JAEGER
+    API -.->|"HTTPS_PROXY"| EGRESS
+    MCP -.->|"HTTPS_PROXY"| EGRESS
+    EGRESS -.->|"default deny, allowlist only"| ANTH
+    EGRESS -.->|"default deny, allowlist only"| FEEDS
+
+    classDef model fill:#6D3FB5,stroke:#6D3FB5,color:#F7F9FA
+    classDef feed fill:#1D5FA8,stroke:#1D5FA8,color:#F7F9FA
+    class ANTH model
+    class FEEDS feed
 ```
 
-Three processes, deliberately. The frontend, the agent API, and the MCP server are independent containers; each restarts without taking the others down. The browser only ever sees `:3000` - the agent API has no CORS opened and stays single-tenant; the Next.js `/api/triage` route forwards the SSE stream byte-for-byte upstream. The MCP transport between agent and MCP server is HTTP+SSE, the same protocol the agent exposes to its own clients, so the dataflow is symmetric.
+Three processes, deliberately. The frontend, the agent API, and the MCP server are independent containers; each restarts without taking the others down. The browser only ever sees `:3000` - the agent API has no CORS opened and stays single-tenant; the Next.js `/api/*` routes call it server-side, and `/api/triage` forwards the SSE stream byte-for-byte. The MCP transport between agent and MCP server is HTTP+SSE, the same protocol the agent exposes to its own clients, so the dataflow is symmetric. The audit trail sits on its own volume so the tamper-evident record stays isolated from the data store.
 
 ## Component breakdown
 
@@ -62,50 +89,87 @@ Three processes, deliberately. The frontend, the agent API, and the MCP server a
 
 ## Triage end-to-end
 
-One named-CVE query, every code boundary it touches, and where untrusted content gets fenced before reaching the LLM.
+One named-CVE query, every code boundary it touches, and where untrusted content gets fenced before reaching the LLM. Every SSE frame passes through the Next.js proxy byte-for-byte; the diagram draws them straight to the browser.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant B as Browser
-    participant FE as Next.js proxy<br/>app/api/triage
-    participant API as agent-api<br/>api/stream.py
-    participant MCP as mcp-server<br/>FastMCP
-    participant EXT as External feeds
+    accTitle: Triage of one named CVE
+    accDescr: The browser posts through the Next.js proxy to the agent API. The agent loops between the model and the MCP server, which fetches the feeds and fences free text. After the model returns, the server stamps the SSVC verdict and the grounding result, streams the final report and usage, then charges the spend and appends the audit row.
 
-    B->>FE: POST /api/triage {"query": "CVE-2021-41773"}
-    FE->>API: fetch POST /v1/triage (server-side, no CORS exposed)
-    API-->>B: SSE started (every SSE event below is proxied byte-for-byte through Next.js)
-    Note over API: agent = build_agent() -> agent.iter(query)
-    loop Pydantic AI loop - each node streams a live SSE node event (feeds the frontend waterfall)
-        API->>MCP: tool calls chosen by the LLM, via MCPToolset (HTTP+SSE)
-        par cve_lookup
-            MCP->>EXT: NVD CVE 2.0 API
-            EXT-->>MCP: vendor description, CVSS, CWEs
-            Note over MCP: fence_untrusted(description) -> CVEDetail
-        and kev_check
-            MCP->>EXT: CISA KEV catalog (cached 24h)
-            Note over MCP: fence_untrusted(vulnerability_name, required_action, notes)
-        and epss_score
-            MCP->>EXT: FIRST EPSS API
-        and exploit_check
-            MCP->>EXT: Exploit-DB CSV (cached 7d) + GitHub Code Search (if token)
-        and patch_lookup
-            MCP->>EXT: NVD CPE configurations
+    participant B as Browser
+    participant FE as Next.js<br/>proxy
+    participant API as agent-api
+    participant LLM as Anthropic
+    participant MCP as mcp-server
+    participant EXT as Feeds
+
+    B->>FE: POST /api/triage
+    FE->>API: POST /v1/triage
+    Note over API: request rails<br/>(Run lifecycle)
+    API-->>B: SSE started
+
+    loop until the model returns the report, within the run bounds
+        API->>LLM: conversation, tool schemas
+        LLM-->>API: tool calls
+        API->>MCP: tool calls
+        par four tools in parallel
+            MCP->>EXT: host-locked fetch
+            EXT-->>MCP: raw data
         end
-        MCP-->>API: typed results, aggregated into the agent context
-        Note over MCP: attack_mapping runs post-join on the CWE union (bundled JSON, in-process)
+        Note over MCP,EXT: validate, cap,<br/>fence_untrusted on free text
+        MCP-->>API: typed results
+        API-->>B: SSE node, one per agent step
     end
-    Note over API: LLM synthesizes severity, confidence, recommended_action,<br/>signal_coverage, reasoning_chain - leaves ssvc + grounding null.<br/>Pydantic validates -> TriageReport
-    Note over API: server stamps ssvc = assess_ssvc(cves, trajectory):<br/>deterministic Act / Attend / Track* / Track over KEV / EPSS / exploit /<br/>ransomware / CVSS read from the captured tool returns, never from the<br/>report's fields; basis evidence / mixed / report (agent/ssvc.py)
-    Note over API: server stamps grounding = verify_grounding(...):<br/>every tool-derived claim re-checked against the captured<br/>tool returns (agent/grounding.py), model_copy -> the authoritative form
-    API-->>B: SSE final (ssvc + grounding stamped)
-    API-->>B: SSE usage (input/output tokens, requests)
-    Note over API: finally: audit hook appends a hash-chained row
-    Note over B: render: SSVC verdict card + severity/KEV/ransomware/EPSS badges<br/>+ signal_coverage strip + ATT&CK techniques + node waterfall + tokens
+
+    LLM-->>API: output tool call
+    Note over API,LLM: TriageReport validated.<br/>ssvc and grounding computed<br/>from the captured tool returns,<br/>overwriting the draft.
+    API-->>B: SSE final
+    API-->>B: SSE usage
+    Note over API,LLM: finally: charge the spend,<br/>append the audit row
 ```
 
 Every span emitted on the path carries a stable attribute set (no free text, no secrets). W3C `traceparent` flows through httpx auto-instrumentation, so a single trace ID covers the full path.
+
+## Run lifecycle
+
+The refusals in front of a run and the accounting behind it. The order below is the measured one: FastAPI resolves route dependencies before it validates the body, and slowapi wraps the handler, so the rate limiter only sees requests that cleared the rails above it and never counts one they refused.
+
+```mermaid
+flowchart TD
+    accTitle: Run lifecycle of POST /v1/triage
+    accDescr: A request passes the API key check, the kill switch, the rolling spend ceiling, body validation, the rate limit and the model allowlist, in that order. Each refusal happens before the agent runs, so it costs nothing and leaves no audit row. A real run ends as success, error or cancelled, and every one of those exits charges the spend and appends an audit row.
+
+    R(["POST /v1/triage"]) --> A["API key, when API_KEYS is set"]
+    A --> K["kill switch: env flag or sentinel file"]
+    K --> W["rolling 24h spend ceiling"]
+    W --> V["body: query capped at 100,000 chars"]
+    V --> L["per-IP rate limit"]
+    L --> M["model allowlist"]
+    M --> RUN["agent run<br/>bounded by rounds, tool calls,<br/>tokens and wall clock"]
+
+    A -->|"401"| NO["refused<br/>no agent run, no spend,<br/>no audit row"]
+    K -->|"503"| NO
+    W -->|"503"| NO
+    V -->|"422"| NO
+    L -->|"429"| NO
+    M -->|"SSE error"| NO
+
+    RUN -->|"final on the wire"| OK["outcome: success"]
+    RUN -->|"bound, deadline,<br/>exception"| ERR["outcome: error"]
+    RUN -->|"client gone"| CAN["outcome: cancelled"]
+
+    OK --> F["finally: charge the 24h window,<br/>append a hash-chained audit row"]
+    ERR --> F
+    CAN --> F
+
+    classDef refuse fill:#B2202E,stroke:#B2202E,color:#F7F9FA
+    classDef code fill:#0F766E,stroke:#0F766E,color:#F7F9FA
+    class NO refuse
+    class F code
+```
+
+The accounting sits in `finally` because the provider bills a run the client abandoned one round before completion: a rail that recorded only the happy path would be defeated by the cheapest client behaviour there is. An exit that reaches none of the three outcomes seals as `incomplete`, never as a success. Both the charge and the audit append are best-effort, so a failure there never takes a finished triage down with it.
 
 ## Decisions log
 
@@ -189,35 +253,64 @@ Every span emitted on the path carries a stable attribute set (no free text, no 
 
 ## Threat model
 
-The agent consumes untrusted content from at least four sources. Treating each as adversarial. The diagram places each boundary control on the untrusted-data path; the table that follows gives the field-level detail.
+The agent consumes untrusted content from at least four sources. Treating each as adversarial. The diagram places each boundary control on the untrusted-data path; the table that follows gives the field-level detail. Blue is external data, purple the model, green deterministic code.
+
+Two paths in the drawing are easy to get wrong. The user query reaches the model directly, so pasted Nmap XML or an SBOM is already in its context before any tool runs; the tool boundary validates what the model then sends as arguments. And the authority layer does not read the model's output for its evidence: SSVC and grounding read the captured tool returns, independently of each other.
 
 ```mermaid
-flowchart LR
-    subgraph SRC["untrusted and semi-trusted sources"]
-        UQ["user query + tool args<br/>API client, via LLM tool calls"]
-        VTXT["vendor free text<br/>NVD descriptions - KEV name/action/notes<br/>OSV summaries - Nmap banners"]
-        XML["Nmap XML<br/>attacker-shaped input"]
-        FEEDS["semi-trusted feeds<br/>Exploit-DB CSV - GitHub results - EPSS numerics"]
-    end
-    subgraph CTL["boundary controls (mcp_server)"]
-        VAL["Pydantic validation<br/>CveIdStr regex - ge/le bounds<br/>max_length double caps"]
-        FENCE["fence_untrusted<br/>UNTRUSTED_CONTENT markers<br/>at the code boundary"]
-        XXE["defusedxml<br/>forbid_dtd=True"]
-        NET["host locks - size caps<br/>post-redirect host checks"]
-    end
+flowchart TB
+    accTitle: Untrusted-data path and where each control sits
+    accDescr: The user query goes straight to the model. The model's tool arguments cross Pydantic validation into the parsers, and feed data crosses host locks and size caps. Free text is fenced before it returns to the model, except SBOM component fields, which are capped but not fenced. Every tool return is also captured as the trajectory. The model's output passes the schema, and the SSVC verdict and grounding check are computed from the trajectory and stamped onto the report before the audit row.
+
+    Q["user query<br/>may carry Nmap XML or an SBOM"]
+    FEEDS["feeds<br/>free text: NVD, KEV, OSV<br/>semi-trusted: Exploit-DB, GitHub, EPSS"]
     LLM["LLM context<br/>fenced content is data, never instructions"]
-    subgraph AUTH["server-side authority (agent-api) - the LLM cannot alter these"]
-        SCHEMA["TriageReport schema validation"]
-        SSVC["deterministic SSVC verdict<br/>agent/ssvc.py"]
-        GROUND["grounding verifier vs the captured trajectory<br/>agent/grounding.py"]
+
+    subgraph TOOLS["tool boundary - mcp_server"]
+        ARGS["argument validation<br/>CveIdStr regex, Literal enums,<br/>max_length double caps"]
+        PARSE["parsers<br/>defusedxml forbid_dtd,<br/>SBOM 5 MB, 500 components"]
+        NET["host locks, size caps,<br/>post-redirect host checks"]
+        FENCE["fence_untrusted<br/>per-process marker id"]
+        RET["typed tool return<br/>ge/le bounds, URLs only"]
+    end
+
+    subgraph AUTH["server-side authority - agent-api"]
+        TRAJ["trajectory<br/>captured from the run"]
+        SCHEMA["TriageReport schema"]
+        SSVC["SSVC verdict<br/>agent/ssvc.py"]
+        GROUND["grounding check<br/>agent/grounding.py"]
         AUDIT["hash-chained audit row"]
     end
-    UQ --> VAL --> LLM
-    VTXT --> FENCE --> LLM
-    XML --> XXE --> LLM
-    FEEDS --> NET --> LLM
-    LLM -->|"model output: trusted contract, adversarial content"| SCHEMA --> SSVC --> GROUND --> AUDIT
+
+    Q -->|"capped, not fenced"| LLM
+    LLM -->|"tool arguments"| ARGS
+    FEEDS --> NET
+    ARGS --> PARSE
+    ARGS --> NET
+    PARSE -->|"banners"| FENCE
+    NET -->|"free text"| FENCE
+    NET -->|"structure"| RET
+    PARSE -->|"SBOM fields:<br/>capped, not fenced"| RET
+    FENCE --> RET
+    RET -->|"back into the context"| LLM
+    RET --> TRAJ
+    LLM -->|"output: trusted contract,<br/>adversarial content"| SCHEMA
+    TRAJ --> SSVC
+    TRAJ --> GROUND
+    SCHEMA --> GROUND
+    SCHEMA -.->|"which CVEs,<br/>named fallback signals"| SSVC
+    SSVC --> AUDIT
+    GROUND --> AUDIT
+
+    classDef model fill:#6D3FB5,stroke:#6D3FB5,color:#F7F9FA
+    classDef feed fill:#1D5FA8,stroke:#1D5FA8,color:#F7F9FA
+    classDef code fill:#0F766E,stroke:#0F766E,color:#F7F9FA
+    class LLM model
+    class Q,FEEDS feed
+    class TRAJ,SCHEMA,SSVC,GROUND,AUDIT code
 ```
+
+The dashed edge is the residual channel, stated so a reviewer does not have to find it: the verdict iterates the CVEs the report lists, and takes a signal from the report only when no tool evidence exists for it, in which case the stamp names that signal in `unverified_signals`.
 
 ### Inputs and trust boundaries
 
@@ -364,6 +457,29 @@ Environment variables of note (full list in `.env.example`):
 | `AGENT_REQUEST_LIMIT` | no | Max model requests (ReAct rounds) per triage before `UsageLimitExceeded` stops the run (default 25). Bounds a runaway loop; legitimate triages use far fewer |
 
 A keyless static demo replaying real captured triages deploys to GitHub Pages on every `frontend/**` push to main; build mechanics in [frontend.md](frontend.md).
+
+### Audit trail
+
+Each triage appends one `TriageEvent` to `audit/store.py`. A row's `this_event_hash` is the SHA-256 of its canonical JSON (sorted keys, compact separators, version-aware), and that JSON includes `prev_event_hash`, so each row commits to the whole history before it.
+
+```mermaid
+flowchart LR
+    accTitle: Audit hash chain
+    accDescr: Rows are chained from a genesis value of 64 zeros, each row storing the previous row's hash and its own. SQLite triggers refuse update and delete. The verify command walks the chain and names the first row that does not match. The HTTP endpoint exposes a digest-only projection, while plaintext stays reachable only through the local CLI.
+
+    G(["genesis<br/>64 zeros"]) --> R1["row 1<br/>prev: genesis<br/>this: H1"]
+    R1 --> R2["row 2<br/>prev: H1<br/>this: H2"]
+    R2 --> R3["row 3<br/>prev: H2<br/>this: H3"]
+
+    T["SQLite triggers<br/>UPDATE and DELETE fail"] -.-> R2
+    R3 --> V["sec-recon-audit verify<br/>exits non-zero at the first broken row"]
+    R3 --> H["GET /v1/audit<br/>digest-only rows + live verify"]
+
+    classDef code fill:#0F766E,stroke:#0F766E,color:#F7F9FA
+    class R1,R2,R3 code
+```
+
+The two controls cover different attackers. The triggers stop accidents and casual edits; a writer with file-system access can drop them, and then the chain breaks at the first changed byte. This makes the log tamper-evident, not tamper-proof: rewriting every hash from the changed row to the head leaves a valid chain, since nothing anchors the head outside the database. Plaintext retention (`AUDIT_INCLUDE_QUERY`, `AUDIT_INCLUDE_SUMMARY`) is off by default, and even when on it stays out of `GET /v1/audit`. Rationale in the decisions log above; CLI usage in [running.md](running.md#inspecting-the-audit-trail).
 
 ### Observability
 

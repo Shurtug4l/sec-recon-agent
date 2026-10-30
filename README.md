@@ -26,30 +26,71 @@ The signals are named and sourced: CISA KEV is the US government catalog of vuln
 ## Architecture
 
 ```mermaid
-flowchart LR
-    B(["Browser"]) -->|"same-origin HTTP"| FE
-    subgraph compose["docker compose - every port bound to 127.0.0.1"]
-        FE["frontend<br/>Next.js 15 - :3000"] -->|"/api/triage proxy - SSE"| API
-        API["agent-api<br/>FastAPI + Pydantic AI - :8000<br/>stamps SSVC + grounding<br/>hash-chained audit"] -->|"MCPToolset - HTTP+SSE"| MCP
-        MCP["mcp-server<br/>FastMCP - :8001<br/>10 typed tools"]
+flowchart TD
+    accTitle: System context
+    accDescr: The browser reaches only the Next.js frontend. The frontend proxies to the agent API, which calls the Anthropic API and reaches the MCP server over HTTP and SSE. The MCP server is the only process that talks to the public vulnerability feeds.
+
+    B(["Browser"]) -->|"same origin"| FE
+
+    subgraph compose["docker compose, ports on 127.0.0.1"]
+        FE["frontend<br/>Next.js 15, :3000<br/>/api/* proxies"]
+        API["agent-api<br/>FastAPI + Pydantic AI, :8000<br/>rails, stamps, audit"]
+        MCP["mcp-server<br/>FastMCP, :8001<br/>10 typed tools"]
+        AUDIT[("audit log<br/>SQLite hash chain")]
+        LOCAL[("ChromaDB index<br/>ATT&CK mapping")]
+        FE -->|"SSE"| API
+        API -->|"MCP over HTTP+SSE"| MCP
+        API --- AUDIT
+        MCP --- LOCAL
     end
-    API -->|"LLM calls"| LLM["Anthropic API"]
-    MCP --> NVD["NVD CVE 2.0 + CPE"]
-    MCP --> KEV["CISA KEV catalog"]
-    MCP --> EPSS["FIRST EPSS"]
-    MCP --> OSV["OSV.dev"]
-    MCP --> EXPDB["Exploit-DB CSV + GitHub code search"]
-    MCP --> LOCAL["in-process: ChromaDB hybrid index<br/>ATT&CK mapping - SBOM / Nmap parsers"]
+
+    API -->|"model calls"| LLM["Anthropic API"]
+    MCP -->|"host-locked HTTPS"| FEEDS["public feeds<br/>NVD, CISA KEV, FIRST EPSS,<br/>OSV.dev, Exploit-DB, GitHub"]
+
+    classDef model fill:#6D3FB5,stroke:#6D3FB5,color:#F7F9FA
+    classDef feed fill:#1D5FA8,stroke:#1D5FA8,color:#F7F9FA
+    class LLM model
+    class FEEDS feed
 ```
 
-Three processes, one trust design: the browser only ever sees `:3000` (no CORS opened on the backend), the Next.js route proxies the SSE stream byte-for-byte, and the agent API stamps the deterministic verdict, the grounding assessment, and the audit row after the model returns. For one named CVE, five tools fan out in parallel; `attack_mapping` runs once at the end on the union of CWE IDs; `cve_semantic_search` runs only when the input is a fuzzy description rather than a CVE ID. Every free-text vendor field crossing a tool boundary is fenced as `<UNTRUSTED_CONTENT>` before it reaches the LLM. The full sequence diagram and the field-level trust map are in [docs/design.md](docs/design.md#triage-end-to-end); the trust boundary is the subject of [docs/case_study.md](docs/case_study.md).
+Three processes, one trust design: the browser only ever sees `:3000` (no CORS opened on the backend), the Next.js routes proxy to the agent API server-side, and the agent API stamps the deterministic verdict, the grounding assessment, and the audit row after the model returns. For one named CVE, the prompt asks for `cve_lookup`, `exploit_check`, `kev_check`, and `epss_score` in parallel; `patch_lookup` follows when the recommendation needs a concrete release; `attack_mapping` runs once at the end on the union of CWE IDs; `cve_semantic_search` runs only when the input is a fuzzy description rather than a CVE ID. Every free-text vendor field crossing a tool boundary is fenced as `<UNTRUSTED_CONTENT>` before it reaches the LLM. The full sequence diagram and the trust map are in [docs/design.md](docs/design.md#triage-end-to-end); the trust boundary is the subject of [docs/case_study.md](docs/case_study.md).
 
 ## The verdict is deterministic
 
 Prioritization follows SSVC (Stakeholder-Specific Vulnerability Categorization, CISA's decision framework), a four-step urgency ladder: **Act / Attend / Track\* / Track**, where Track\* is Track with closer monitoring. The verdict is a pure server-side function (`agent/ssvc.py`) of the signals read from the tool returns captured in the run's trajectory, not from the fields the model wrote: same tool returns in, same verdict out. Where a signal has no usable tool evidence (a feed the model never called, or one that failed), the verdict falls back to the report for that signal and says so on the record (`basis: mixed`, each fallback named in `unverified_signals`); with no trajectory at all it is stamped `basis: report`. The LLM echoes the decision in prose; it cannot change it, and it cannot pass a verdict on its own word off as one on the tools' word.
 
+The same tool returns take two paths. One goes through the model and comes out as prose; the other bypasses it and comes out as the verdict. Purple is the model, green is deterministic code.
+
 ```mermaid
 flowchart TD
+    accTitle: Who decides what
+    accDescr: Tool returns reach the model, which writes a draft report validated by the schema. The same returns are captured as the trajectory, which feeds the SSVC verdict and the grounding check directly. Both results are stamped onto the report, overwriting anything the model wrote, and the final report is sealed into the audit trail.
+
+    T(["tool returns"]) --> M["LLM<br/>writes the draft report"]
+    T --> R["trajectory<br/>captured from the run"]
+    M --> S["TriageReport schema"]
+    R --> V["SSVC verdict<br/>agent/ssvc.py"]
+    R --> G["grounding check<br/>agent/grounding.py"]
+    S -.->|"which CVEs, plus any signal<br/>with no tool evidence"| V
+    S -->|"claims to verify"| G
+    S --> F["final report<br/>verdict + grounding stamped"]
+    V --> F
+    G --> F
+    F --> A["audit row, hash chain"]
+
+    classDef model fill:#6D3FB5,stroke:#6D3FB5,color:#F7F9FA
+    classDef code fill:#0F766E,stroke:#0F766E,color:#F7F9FA
+    class M model
+    class S,R,V,G,F,A code
+```
+
+The ladder itself, per CVE, most urgent rule first:
+
+```mermaid
+flowchart TD
+    accTitle: SSVC decision ladder
+    accDescr: Eight rules evaluated in order for one CVE. Known ransomware use, KEV membership, or a public exploit with high EPSS give Act. A public exploit or high EPSS alone gives Attend. EPSS at or above 0.10, or critical or high CVSS, gives Track star. Anything else gives Track.
+
     S(["signals for one CVE:<br/>KEV - ransomware - public exploit - EPSS - CVSS"]) --> Q1{"known<br/>ransomware use?"}
     Q1 -->|yes| A1["Act<br/>ransomware"]
     Q1 -->|no| Q2{"in CISA KEV?"}
@@ -148,7 +189,7 @@ The system prompt encodes one prioritization heuristic: CISA KEV membership > kn
 
 - **Signal-coverage honesty.** Every report carries a per-feed coverage map: found, no entry, errored, or not queried. A triage that could not reach EPSS says so instead of silently omitting the signal, and the eval suite scores this honesty.
 - **Grounding verification.** The no-invention contract is not just instructed, it is *checked*: a pure server-side verifier (`agent/grounding.py`) re-checks every tool-derived claim in the report - CVE identity, CVSS, KEV, EPSS, exploit and ransomware flags, ATT&CK ids - against the tool returns captured from the run's own message history, and stamps a deterministic `grounded` / `suspect` / `not_evaluated` assessment with per-claim findings onto the report and into the audit chain. The frontend renders it as a badge next to the model's self-assessed confidence, so the operator sees what was verified, not just what was asserted.
-- **Hash-chained audit trail.** Every triage appends one row to an append-only SQLite log, sealed with `prev_event_hash` / `this_event_hash` over a canonical JSON serialization; `sec-recon-audit verify` walks the chain and exits non-zero on tamper, and the dashboard's audit-trail tab renders it live (`GET /v1/audit`, digest-only). Digest-only by default: plain query text stays out unless explicitly enabled. Internals in [docs/design.md](docs/design.md#operational-notes).
+- **Hash-chained audit trail.** Every triage appends one row to an append-only SQLite log, sealed with `prev_event_hash` / `this_event_hash` over a canonical JSON serialization; `sec-recon-audit verify` walks the chain and exits non-zero on tamper, and the dashboard's audit-trail tab renders it live (`GET /v1/audit`, digest-only). Digest-only by default: plain query text stays out unless explicitly enabled. Internals in [docs/design.md](docs/design.md#audit-trail).
 - **Interchange exports.** A finished report renders into SARIF 2.1.0 (GitHub code scanning) and OpenVEX v0.2.0 via `sec-recon-export` or `POST /v1/export/{sarif,openvex}`. Pure functions of the report; product identity is never guessed, so a bare-CVE triage refuses to emit VEX instead of fabricating one.
 - **SBOM gate.** `sec-recon-gate` runs the same tool chain with no LLM anywhere in the loop: SBOM in, OSV advisories, KEV / EPSS / exploit enrichment, a deterministic SSVC decision per finding, and a CI exit code (`--fail-on act` by default; `--strict` also fails on enrichment coverage gaps). Reproducible, free, and injection-proof by construction - there is no prompt for a hostile SBOM to attack. Usage in [docs/running.md](docs/running.md#sbom-gate).
 
@@ -189,7 +230,7 @@ Every HIGH finding from an independent security review is mapped to the code cha
 - **Bounded resource consumption** - every input crossing the MCP boundary is double-capped (schema `max_length` + runtime pre-flight); outbound feeds are host-locked with size caps and post-redirect host checks.
 - **Error-payload allowlist** - the SSE `error` event surfaces a generic message unless the exception type is explicitly allowlisted; internal messages never leak to the client.
 - **Container hardening** - non-root users, `read_only: true` rootfs, `no-new-privileges`, ports bound to `127.0.0.1`, `tmpfs:/tmp`.
-- **Trivy in CI** - both images scanned on dependency changes plus a weekly cron; CRITICAL findings block the merge, HIGH findings land as SARIF in the Security tab. Open findings are triaged with accept rationale in [docs/security_findings.md](docs/security_findings.md).
+- **Trivy in CI** - both images scanned on dependency changes plus a weekly cron; CRITICAL findings fail the scan, HIGH findings land as SARIF in the Security tab. Open findings are triaged with accept rationale in [docs/security_findings.md](docs/security_findings.md).
 - **SBOM gate in CI** - the repository's own dependency tree is scanned by the deterministic gate on dependency changes plus a weekly cron; an Act-grade advisory fails the run.
 - **Opt-in API auth and per-IP rate limiting**; the MCP port takes a bearer token whenever it is published beyond the compose network - setup in [docs/running.md](docs/running.md).
 - **Denial-of-wallet and kill-switch rails** - a per-request round cap bounds one run; an opt-in rolling-24h spend ceiling (`DENIAL_OF_WALLET_USD_PER_DAY`) bounds the aggregate an attacker can drive, and a kill-switch (env flag or a per-request sentinel file) disables `/v1/triage` with 503 live, with no redeploy. Both refuse before the agent is built, so a refused request spends nothing.

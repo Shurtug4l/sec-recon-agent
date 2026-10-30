@@ -117,21 +117,34 @@ On submit, `run()` creates a `HistoryEntry`, `add()`s it to the sidebar, then dr
 
 ## SSE wire protocol (browser to Next.js to FastAPI)
 
-The browser never talks to FastAPI directly. Three hops:
+The browser never talks to FastAPI directly. Three hops, and one fixed event grammar: `started`, any number of `node`, then either `final` and `usage` or a single `error`.
 
+```mermaid
+sequenceDiagram
+    accTitle: SSE wire protocol
+    accDescr: The browser posts to the Next.js route, which posts to FastAPI and attaches the API key server-side. The response is an event stream passed through unchanged: started, repeated node events, then final and usage on success, or an error event on failure.
+
+    participant B as Browser<br/>lib/sse.ts
+    participant N as Next.js<br/>/api/triage
+    participant F as FastAPI<br/>/v1/triage
+
+    B->>N: POST {"query": ...}
+    N->>F: POST {"query": ...} + Bearer key, if set
+    F-->>N: 200 text/event-stream
+    N-->>B: same stream, unchanged
+    F--)B: started
+    loop per agent step
+        F--)B: node
+    end
+    alt run completes
+        F--)B: final (TriageReport)
+        F--)B: usage
+    else run fails
+        F--)B: error
+    end
 ```
-Browser            Next.js (/api/triage)          FastAPI (/v1/triage)
-   │                       │                              │
-   │  POST {"query":...}   │                              │
-   │---------------------> │                              │
-   │                       │  POST {"query":...}          │
-   │                       │ ---------------------------> │
-   │                       │                              │
-   │                       │  text/event-stream chunks    │
-   │                       │ <--------------------------- │
-   │  text/event-stream    │                              │
-   │ <-------------------- │                              │
-```
+
+A refusal arrives before the stream exists: the route relays FastAPI's status code (401, 422, 429, 503) as a JSON body, so those paths never produce an `error` event.
 
 The Next.js route (`src/app/api/triage/route.ts`) is a passthrough: it reads the upstream `ReadableStream` and returns it as the response body. SSE headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache, no-transform`, `X-Accel-Buffering: no`) are set explicitly so reverse proxies (CDN, nginx) do not buffer the stream.
 
@@ -140,10 +153,10 @@ The browser-side parser (`lib/sse.ts`) uses `fetch()` + `ReadableStream` rather 
 Event payloads emitted by the backend:
 
 ```
-event: started        data: {"query": "..."}
+event: started        data: {"query": "...", "model": null}
 event: node           data: {"node": "UserPromptNode" | "ModelRequestNode" | "CallToolsNode" | "End"}
 event: final          data: TriageReport (full JSON, incl. the server-stamped SSVC verdict + signal coverage)
-event: usage          data: {"input_tokens": N, "output_tokens": N, "requests": N}   # after final
+event: usage          data: {"input_tokens": N, "output_tokens": N, "requests": N, "cache_read_tokens": N, "cache_write_tokens": N}   # after final
 event: error          data: {"type": "...", "message": "..."}
 ```
 
@@ -183,6 +196,26 @@ Every report card carries three exports plus a share link, all client-side with 
 - **Raw JSON** downloads the `TriageReport` as returned, verdict and coverage included.
 - **Export PDF** calls `window.print()` with an `@media print` stylesheet in `globals.css` that scopes visibility to the report block, hides the chrome, and forces an A4 light-on-white layout; the user picks "Save as PDF" in the system dialog. Native multi-page.
 - **Copy link** gzip-encodes a `{v, query, report}` envelope into the URL fragment (`lib/permalink.ts`); `/r` decodes it locally and shows the originating query above the report (P8), so a shared verdict carries what was asked. The decode is backward-compatible: a pre-envelope link (a bare `TriageReport`) is detected by shape and still renders, without a query block. The query is capped (`SHARED_QUERY_MAX`, truncation marked) so a large SBOM/Nmap query never sinks an otherwise-shareable report. The fragment never reaches a server; past the size cap the whole link falls back to suggesting the JSON export. The minted URL is basePath-aware (`NEXT_PUBLIC_BASE_PATH`), so links copied on the Pages demo point inside the project sub-path.
+
+### Where a rendered report comes from
+
+One report view, three sources. A live run and a demo capture both carry stamps a server produced. A permalink carries whatever its fragment says, and anyone can edit a fragment, so the `/r` route and everything exported from it mark the report as an unverified claim.
+
+```mermaid
+flowchart LR
+    accTitle: Report sources and their trust
+    accDescr: The report view renders three sources. A live run arrives over the proxied SSE stream with server stamps. A demo capture is a committed real SSE recording replayed in the browser. A shared link is decoded from the URL fragment locally, and the view marks it as an unverified claim.
+
+    LIVE["live run<br/>/api/triage stream"] -->|"stamped by the server"| VIEW["report view"]
+    DEMO["demo build<br/>committed real SSE captures"] -->|"stamped at capture time"| VIEW
+    LINK["shared link<br/>/r URL fragment, decoded locally"] -->|"editable by anyone"| MARK["marked as<br/>an unverified claim"]
+    MARK --> VIEW
+
+    classDef code fill:#0F766E,stroke:#0F766E,color:#F7F9FA
+    classDef attend fill:#A85200,stroke:#A85200,color:#F7F9FA
+    class LIVE,DEMO code
+    class MARK attend
+```
 
 ## Command palette
 

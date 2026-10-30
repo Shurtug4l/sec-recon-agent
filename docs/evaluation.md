@@ -4,34 +4,62 @@ How the agent is measured: the golden-set eval, the retrieval mode, the prompt-i
 
 Both suites are deliberately not in CI: they require a live stack (`make up`) and bill the LLM provider. Run them on demand before merging changes to the system prompt or the model.
 
+What runs where, and who pays for it. The two lanes share the golden set: the live eval measures the model, the replay gate holds the deterministic pipeline to what a real run recorded.
+
+```mermaid
+flowchart TB
+    accTitle: Evaluation lanes
+    accDescr: On demand, against a live stack and billing the LLM, make eval runs the 11 golden cases, make redteam runs the 18 payloads, and make record-cassettes freezes real runs. On every pull request, with no LLM, the staleness hash and the bit-exact replay check those cassettes. Result files and the cassettes feed the scorecard.
+
+    subgraph LIVE["on demand - live stack, bills the LLM"]
+        REC["make record-cassettes"]
+        EVAL["make eval<br/>11 golden cases"]
+        RT["make redteam<br/>18 payloads"]
+    end
+
+    subgraph CI["every PR - no LLM, no network"]
+        CAS[("tests/cassettes/<br/>one real run per case")]
+        HASH["staleness hash<br/>against the LLM surface"]
+        REPLAY["bit-exact replay: trajectory,<br/>grounding, SSVC, golden scorer"]
+        CAS --> HASH --> REPLAY
+    end
+
+    REC --> CAS
+    HASH -.->|"surface changed: re-record"| REC
+    SC["SCORECARD.md<br/>make scorecard"]
+    EVAL -->|"result JSON"| SC
+    RT -->|"result JSON"| SC
+    CAS -->|"grounding section"| SC
+
+    classDef model fill:#6D3FB5,stroke:#6D3FB5,color:#F7F9FA
+    classDef code fill:#0F766E,stroke:#0F766E,color:#F7F9FA
+    class EVAL,RT,REC model
+    class HASH,REPLAY code
+```
+
 ## Eval suite loop
 
+```mermaid
+sequenceDiagram
+    accTitle: Eval suite loop
+    accDescr: The eval CLI takes each golden case, posts it to the live API one at a time, reads the final report from the SSE stream, scores it with soft assertions, and exits zero only when every case passes.
+
+    participant C as sec-recon-eval
+    participant S as Live stack
+    participant R as scorer.py
+
+    Note over C: golden_set.py, 11 cases,<br/>--filter by id or tag
+    loop one case at a time
+        C->>S: POST /v1/triage
+        S-->>C: SSE final + usage
+        C->>R: score(case, report)
+        Note over R: severity within +-1<br/>CVE recall >= 0.5 or any-of family<br/>in_kev_catalog: require / forbid / skip<br/>known_ransomware_use when expected
+        R-->>C: per-case verdict
+    end
+    Note over C: aggregate pass rate,<br/>exit 0 only if all pass
 ```
-  golden_set.py                  sec-recon-eval CLI              live stack (make up)
-  -----------------              ------------------              --------------------
-  11 cases:                      argparse: --api-url             frontend  :3000
-   - named CVEs                    --filter (id|tag)             agent-api :8000
-   - fuzzy semantic                --timeout                     mcp-server :8001
-   - SBOM ingestion                --json-output
-   - CVE-not-found degrade                                                  |
-        |                                  |                                |
-        +-------- iterate cases ---------->|                                |
-                                           |---- POST /v1/triage ---------->|
-                                           |   (one query at a time)        |
-                                           |                                |
-                                           |<--- SSE 'final' TriageReport --|
-                                           |                                |
-                                           v                                |
-                                  scorer.score(case, report)                |
-                                  - severity within +-1                     |
-                                  - CVE recall >= 0.5 / any-of family       |
-                                  - in_kev_catalog: require/forbid/skip     |
-                                  - known_ransomware_use when expected      |
-                                           |                                |
-                                           v                                |
-                                  per-case verdict + aggregate              |
-                                  pass rate (exit 0 iff all pass)           |
-```
+
+The cases cover named CVEs, fuzzy semantic queries, SBOM ingestion, and the CVE-not-found degraded path. Flags: `--api-url`, `--filter`, `--timeout`, `--json-output`.
 
 The runner speaks HTTP+SSE, so the eval also exercises the wire-level frame layout the frontend depends on. Assertions are soft (the agent is probabilistic; hard equality would flake), but the exit code is strict: 0 only when every case passes, so the CLI can gate a release-candidate check.
 
