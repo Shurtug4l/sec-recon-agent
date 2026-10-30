@@ -221,7 +221,7 @@ export function TriageReportView({
   // are rendered as unverified claims.
   shared?: boolean;
 }) {
-  const [linkState, setLinkState] = useState<"idle" | "copied" | "toolarge">("idle");
+  const [linkState, setLinkState] = useState<"idle" | "copied" | "unshareable">("idle");
   // Grounding detail panel; opens by default when the verifier flagged
   // something, because a suspect report should not hide its findings.
   const [groundingOpen, setGroundingOpen] = useState(
@@ -238,11 +238,11 @@ export function TriageReportView({
 
   async function handleCopyLink() {
     // Encode the whole report (plus the originating query) into a URL fragment,
-    // client-side, never sent to a server, and copy it. Oversized reports fall
-    // back to the JSON export.
+    // client-side, never sent to a server, and copy it. A report that does not
+    // fit or does not round-trip falls back to the JSON export.
     const url = await buildPermalink(report, window.location.origin, query);
     if (!url) {
-      setLinkState("toolarge");
+      setLinkState("unshareable");
       window.setTimeout(() => setLinkState("idle"), 2500);
       return;
     }
@@ -316,8 +316,8 @@ export function TriageReportView({
                 <Share2 className="h-3.5 w-3.5" />
                 {linkState === "copied"
                   ? "Link copied"
-                  : linkState === "toolarge"
-                    ? "Too large - use JSON"
+                  : linkState === "unshareable"
+                    ? "Can't share - use JSON"
                     : "Copy link"}
               </Button>
               <Button
@@ -737,7 +737,9 @@ function SignalCoverageStrip({ coverage, shared }: { coverage: FeedStatus[]; sha
         {coverage.map((feed) => {
           const statusMeta = COVERAGE_META[feed.status] ?? COVERAGE_META.not_queried;
           const StatusIcon = statusMeta.icon;
-          const guideId = FEED_TO_GUIDE[feed.feed];
+          // Own keys only: feed is free text on /r, and "__proto__" would hand
+          // React a prototype object to render.
+          const guideId = Object.hasOwn(FEED_TO_GUIDE, feed.feed) ? FEED_TO_GUIDE[feed.feed] : undefined;
           const chipClass = cn(
             "inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
             guideId ? "cursor-pointer hover:border-primary/40 hover:bg-accent" : "cursor-help",
@@ -764,7 +766,7 @@ function SignalCoverageStrip({ coverage, shared }: { coverage: FeedStatus[]; sha
               </TooltipTrigger>
               <TooltipContent>
                 <div className="font-medium text-popover-foreground">
-                  {FEED_GLOSS[feed.feed] ?? feed.feed}
+                  {Object.hasOwn(FEED_GLOSS, feed.feed) ? FEED_GLOSS[feed.feed] : feed.feed}
                 </div>
                 <div className="mt-1 text-muted-foreground">{STATUS_GLOSS[feed.status]}</div>
                 {feed.detail && (

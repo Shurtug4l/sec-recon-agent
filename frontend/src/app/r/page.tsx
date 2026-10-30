@@ -26,7 +26,7 @@ export default function SharedReportPage() {
       return;
     }
     let cancelled = false;
-    decodeReport(decodeURIComponent(match[1])).then((decoded) => {
+    decodeReport(match[1]).then((decoded) => {
       if (cancelled) return;
       if (decoded) {
         setShared(decoded);
