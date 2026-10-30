@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 
 from sec_recon_agent.agent.schema import (
     Confidence,
+    CVEReference,
     Severity,
     TriageReport,
 )
@@ -185,6 +186,31 @@ def test_triage_stamps_ssvc_on_final_report(
     assert payload["ssvc"]["rule"] == "no-cves"
     # An empty-but-present history is a real (tool-less) trajectory.
     assert payload["ssvc"]["basis"] == "evidence"
+
+
+def test_triage_replaces_model_written_references(
+    monkeypatch: MonkeyPatch,
+    fake_agent_factory: Any,
+    fake_report: TriageReport,
+) -> None:
+    """A reference URL is derived from its id before `final`, whatever the model wrote."""
+    fake_report.cves.append(
+        CVEReference(
+            cve_id="CVE-2021-41773",
+            summary="Path traversal",
+            severity=Severity.HIGH,
+            exploits_public=False,
+            nvd_url="https://evil.example/phish",
+        )
+    )
+    monkeypatch.setattr(stream_module, "build_agent", fake_agent_factory)
+
+    client = TestClient(app)
+    with client.stream("POST", "/v1/triage", json={"query": "test"}) as response:
+        body = "".join(response.iter_text())
+
+    assert "evil.example" not in body
+    assert "https://nvd.nist.gov/vuln/detail/CVE-2021-41773" in body
 
 
 def test_triage_stamps_grounding_on_final_report(

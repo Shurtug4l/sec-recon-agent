@@ -43,6 +43,7 @@ from sse_starlette.sse import EventSourceResponse
 from starlette.responses import JSONResponse
 
 from sec_recon_agent.agent.prompts import SYSTEM_PROMPT
+from sec_recon_agent.agent.references import canonicalize_references
 from sec_recon_agent.agent.schema import TriageReport
 from sec_recon_agent.agent.triage import build_agent, export_anthropic_api_key_to_env, resolve_model
 from sec_recon_agent.api.budget import budget_tracker
@@ -552,7 +553,7 @@ async def _triage_events(req: TriageRequest) -> AsyncIterator[dict[str, Any]]:
         # returned), not from the fields the model wrote, and they are the
         # authoritative, reproducible forms the audit trail records.
         invocations = _invocations_for(messages)
-        result_output = result_output.model_copy(
+        result_output = canonicalize_references(result_output).model_copy(
             update={
                 "ssvc": _ssvc_for(result_output, invocations),
                 "grounding": _grounding_for(result_output, invocations),

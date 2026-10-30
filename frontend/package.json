@@ -15,7 +15,7 @@
     "lint:fix": "eslint . --fix",
     "check:links": "node scripts/check-links.mjs",
     "a11y:sweep": "node scripts/a11y-sweep.mjs",
-    "test:permalink": "node --experimental-strip-types --test scripts/shared-report.test.mjs"
+    "test:contracts": "node --experimental-strip-types --test \"scripts/*.test.mjs\""
   },
   "dependencies": {
     "@radix-ui/react-collapsible": "1.2.1",

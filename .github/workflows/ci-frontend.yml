@@ -59,8 +59,8 @@ jobs:
       - name: Type check
         run: npm run type-check
 
-      - name: Permalink decoder contract
-        run: npm run test:permalink
+      - name: Untrusted-report contracts
+        run: npm run test:contracts
 
       - name: Build
         run: npm run build

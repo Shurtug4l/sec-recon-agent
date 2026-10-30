@@ -31,6 +31,7 @@ import hashlib
 from collections.abc import Sequence
 from typing import Any
 
+from sec_recon_agent.agent.references import nvd_url
 from sec_recon_agent.agent.schema import CVEReference, Severity, TriageReport
 from sec_recon_agent.export.records import VulnRecord
 from sec_recon_agent.version import package_version
@@ -183,7 +184,7 @@ def _record_from_cve(report: TriageReport, cve: CVEReference) -> VulnRecord:
         summary=cve.summary,
         severity=cve.severity,
         cvss_score=cve.cvss_v3_score,
-        url=str(cve.nvd_url),
+        url=nvd_url(cve.cve_id),
         action=report.recommended_action,
         in_kev=cve.in_kev_catalog,
         kev_due_date=cve.kev_due_date,

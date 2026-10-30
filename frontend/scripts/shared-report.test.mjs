@@ -3,7 +3,7 @@
 // link, and every committed demo capture proves legitimate links still read.
 // Node's own test runner: the frontend carries no test dependency.
 //
-//   npm run test:permalink
+//   npm run test:contracts
 
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";

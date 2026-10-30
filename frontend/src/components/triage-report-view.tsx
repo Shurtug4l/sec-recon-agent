@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/collapsible";
 import { Separator } from "@/components/ui/separator";
 import { InfoTip, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { downloadJson, downloadMarkdown, reportToMarkdown } from "@/lib/markdown-export";
+import { downloadJson, downloadMarkdown, reportToMarkdown, unfence } from "@/lib/markdown-export";
 import { allowedHref } from "@/lib/external-link";
 import { buildPermalink } from "@/lib/permalink";
 import { cn } from "@/lib/utils";
@@ -192,23 +192,6 @@ const CLAIM_META: Record<
       "Relevant tool output existed but could not be parsed back into its typed model, so the claim cannot be judged either way.",
   },
 };
-
-const UNTRUSTED_START = "<UNTRUSTED_CONTENT>";
-const UNTRUSTED_END = "</UNTRUSTED_CONTENT>";
-
-// Strip the marker tokens for display while keeping a visual signal that
-// the text is vendor-authored. The fence is a wire-level convention; in
-// the UI we render it as a styled quote.
-function unfence(text: string): { body: string; fenced: boolean } {
-  const t = text.trim();
-  if (t.startsWith(UNTRUSTED_START) && t.endsWith(UNTRUSTED_END)) {
-    return {
-      body: t.slice(UNTRUSTED_START.length, -UNTRUSTED_END.length).trim(),
-      fenced: true,
-    };
-  }
-  return { body: text, fenced: false };
-}
 
 export function TriageReportView({
   report,

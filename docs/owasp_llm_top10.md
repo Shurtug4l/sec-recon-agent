@@ -82,7 +82,7 @@ Mitigations are layered, not perfect. A "mitigated" status means the project app
 
 **How**:
 - **Pydantic-typed output**: the agent's only valid output is `TriageReport` (`src/sec_recon_agent/agent/schema.py`). The LLM cannot return free text that bypasses field validation; `cvss_v3_score` is `float | None ge=0 le=10`, `cve_id` is regex-constrained, etc.
-- **Frontend rendering**: React auto-escapes JSX text content. The triage report's free-text fields (`summary`, `recommended_action`) are inserted as text nodes, not `dangerouslySetInnerHTML`. URL fields (`nvd_url`, `kev.url`, etc.) are validated as `HttpUrl` server-side before reaching the browser.
+- **Frontend rendering**: React auto-escapes JSX text content. The triage report's free-text fields (`summary`, `recommended_action`) are inserted as text nodes, not `dangerouslySetInnerHTML`. Reference URLs (`nvd_url`, the ATT&CK `url` fields) are derived server-side from the validated ids (`agent/references.py`), and the Markdown export escapes every free-text field. Other URL fields are validated as `HttpUrl` server-side before reaching the browser.
 - **SSE error event sanitization**: see LLM02.
 
 **Tests**:
