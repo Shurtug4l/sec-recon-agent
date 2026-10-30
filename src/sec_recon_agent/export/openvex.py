@@ -32,7 +32,7 @@ from typing import Any
 
 from sec_recon_agent.agent.references import nvd_url
 from sec_recon_agent.agent.schema import TriageReport
-from sec_recon_agent.export.records import VulnRecord
+from sec_recon_agent.export.records import VulnRecord, omitted_driver_record
 
 OPENVEX_CONTEXT = "https://openvex.dev/ns/v0.2.0"
 DEFAULT_AUTHOR = "https://github.com/Shurtug4l/sec-recon-agent"
@@ -68,9 +68,10 @@ def render_openvex(
 ) -> dict[str, Any]:
     """Render neutral records as a standalone OpenVEX v0.2.0 document.
 
-    One "affected" statement per record, bound to that record's product
-    purl(s); producers own deduplication. `timestamp` must be timezone-aware
-    and is the only non-content input that varies the document `@id`.
+    One statement per record, "affected" unless the record says otherwise,
+    bound to that record's product purl(s); producers own deduplication.
+    `timestamp` must be timezone-aware and is the only non-content input that
+    varies the document `@id`.
     """
     if timestamp.tzinfo is None:
         raise ValueError("timestamp must be timezone-aware")
@@ -85,9 +86,10 @@ def render_openvex(
                 "description": record.summary,
             },
             "products": [{"@id": p, "identifiers": {"purl": p}} for p in purls],
-            "status": "affected",
-            "action_statement": record.action,
+            "status": record.vex_status,
         }
+        if record.vex_status == "affected":
+            statement["action_statement"] = record.action
         if record.ssvc_note is not None:
             statement["status_notes"] = record.ssvc_note
         statements.append(statement)
@@ -116,7 +118,9 @@ def to_openvex(
     """Render the report as a standalone OpenVEX v0.2.0 document.
 
     TriageReport adapter over render_openvex: one "affected" statement per
-    distinct CVE, all bound to the supplied product purl(s).
+    distinct CVE, all bound to the supplied product purl(s), plus one
+    "under_investigation" statement when the verdict rests on a CVE the report
+    left out.
     """
     purls = tuple(_validated_purls(products))
     ssvc_note: str | None = None
@@ -147,4 +151,7 @@ def to_openvex(
                 products=purls,
             )
         )
+    driver = omitted_driver_record(report, purls)
+    if driver is not None:
+        records.append(driver)
     return render_openvex(records, timestamp=timestamp, author=author, doc_version=doc_version)

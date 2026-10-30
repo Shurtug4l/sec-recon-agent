@@ -12,6 +12,10 @@ Claim policy, designed to never accuse falsely:
   fabrication; `in_kev_catalog=True` with no supporting kev_check return is.
 - MISMATCH fires in both directions once evidence exists: downplaying a
   tool-confirmed signal contradicts the trajectory just as much as inflating.
+- Leaving a CVE out is a claim too, once the tools flagged it Attend or higher
+  (agent/ssvc.py::omitted_cves): a report that drops it contradicts the
+  trajectory. Softer signals are an editorial choice, and a full report that
+  kept CVEs at least as urgent had no room for it.
 - Only STRUCTURED tool fields count as evidence. Fenced free text is
   untrusted upstream prose, never proof. When a successful return could not
   be parsed back into its typed model, affected claims degrade to
@@ -32,7 +36,14 @@ from sec_recon_agent.agent.schema import (
     GroundingClaim,
     GroundingClaimStatus,
     GroundingStatus,
+    SsvcDecision,
     TriageReport,
+)
+from sec_recon_agent.agent.ssvc import (
+    decide_for_signals,
+    decision_rank,
+    omitted_cves,
+    signals_from_evidence,
 )
 from sec_recon_agent.agent.trajectory import ToolInvocation
 from sec_recon_agent.mcp_server.models import EpssStatus
@@ -42,6 +53,8 @@ from sec_recon_agent.mcp_server.models import EpssStatus
 CVSS_SCORE_TOLERANCE = 0.05
 EPSS_TOLERANCE = 0.01
 MAX_FINDINGS = 40
+# The most CVEs a report can hold: past it, leaving one out is not a choice.
+REPORT_CVE_CAP: int = TriageReport.model_json_schema()["properties"]["cves"]["maxItems"]
 
 
 class _Collector:
@@ -100,6 +113,28 @@ def _absence_status(
     return GroundingClaimStatus.UNBACKED
 
 
+def _check_omissions(collector: _Collector, evidence: Evidence, report: TriageReport) -> None:
+    """Record each CVE the tools flagged that the report had room for and dropped."""
+    full = len(report.cves) >= REPORT_CVE_CAP
+    least_urgent = min(
+        (
+            decision_rank(decide_for_signals(signals_from_evidence(cve, evidence).signals)[0])
+            for cve in report.cves
+        ),
+        default=-1,
+    )
+    for omitted in omitted_cves((cve.cve_id for cve in report.cves), evidence):
+        rank = decision_rank(omitted.decision)
+        if rank < decision_rank(SsvcDecision.ATTEND) or (full and least_urgent >= rank):
+            continue
+        collector.record(
+            omitted.cve_id,
+            "cves",
+            GroundingClaimStatus.MISMATCH,
+            f"tools decide {omitted.decision.value} ({omitted.rule}), the report leaves it out",
+        )
+
+
 def verify_grounding(
     report: TriageReport,
     invocations: Sequence[ToolInvocation] | None,
@@ -118,6 +153,8 @@ def verify_grounding(
 
     for cve in report.cves:
         _check_cve(collector, evidence, cve)
+
+    _check_omissions(collector, evidence, report)
 
     for technique in report.attack_techniques:
         if technique.id in evidence.attack_ids:

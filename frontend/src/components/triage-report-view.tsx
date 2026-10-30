@@ -264,7 +264,13 @@ export function TriageReportView({
       {shared && <SharedReportNote />}
       <Card className="border-2 border-primary/20">
         <CardHeader className="space-y-3">
-          {report.ssvc && <SsvcVerdict ssvc={report.ssvc} shared={shared} />}
+          {report.ssvc && (
+            <SsvcVerdict
+              ssvc={report.ssvc}
+              shared={shared}
+              driverListed={report.cves.some((c) => c.cve_id === report.ssvc?.driving_cve)}
+            />
+          )}
           <div className="flex flex-wrap items-center gap-2">
             <Badge
               className={cn("text-xs uppercase tracking-wider", severityClass[report.severity])}
@@ -584,7 +590,15 @@ function SharedClaimChip({ subject, plain = false }: { subject: string; plain?: 
   );
 }
 
-function SsvcVerdict({ ssvc, shared }: { ssvc: SsvcAssessment; shared: boolean }) {
+function SsvcVerdict({
+  ssvc,
+  shared,
+  driverListed,
+}: {
+  ssvc: SsvcAssessment;
+  shared: boolean;
+  driverListed: boolean;
+}) {
   const meta = SSVC_META[ssvc.decision];
   const Icon = meta.icon;
   return (
@@ -605,8 +619,8 @@ function SsvcVerdict({ ssvc, shared }: { ssvc: SsvcAssessment; shared: boolean }
               Computed by a fixed server-side rule from the signals the tools
               returned (KEV, EPSS, public exploits, ransomware use, CVSS), read from
               the run&apos;s own trajectory rather than from the fields the model
-              wrote, after the model returns. The LLM does not pick this verdict; the
-              same tool returns always produce the same decision.
+              wrote, after the model returns. The LLM does not pick this verdict, and
+              leaving a flagged CVE out of the report does not lower it.
             </TooltipContent>
           </Tooltip>
         )}
@@ -656,19 +670,31 @@ function SsvcVerdict({ ssvc, shared }: { ssvc: SsvcAssessment; shared: boolean }
             {ssvc.driving_cve ? (
               <>
                 {" · driven by "}
-                <a
-                  href={`#cve-${ssvc.driving_cve}`}
-                  className="font-mono text-primary hover:underline"
-                >
-                  {ssvc.driving_cve}
-                </a>
+                {driverListed ? (
+                  <a
+                    href={`#cve-${ssvc.driving_cve}`}
+                    className="font-mono text-primary hover:underline"
+                  >
+                    {ssvc.driving_cve}
+                  </a>
+                ) : (
+                  <>
+                    <ExternalRef
+                      url={`https://nvd.nist.gov/vuln/detail/${ssvc.driving_cve}`}
+                      className="font-mono"
+                    >
+                      {ssvc.driving_cve}
+                    </ExternalRef>
+                    {" (flagged by the tools, not in the report's CVE list)"}
+                  </>
+                )}
               </>
             ) : null}
           </p>
           <SsvcBasisNote ssvc={ssvc} />
         </div>
       </div>
-      <SsvcDecisionTrace ssvc={ssvc} shared={shared} />
+      <SsvcDecisionTrace ssvc={ssvc} shared={shared} driverListed={driverListed} />
     </div>
   );
 }
@@ -988,7 +1014,8 @@ function GroundingSection({
                       />
                       <div className="space-y-0.5">
                         <div className="flex flex-wrap items-center gap-1.5">
-                          {isCve ? (
+                          {/* field "cves": the finding is that the report has no such card. */}
+                          {isCve && finding.field !== "cves" ? (
                             <a
                               href={`#cve-${finding.subject.toUpperCase()}`}
                               className="font-mono text-xs font-semibold text-primary hover:underline"

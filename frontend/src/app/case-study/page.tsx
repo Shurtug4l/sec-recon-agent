@@ -387,9 +387,10 @@ function SsvcAuthorityPanel() {
             cannot move Act to Track, because the model does not hold that
             pen
           </span>
-          . To corrupt the verdict an attacker would have to corrupt the
-          typed tool results themselves, a different and much harder attack
-          than talking a language model into something.
+          . To lower the verdict an attacker has to corrupt the typed tool
+          results, a different and much harder attack than talking a language
+          model into something, or steer the model away from calling a feed
+          at all, which a listed CVE records as unverified.
         </p>
       </div>
       <Lead>

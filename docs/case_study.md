@@ -190,8 +190,12 @@ persuades the model cannot move `Act` to `Track`, because the model does not
 hold that pen: writing `in_kev_catalog: false` into the report changes nothing
 when `kev_check` returned `true`, and talking the model out of calling
 `kev_check` at all yields a verdict stamped `mixed` with `kev` named as
-unverified, not a clean one. To corrupt the verdict, an attacker has to corrupt
-the typed tool results themselves, which is what the host-locked, size-capped
+unverified, not a clean one. Leaving a CVE out of the report changes nothing
+either once a tool has flagged it: it still counts, and grounding records the
+omission. What remains is steering the model away from a feed for a CVE it then
+drops, which leaves no evidence to compare. To corrupt the verdict otherwise, an
+attacker has to corrupt the typed tool results themselves, which is what the
+host-locked, size-capped
 tool clients are built against (how hard that is varies by feed: KEV and EPSS
 are authoritative catalogs, the public-exploit signal is the softest and is
 worth Attend on its own). The same authority-outside-the-model pattern is reused

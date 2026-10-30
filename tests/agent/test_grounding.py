@@ -13,6 +13,7 @@ from sec_recon_agent.agent.grounding import (
     CVSS_SCORE_TOLERANCE,
     EPSS_TOLERANCE,
     MAX_FINDINGS,
+    REPORT_CVE_CAP,
     verify_grounding,
 )
 from sec_recon_agent.agent.schema import (
@@ -148,7 +149,7 @@ def test_fabricated_cve_id_short_circuits() -> None:
     invocations = [
         _invocation(
             "kev_check",
-            _kev_content(cve_id="CVE-2014-0160"),
+            _kev_content(cve_id="CVE-2014-0160", in_catalog=False),
             args={"cve_id": "CVE-2014-0160"},
         ),
     ]
@@ -483,3 +484,71 @@ def test_exploit_return_with_conclusive_arms_contradicts_an_inflated_claim() -> 
     conclusive = [_invocation("exploit_check", _exploit_content(False, github="not_found"))]
     statuses = _statuses(_report(_cve(exploits_public=True)), conclusive)
     assert statuses["exploits_public"] == "mismatch"
+
+
+# --- omission: leaving out a CVE the tools flagged contradicts the trajectory ---
+
+_OMITTED = "CVE-2020-1472"
+
+
+def _kev_for(cve_id: str, *, in_catalog: bool = True) -> ToolInvocation:
+    return _invocation(
+        "kev_check",
+        {"cve_id": cve_id, "in_catalog": in_catalog},
+        args={"cve_id": cve_id},
+    )
+
+
+def _listed(cve_id: str) -> CVEReference:
+    return _cve(cve_id=cve_id, in_kev_catalog=True)
+
+
+def test_omitting_a_flagged_cve_is_a_mismatch() -> None:
+    assessment = verify_grounding(_report(), [_kev_for(_OMITTED)])
+    assert assessment.status is GroundingStatus.SUSPECT
+    assert assessment.mismatched == 1
+    finding = assessment.findings[0]
+    assert (finding.subject, finding.field) == (_OMITTED, "cves")
+    assert finding.status is GroundingClaimStatus.MISMATCH
+
+
+def test_omitting_a_quiet_cve_is_not_a_finding() -> None:
+    assessment = verify_grounding(_report(), [_kev_for(_OMITTED, in_catalog=False)])
+    assert assessment.status is GroundingStatus.GROUNDED
+    assert assessment.claims_checked == 0
+
+
+def test_a_soft_signal_moves_the_verdict_without_accusing_the_model() -> None:
+    epss = _invocation(
+        "epss_score",
+        _epss_content(cve_id=_OMITTED, probability=0.2, percentile=0.5),
+        args={"cve_id": _OMITTED},
+    )
+    assert verify_grounding(_report(), [epss]).status is GroundingStatus.GROUNDED
+
+
+def test_a_full_report_of_cves_at_least_as_urgent_is_not_an_omission() -> None:
+    """Past the schema's cap a faithful model cannot list them all."""
+    listed = [f"CVE-2021-{1000 + i}" for i in range(REPORT_CVE_CAP)]
+    invocations = [_kev_for(cve_id) for cve_id in [*listed, _OMITTED]]
+    report = _report().model_copy(update={"cves": [_listed(cve_id) for cve_id in listed]})
+    assessment = verify_grounding(report, invocations)
+    assert assessment.mismatched == 0
+
+
+def test_a_quieter_cve_holding_a_slot_is_still_a_displacement() -> None:
+    listed = [f"CVE-2021-{1000 + i}" for i in range(REPORT_CVE_CAP)]
+    invocations = [_kev_for(cve_id) for cve_id in [*listed[1:], _OMITTED]]
+    invocations.append(_kev_for(listed[0], in_catalog=False))
+    report = _report().model_copy(update={"cves": [_listed(cve_id) for cve_id in listed]})
+    assessment = verify_grounding(report, invocations)
+    assert [f.subject for f in assessment.findings if f.field == "cves"] == [_OMITTED]
+
+
+def test_the_report_itself_is_not_evidence_for_its_own_ids() -> None:
+    """The output tool call holds every id in the report: it must not back them."""
+    report = _report(_cve(cve_id="CVE-2099-0001", in_kev_catalog=False))
+    final_result = _invocation("final_result", {}, args=report.model_dump(mode="json"))
+    assessment = verify_grounding(report, [final_result])
+    assert assessment.status is GroundingStatus.SUSPECT
+    assert assessment.findings[0].field == "cve_id"
