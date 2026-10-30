@@ -139,10 +139,11 @@ export function ProvenanceNote({ shared = false }: { shared?: boolean }) {
               ) : (
                 <p className="text-xs leading-relaxed">
                   This boundary is the injection-resistance story: a prompt injection
-                  that fully persuades the model still cannot move the verdict from{" "}
-                  <span className="font-semibold">Act</span> to{" "}
-                  <span className="font-semibold">Track</span>, because the model
-                  does not hold that pen. The deterministic lane does.{" "}
+                  that fully persuades the model still cannot talk the verdict down
+                  from what the tools returned, even by leaving a CVE out of the
+                  report, because the model does not hold that pen. The deterministic
+                  lane does. It can steer which tools run, and a signal no tool
+                  returned cannot count.{" "}
                   <Link
                     href="/guide#ssvc"
                     className="font-medium text-primary hover:underline print:hidden"

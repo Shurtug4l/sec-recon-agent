@@ -33,7 +33,7 @@ from typing import Any
 
 from sec_recon_agent.agent.references import nvd_url
 from sec_recon_agent.agent.schema import CVEReference, Severity, TriageReport
-from sec_recon_agent.export.records import VulnRecord
+from sec_recon_agent.export.records import VulnRecord, omitted_driver_record
 from sec_recon_agent.version import package_version
 
 SARIF_SCHEMA_URI = "https://json.schemastore.org/sarif-2.1.0.json"
@@ -205,10 +205,14 @@ def to_sarif(
     """Render the report as a SARIF 2.1.0 log with a single run.
 
     TriageReport adapter over render_sarif; the SSVC rationale is echoed on
-    the driving CVE's result message and the verdict passes through verbatim
-    in the run property bag.
+    the driving CVE's result message, which gets a result of its own when the
+    report left that CVE out, and the verdict passes through verbatim in the
+    run property bag.
     """
     records = [_record_from_cve(report, cve) for cve in report.cves]
+    driver = omitted_driver_record(report)
+    if driver is not None:
+        records.append(driver)
     run_properties: dict[str, Any] = {
         "summary": report.summary,
         "confidence": report.confidence,

@@ -42,6 +42,10 @@ if TYPE_CHECKING:
 
 _CVE_ID_RE = re.compile(r"CVE-\d{4}-\d{4,}", re.IGNORECASE)
 
+# The model's report arrives as a call to this output tool. It is the claim
+# under verification: indexed as evidence, every id it holds backs itself.
+_OUTPUT_TOOL = "final_result"
+
 _LIST_ATTACK = TypeAdapter(list[AttackTechnique])
 _LIST_CANDIDATES = TypeAdapter(list[CVECandidate])
 
@@ -78,7 +82,7 @@ def build_evidence(invocations: Sequence["ToolInvocation"]) -> Evidence:
     """Index every successful return; keep the unparseable ones aside."""
     evidence = Evidence()
     for invocation in invocations:
-        if invocation.outcome != "success":
+        if invocation.outcome != "success" or invocation.tool_name == _OUTPUT_TOOL:
             continue
         # Tool args are model-authored structured data: a queried CVE id
         # counts as a mention even when the tool's answer was empty.

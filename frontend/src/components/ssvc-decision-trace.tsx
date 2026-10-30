@@ -119,9 +119,11 @@ const STATUS_META: Record<
 export function SsvcDecisionTrace({
   ssvc,
   shared = false,
+  driverListed = true,
 }: {
   ssvc: SsvcAssessment;
   shared?: boolean;
+  driverListed?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -172,12 +174,16 @@ export function SsvcDecisionTrace({
               {ssvc.driving_cve ? (
                 <>
                   {" for "}
-                  <a
-                    href={`#cve-${ssvc.driving_cve}`}
-                    className="font-mono text-primary hover:underline"
-                  >
-                    {ssvc.driving_cve}
-                  </a>
+                  {driverListed ? (
+                    <a
+                      href={`#cve-${ssvc.driving_cve}`}
+                      className="font-mono text-primary hover:underline"
+                    >
+                      {ssvc.driving_cve}
+                    </a>
+                  ) : (
+                    <span className="font-mono">{ssvc.driving_cve}</span>
+                  )}
                 </>
               ) : null}
               . The first rule whose condition holds sets the verdict; the rules
