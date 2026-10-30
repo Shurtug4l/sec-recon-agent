@@ -2,6 +2,57 @@
 
 Reference for the ten MCP tools, one section per tool: what it queries, what it returns, and the caps and retry policies behind it. The compact table view is in the [README](../README.md#the-ten-tools); the shared hardening baseline (typed result models, typed errors, untrusted-content fencing, host-locking, size and rate caps, allowlisted span attributes) is described in [design.md](design.md#threat-model).
 
+## Tool surface
+
+Which tool touches what. This is `TOOL_EFFECTS` in `mcp_server/effects.py` drawn out: the hosts match the `*_TRUSTED_HOST` locks and the egress allowlist in `deploy/egress-proxy/filter`, and `tests/mcp_server/test_effects.py` pins all three inventories to each other. Cylinders are server-owned state; no tool writes anywhere else.
+
+```mermaid
+flowchart LR
+    accTitle: Tool surface by egress host
+    accDescr: Six tools reach the network. cve_lookup and patch_lookup call NVD, kev_check calls cisa.gov, epss_score calls FIRST, osv_lookup calls OSV.dev, and exploit_check calls gitlab.com and, with a token, the GitHub API. KEV and Exploit-DB data is cached on disk. Four tools stay local: cve_semantic_search reads the Chroma index, attack_mapping reads bundled JSON, and sbom_ingest and nmap_parse_xml only parse their input.
+
+    subgraph NET["network tools"]
+        CVE["cve_lookup"]
+        PATCH["patch_lookup"]
+        KEV["kev_check"]
+        EPSS["epss_score"]
+        OSV["osv_lookup"]
+        EXP["exploit_check"]
+    end
+
+    subgraph LOCAL["no egress"]
+        SEARCH["cve_semantic_search"]
+        ATTACK["attack_mapping"]
+        SBOM["sbom_ingest"]
+        NMAP["nmap_parse_xml"]
+    end
+
+    NVD["services.nvd.nist.gov<br/>shared rate budget"]
+    CISA["cisa.gov"]
+    FIRST["api.first.org"]
+    OSVD["api.osv.dev"]
+    GL["gitlab.com<br/>Exploit-DB CSV"]
+    GH["api.github.com<br/>only with GITHUB_TOKEN"]
+
+    CVE --> NVD
+    PATCH --> NVD
+    KEV --> CISA
+    EPSS --> FIRST
+    OSV --> OSVD
+    EXP --> GL
+    EXP --> GH
+
+    KEV --- KC[("catalog cache, 24h")]
+    EXP --- EC[("CSV cache, 7d")]
+    SEARCH --- CH[("Chroma index")]
+    ATTACK --- BUNDLE[("bundled JSON, read-only")]
+
+    classDef feed fill:#1D5FA8,stroke:#1D5FA8,color:#F7F9FA
+    class NVD,CISA,FIRST,OSVD,GL,GH feed
+```
+
+`nvd_client.py` holds the rate limiter that `cve_lookup` and the seed pipeline share. `sbom_ingest` and `nmap_parse_xml` parse what they are handed and touch nothing else.
+
 ## cve_lookup
 
 `cve_lookup(cve_id)` fetches the full NVD CVE 2.0 record for a given ID. Returns `CVEDetail` with CVSS v3 score and severity, CWE IDs, affected CPEs, references. Async httpx client with a sliding-window rate limiter (5 req / 30 s without an NVD API key, 50 with) and tenacity exponential backoff on 5xx, 429, and connection errors.

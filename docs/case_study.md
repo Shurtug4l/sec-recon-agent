@@ -74,7 +74,26 @@ it.
 Each layer assumes the one in front of it has failed. None of them is the single
 point the security depends on. The first three bound what the model can be made
 to say; the next two remove and then audit the authority behind what it says;
-the last one keeps all of it falsifiable.
+the last one keeps all of it falsifiable. Read the diagram top to bottom as an
+attack that keeps succeeding: each edge names what got through the layer above.
+The neutral layers are signals the model can ignore; the green ones hold whatever
+it does.
+
+```mermaid
+flowchart TD
+    accTitle: Six layers an injection has to get past
+    accDescr: Injected text arrives in a tool return. Layer one fences it at the code boundary and layer two names the fence in the system prompt, but the model may ignore both. Layer three lets only a valid report out, layer four computes the verdict from tool returns, and layer five checks the claims the model still writes. Layer six measures what gets past all five.
+
+    X(["injected text in a tool return"]) --> L1["Layer 1 - mark<br/>fenced at the code boundary"]
+    L1 -->|"the fence is read as text"| L2["Layer 2 - name<br/>the prompt says fenced text is data"]
+    L2 -->|"the model obeys the payload"| L3["Layer 3 - schema<br/>only a valid TriageReport gets out"]
+    L3 -->|"a wrong but valid report"| L4["Layer 4 - authority<br/>the verdict is computed from tool returns"]
+    L4 -->|"wrong claims in the fields<br/>the model still writes"| L5["Layer 5 - evidence<br/>each claim checked against the trajectory"]
+    L5 -->|"what still slips through:<br/>free text is not fact-checked"| L6["Layer 6 - falsifiable tests<br/>resistance measured and published"]
+
+    classDef code fill:#0F766E,stroke:#0F766E,color:#F7F9FA
+    class L3,L4,L5 code
+```
 
 ### Layer 1: mark, do not sanitize (code boundary)
 

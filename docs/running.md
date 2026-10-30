@@ -174,6 +174,33 @@ OpenVEX requires the purl(s) of the triaged product (`--product`, repeatable): p
 
 `sec-recon-gate` chains the same tool logic in-process with no LLM anywhere: `sbom_ingest` -> `osv_lookup` per component -> KEV / EPSS / exploit enrichment per unique CVE -> a deterministic SSVC decision per finding -> a CI verdict.
 
+```mermaid
+flowchart TD
+    accTitle: SBOM gate pipeline and exit codes
+    accDescr: The gate ingests the SBOM, skips components it cannot query and lists them, looks up OSV advisories, folds aliases into unique CVEs, then checks KEV. An unusable SBOM or an unreachable KEV catalog exits 2. EPSS and exploit failures degrade into coverage gaps. Each finding gets an SSVC decision, the reports are written, and the policy exits 1 or 0.
+
+    S(["SBOM<br/>CycloneDX - SPDX - requirements.txt"]) --> I{"usable SBOM?"}
+    I -->|no| X2["exit 2<br/>the gate could not run"]
+    I -->|yes| P["partition components<br/>no version or unsupported ecosystem: skipped, listed"]
+    P --> O["osv_lookup per component<br/>a failed lookup is skipped and listed"]
+    O --> F["fold GHSA / PYSEC aliases<br/>into unique CVEs"]
+    F --> K{"KEV catalog<br/>reachable?"}
+    K -->|no| X2
+    K -->|yes| E["EPSS per CVE<br/>exploit_check, skipped for CVEs on KEV<br/>failures become coverage gaps"]
+    E --> D["SSVC per finding<br/>same rules as the triage path"]
+    D --> R["GateReport + SARIF + OpenVEX"]
+    R --> Q{"finding at or above --fail-on,<br/>or a gap under --strict?"}
+    Q -->|yes| X1["exit 1<br/>policy failure"]
+    Q -->|no| X0["exit 0<br/>passed"]
+
+    classDef code fill:#0F766E,stroke:#0F766E,color:#F7F9FA
+    classDef act fill:#B2202E,stroke:#B2202E,color:#F7F9FA
+    classDef track fill:#5A6472,stroke:#5A6472,color:#F7F9FA
+    class D code
+    class X1,X2 act
+    class X0 track
+```
+
 ```bash
 uv run sec-recon-gate sbom.json --sarif gate.sarif --openvex gate.vex.json --report gate.json
 uv run sec-recon-gate requirements.txt --fail-on attend --strict

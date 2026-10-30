@@ -23,7 +23,7 @@ Frontend lint stays in CI only: the npm install footprint is heavier than what a
 `main` is a protected branch on GitHub. The protection rules are:
 
 - **Pull-request only**: no direct push to `main`. Every change lands through a PR.
-- **Required status checks**: `lint + type-check + tests` (backend) and `type-check + build` (frontend) must be green before a PR can be merged. The audit trail tests, the SBOM contract tests, and the red-team scorer all run inside the backend job.
+- **Required status checks**: `lint + type-check + tests` (backend), `type-check + build` (frontend), and `export + completeness gate` (frontend e2e) must be green before a PR can be merged. The audit trail tests, the SBOM contract tests, the replay gate, and the red-team scorer all run inside the backend job.
 - **Branches up to date before merging**: enforces rebase against `main` before the merge button is clickable.
 - **Linear history**: prevents merge commits. The history reads as a clean sequence of intentional commits, never a tree of fix-ups.
 - **No force pushes, no deletions, no bypasses**: applies to admins as well. The rules describe how the project actually works, not how it would work if someone remembers to follow them.
@@ -40,6 +40,32 @@ gh pr merge <n> --rebase --delete-branch
 ```
 
 Commit subjects follow Conventional Commits; the body explains *why*, not *what* (the diff already says *what*). Public commit history under `git log` on `main` is the canonical record.
+
+What runs on the way from a branch to a release. Only the three required checks gate a merge; the scans report on their own cadence, so a new advisory against a base image cannot block an unrelated PR.
+
+```mermaid
+flowchart TB
+    accTitle: From branch to release
+    accDescr: A pull request must pass three required checks before a rebase merge to main. Docker scan and the SBOM gate run on matching paths and on a Monday cron without gating the merge. Frontend changes on main redeploy the demo to GitHub Pages, and a signed tag publishes multi-arch images with attestations to GHCR.
+
+    PR(["pull request"]) --> REQ
+
+    subgraph REQ["required checks"]
+        BE["lint + type-check + tests<br/>ruff, mypy, pytest, replay gate<br/>Python 3.12 - 3.14"]
+        FE["type-check + build<br/>docs freshness"]
+        E2E["export + completeness gate<br/>links, axe, overflow"]
+    end
+
+    REQ -->|"rebase merge"| MAIN["main"]
+    CRON(["Monday cron"]) -.-> SCAN["docker-scan: Trivy<br/>sbom-gate: self-scan<br/>report, do not gate"]
+    PR -.->|"matching paths"| SCAN
+    MAIN -.->|"matching paths"| SCAN
+    MAIN -->|"frontend/**"| PAGES["deploy-demo<br/>GitHub Pages"]
+    MAIN -->|"signed tag v*"| GHCR["release-images<br/>amd64 + arm64 on GHCR<br/>provenance + SBOM attestations"]
+
+    classDef code fill:#0F766E,stroke:#0F766E,color:#F7F9FA
+    class BE,FE,E2E code
+```
 
 ## Before touching behavior-bearing text
 
