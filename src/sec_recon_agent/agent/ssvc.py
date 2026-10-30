@@ -24,6 +24,18 @@ Why the signals come from the trajectory, not from the report:
     the verdict (`basis`, `unverified_signals`). The SBOM gate feeds typed tool
     results directly through `assess_from_signals` and never falls back.
 
+Why the CVE list comes from the trajectory too:
+    The signals are only half of the input; the other half is which CVEs get
+    assessed. A verdict over `report.cves` alone lets a persuaded model reach
+    Track by leaving a KEV-listed CVE out, with no field to contradict. So a
+    CVE the tools enriched that would decide Attend or higher counts whether
+    the report lists it or not (`omitted_cves`). A CVE that was only mentioned,
+    such as a semantic-search candidate the model discarded, has no signals
+    and stays out, and so does a low-signal CVE dropped as irrelevant: choosing
+    what is relevant is the model's job, hiding what is urgent is not. A signal
+    no tool returned cannot count, so a model steered away from calling a feed
+    stays outside this check.
+
 Faithfulness to CISA SSVC (honest scope):
     CISA's decision tree has four points: Exploitation (none / PoC / active),
     Automatable (no / yes), Technical Impact (partial / total), and Mission &
@@ -200,11 +212,16 @@ def signals_from_report(cve: CVEReference) -> SsvcSignals:
 
 
 def signals_from_evidence(cve: CVEReference, evidence: Evidence) -> DerivedSignals:
-    """Signals for one CVE read from the tool returns, report only as fallback.
+    """Signals for one reported CVE, tool returns first, the report as fallback."""
+    return _derive_signals(cve.cve_id.upper(), signals_from_report(cve), evidence)
+
+
+def _derive_signals(cve_id: str, fallback: SsvcSignals, evidence: Evidence) -> DerivedSignals:
+    """Signals for one CVE read from the tool returns, `fallback` otherwise.
 
     Per feed, the rule is the same: usable evidence wins outright, and a feed
     with no usable evidence (never called, failed, unparseable) yields the
-    report's value plus the signal's name in `unverified`. Where several
+    fallback value plus the signal's name in `unverified`. Where several
     returns exist for the same CVE the most urgent reading wins, consistent
     with the ladder's most-urgent-first evaluation. Three absences are
     evidence in their own right and do not fall back: an EPSS `not_found`
@@ -212,7 +229,6 @@ def signals_from_evidence(cve: CVEReference, evidence: Evidence) -> DerivedSigna
     score, and an exploit_check whose sources all answered with nothing
     accepted (a source in ERROR makes the return inconclusive instead).
     """
-    cve_id = cve.cve_id.upper()
     unverified: list[str] = []
 
     kev_entries = evidence.kev.get(cve_id, [])
@@ -221,8 +237,8 @@ def signals_from_evidence(cve: CVEReference, evidence: Evidence) -> DerivedSigna
         flags = [k.known_ransomware_use for k in kev_entries if k.known_ransomware_use is not None]
         known_ransomware: bool | None = any(flags) if flags else None
     else:
-        in_kev = cve.in_kev_catalog
-        known_ransomware = cve.known_ransomware_use
+        in_kev = fallback.in_kev
+        known_ransomware = fallback.known_ransomware
         unverified.append(SIGNAL_KEV)
 
     exploit_entries = evidence.exploits.get(cve_id, [])
@@ -234,7 +250,7 @@ def signals_from_evidence(cve: CVEReference, evidence: Evidence) -> DerivedSigna
         exploit_public = False
     else:
         # Never called, or every return has a source in ERROR: unknown.
-        exploit_public = cve.exploits_public
+        exploit_public = fallback.exploit_public
         unverified.append(SIGNAL_EXPLOIT)
 
     epss_entries = evidence.epss.get(cve_id, [])
@@ -246,8 +262,8 @@ def signals_from_evidence(cve: CVEReference, evidence: Evidence) -> DerivedSigna
         epss_probability = None
         epss_percentile = None
     else:
-        epss_probability = cve.epss_probability
-        epss_percentile = cve.epss_percentile
+        epss_probability = fallback.epss_probability
+        epss_percentile = fallback.epss_percentile
         unverified.append(SIGNAL_EPSS)
 
     details = evidence.cve_details.get(cve_id, [])
@@ -255,7 +271,7 @@ def signals_from_evidence(cve: CVEReference, evidence: Evidence) -> DerivedSigna
         scores = [d.cvss_v3_score for d in details if d.cvss_v3_score is not None]
         severity: Severity | None = band_for_score(scores[-1]) if scores else None
     else:
-        severity = cve.severity
+        severity = fallback.severity
         unverified.append(SIGNAL_SEVERITY)
 
     return DerivedSignals(
@@ -269,6 +285,45 @@ def signals_from_evidence(cve: CVEReference, evidence: Evidence) -> DerivedSigna
         ),
         unverified=tuple(unverified),
     )
+
+
+# An omitted CVE has no report to fall back to: what no tool returned is absent.
+_NO_SIGNALS = SsvcSignals(
+    in_kev=False,
+    known_ransomware=None,
+    exploit_public=False,
+    epss_probability=None,
+    epss_percentile=None,
+    severity=None,
+)
+
+
+@dataclass(frozen=True)
+class OmittedCve:
+    """A CVE the tools flagged as urgent that the report does not list."""
+
+    cve_id: str
+    signals: SsvcSignals
+    decision: SsvcDecision
+    rule: str
+
+
+def omitted_cves(cve_ids: Iterable[str], evidence: Evidence) -> list[OmittedCve]:
+    """CVEs with tool signals, absent from `cve_ids`, that decide Attend or higher.
+
+    Shared by the verdict and the grounding verifier so the two stamps cannot
+    disagree about what the report left out.
+    """
+    reported = {cve_id.upper() for cve_id in cve_ids}
+    enriched = evidence.cve_details.keys() | evidence.kev.keys()
+    enriched |= evidence.epss.keys() | evidence.exploits.keys()
+    omitted: list[OmittedCve] = []
+    for cve_id in sorted(enriched - reported):
+        signals = _derive_signals(cve_id, _NO_SIGNALS, evidence).signals
+        decision, rule = decide_for_signals(signals)
+        if _DECISION_RANK[decision] >= _DECISION_RANK[SsvcDecision.ATTEND]:
+            omitted.append(OmittedCve(cve_id, signals, decision, rule))
+    return omitted
 
 
 _RULE_RATIONALE: dict[str, str] = {
@@ -374,15 +429,16 @@ def assess_ssvc(
     cves: Iterable[CVEReference],
     invocations: Sequence["ToolInvocation"] | None,
 ) -> SsvcAssessment:
-    """Reduce the report's CVEs to a single, most-urgent SSVC verdict.
+    """Reduce the run's CVEs to a single, most-urgent SSVC verdict.
 
     `invocations` is the run's captured trajectory. With one, every signal is
     read from the tool returns (basis EVIDENCE), falling back per signal to
     the report where no usable evidence exists (basis MIXED, each fallback
     named). `None` means no trajectory was available at all: the verdict is
     computed from the report and stamped as such (basis REPORT), never
-    dressed up as evidence-backed. Behavior is pinned bit-exact by the
-    cassette replay gate.
+    dressed up as evidence-backed. CVEs the tools flagged and the report left
+    out count too (`omitted_cves`), and the rationale names them. Behavior is
+    pinned bit-exact by the cassette replay gate.
     """
     cve_list = list(cves)
     if invocations is None:
@@ -398,8 +454,15 @@ def assess_ssvc(
         derived = signals_from_evidence(cve, evidence)
         items.append((cve.cve_id, derived.signals))
         unverified.extend(f"{cve.cve_id.upper()}:{name}" for name in derived.unverified)
-    return assess_from_signals(
+    omitted = omitted_cves((cve.cve_id for cve in cve_list), evidence)
+    items.extend((entry.cve_id, entry.signals) for entry in omitted)
+    assessment = assess_from_signals(
         items,
         basis=SsvcBasis.MIXED if unverified else SsvcBasis.EVIDENCE,
         unverified_signals=unverified,
     )
+    if not omitted:
+        return assessment
+    named = ", ".join(entry.cve_id for entry in omitted)
+    rationale = f"{assessment.rationale} Flagged by the tools, missing from the report: {named}."
+    return assessment.model_copy(update={"rationale": rationale[:500]})

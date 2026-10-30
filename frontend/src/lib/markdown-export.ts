@@ -240,7 +240,7 @@ function renderProvenance(shared: boolean): string {
   lines.push(
     shared
       ? "These lanes describe a live run. This report came from a shared link, so none of them can be checked: whoever wrote the link held every pen, the deterministic lane included."
-      : "A prompt injection that fully persuades the model still cannot move the verdict from Act to Track: the model does not hold that pen, the deterministic lane does.",
+      : "A prompt injection that fully persuades the model still cannot talk the verdict down from what the tools returned, even by leaving a CVE out of the report: the model does not hold that pen, the deterministic lane does. It can steer which tools run, and a signal no tool returned cannot count.",
   );
   lines.push("");
   return lines.join("\n");

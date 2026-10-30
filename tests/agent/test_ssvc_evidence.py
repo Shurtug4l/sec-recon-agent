@@ -315,3 +315,58 @@ def test_exploit_found_on_one_arm_wins_even_if_the_other_errored() -> None:
     assessment = assess_ssvc([_cve(exploits_public=False)], trajectory)
     assert assessment.rule == "public-exploit"
     assert assessment.basis is SsvcBasis.EVIDENCE
+
+
+# --- the CVE list: a flagged CVE counts whether or not the report lists it -----
+
+
+def test_a_kev_listed_cve_left_out_of_the_report_still_decides() -> None:
+    trajectory = [*_quiet_trajectory(), _kev(cve_id=OTHER)]
+    assessment = assess_ssvc([_cve()], trajectory)
+    assert assessment.decision is SsvcDecision.ACT
+    assert assessment.rule == "kev-active-exploitation"
+    assert assessment.driving_cve == OTHER
+    assert OTHER in assessment.rationale
+
+
+def test_dropping_every_cve_does_not_reach_no_cves() -> None:
+    assessment = assess_ssvc([], [_kev(ransomware=True)])
+    assert assessment.decision is SsvcDecision.ACT
+    assert assessment.rule == "ransomware"
+    assert "no CVEs were grounded" not in assessment.rationale
+
+
+def test_a_public_exploit_left_out_decides_attend() -> None:
+    assessment = assess_ssvc([_cve()], [*_quiet_trajectory(), _exploit(has=True, cve_id=OTHER)])
+    assert assessment.decision is SsvcDecision.ATTEND
+    assert assessment.driving_cve == OTHER
+
+
+def test_a_cve_dropped_as_irrelevant_stays_out() -> None:
+    """A CVE the tools looked up and found quiet is the model's call to drop."""
+    trajectory = [*_quiet_trajectory(), *_quiet_trajectory(cve_id=OTHER)]
+    assert assess_ssvc([_cve()], trajectory) == assess_ssvc([_cve()], _quiet_trajectory())
+
+
+def test_elevated_signals_alone_do_not_force_a_cve_back_in() -> None:
+    trajectory = [*_quiet_trajectory(), _epss(probability=0.2, percentile=0.5, cve_id=OTHER)]
+    assert assess_ssvc([_cve()], trajectory).decision is SsvcDecision.TRACK
+
+
+def test_a_candidate_only_mentioned_is_not_evidence() -> None:
+    search = _invocation(
+        "cve_semantic_search",
+        [{"cve_id": OTHER, "summary": "x", "similarity": 0.9}],
+    )
+    trajectory = [*_quiet_trajectory(), search]
+    assert assess_ssvc([_cve()], trajectory) == assess_ssvc([_cve()], _quiet_trajectory())
+
+
+def test_a_listed_cve_of_equal_urgency_stays_the_driver() -> None:
+    trajectory = [_kev(), _kev(cve_id=OTHER)]
+    assert assess_ssvc([_cve()], trajectory).driving_cve == CVE
+
+
+def test_a_failed_lookup_leaves_nothing_to_omit() -> None:
+    failed = _invocation("kev_check", "upstream error", cve_id=OTHER, outcome="failure")
+    assert assess_ssvc([], [failed]).rule == "no-cves"

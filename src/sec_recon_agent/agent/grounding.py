@@ -12,6 +12,9 @@ Claim policy, designed to never accuse falsely:
   fabrication; `in_kev_catalog=True` with no supporting kev_check return is.
 - MISMATCH fires in both directions once evidence exists: downplaying a
   tool-confirmed signal contradicts the trajectory just as much as inflating.
+- Leaving a CVE out is a claim too, once the tools flagged it as urgent
+  (agent/ssvc.py::omitted_cves): a report that drops it contradicts the
+  trajectory. A low-signal CVE dropped as irrelevant is an editorial choice.
 - Only STRUCTURED tool fields count as evidence. Fenced free text is
   untrusted upstream prose, never proof. When a successful return could not
   be parsed back into its typed model, affected claims degrade to
@@ -34,6 +37,7 @@ from sec_recon_agent.agent.schema import (
     GroundingStatus,
     TriageReport,
 )
+from sec_recon_agent.agent.ssvc import omitted_cves
 from sec_recon_agent.agent.trajectory import ToolInvocation
 from sec_recon_agent.mcp_server.models import EpssStatus
 
@@ -118,6 +122,14 @@ def verify_grounding(
 
     for cve in report.cves:
         _check_cve(collector, evidence, cve)
+
+    for omitted in omitted_cves((cve.cve_id for cve in report.cves), evidence):
+        collector.record(
+            omitted.cve_id,
+            "cves",
+            GroundingClaimStatus.MISMATCH,
+            f"tools decide {omitted.decision.value} ({omitted.rule}), the report leaves it out",
+        )
 
     for technique in report.attack_techniques:
         if technique.id in evidence.attack_ids:

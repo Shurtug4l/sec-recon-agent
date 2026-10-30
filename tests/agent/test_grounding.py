@@ -148,7 +148,7 @@ def test_fabricated_cve_id_short_circuits() -> None:
     invocations = [
         _invocation(
             "kev_check",
-            _kev_content(cve_id="CVE-2014-0160"),
+            _kev_content(cve_id="CVE-2014-0160", in_catalog=False),
             args={"cve_id": "CVE-2014-0160"},
         ),
     ]
@@ -483,3 +483,27 @@ def test_exploit_return_with_conclusive_arms_contradicts_an_inflated_claim() -> 
     conclusive = [_invocation("exploit_check", _exploit_content(False, github="not_found"))]
     statuses = _statuses(_report(_cve(exploits_public=True)), conclusive)
     assert statuses["exploits_public"] == "mismatch"
+
+
+# --- omission: leaving out a CVE the tools flagged contradicts the trajectory ---
+
+_OMITTED = "CVE-2020-1472"
+
+
+def _kev_for(cve_id: str, *, in_catalog: bool = True) -> ToolInvocation:
+    return _invocation("kev_check", {"cve_id": cve_id, "in_catalog": in_catalog})
+
+
+def test_omitting_a_flagged_cve_is_a_mismatch() -> None:
+    assessment = verify_grounding(_report(), [_kev_for(_OMITTED)])
+    assert assessment.status is GroundingStatus.SUSPECT
+    assert assessment.mismatched == 1
+    finding = assessment.findings[0]
+    assert (finding.subject, finding.field) == (_OMITTED, "cves")
+    assert finding.status is GroundingClaimStatus.MISMATCH
+
+
+def test_omitting_a_quiet_cve_is_not_a_finding() -> None:
+    assessment = verify_grounding(_report(), [_kev_for(_OMITTED, in_catalog=False)])
+    assert assessment.status is GroundingStatus.GROUNDED
+    assert assessment.claims_checked == 0

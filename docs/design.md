@@ -253,6 +253,8 @@ The accounting sits in `finally` because the provider bills a run the client aba
 
 **Why reference URLs are derived from ids, not validated.** `nvd_url` and the ATT&CK `url` fields are model-written, `HttpUrl` is the only check on them, and grounding has no claim about them, so an injected report could point its references anywhere and SARIF `helpUri` and the OpenVEX `@id` would republish that. A host allowlist would still leave the path to the model. The ids are already pattern-validated and each URL is a pure function of its id, so the URL carries no information worth keeping: `agent/references.py` derives it after the model returns, the same authority pattern as `ssvc`. The exporters derive it again, because `/v1/export/*` accepts a report from the client that never went through the stamp. `kev_due_date` gets the same treatment without an id: a bare `str` that consumers print as a date, so anything that is not an ISO date is dropped. No schema or prompt change, so no cassette re-record.
 
+**Why a CVE the tools flagged counts even when the report leaves it out.** The verdict read every signal from the trajectory but took the CVE list from the report, so a persuaded model could reach Track by dropping a KEV-listed CVE, and grounding stayed green because it only checked what the report claimed. `ssvc.py::omitted_cves` closes that: a CVE with tool signals, absent from the report, that decides Attend or higher joins the verdict and is a grounding mismatch. One helper feeds both stamps so they cannot disagree. The threshold is the design: discarding candidates is the model's job, and on the 11 recorded golden runs every CVE it enriched is in its report, while the semantic-search hits it discarded are only mentioned, so counting every mention would have produced false Acts. A CVE dropped with low signals stays an editorial choice. Rejected: flagging CVEs named in the query (a nonexistent id is a legitimate omission, as `unknown-cve-degrade` shows), and a new `omitted_cves` report field (it changes the schema the model sees and forces a re-record; the rationale carries the names). Residual: a model steered away from calling `kev_check` leaves nothing to compare.
+
 ## Threat model
 
 The agent consumes untrusted content from at least four sources. Treating each as adversarial. The diagram places each boundary control on the untrusted-data path; the table that follows gives the field-level detail. Blue is external data, purple the model, green deterministic code.
@@ -312,7 +314,7 @@ flowchart TB
     class TRAJ,SCHEMA,SSVC,GROUND,AUDIT code
 ```
 
-The dashed edge is the residual channel, stated so a reviewer does not have to find it: the verdict iterates the CVEs the report lists, and takes a signal from the report only when no tool evidence exists for it, in which case the stamp names that signal in `unverified_signals`.
+The dashed edge is the residual channel, stated so a reviewer does not have to find it: the report supplies the CVEs to assess, and a signal only when no tool evidence exists for it, in which case the stamp names that signal in `unverified_signals`. A CVE the tools flagged counts even if the report leaves it out, and a model steered away from calling a feed stays outside that check: a signal no tool returned cannot count.
 
 ### Inputs and trust boundaries
 
