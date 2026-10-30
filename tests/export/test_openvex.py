@@ -1,5 +1,6 @@
 """Unit tests for the pure TriageReport -> OpenVEX v0.2.0 renderer."""
 
+import json
 from datetime import UTC, datetime
 from typing import Any
 
@@ -124,3 +125,12 @@ def test_non_purl_product_identity_is_refused() -> None:
 def test_naive_timestamp_is_refused() -> None:
     with pytest.raises(ValueError, match="timezone-aware"):
         to_openvex(_report(), products=[_PURL], timestamp=datetime(2026, 7, 8))  # noqa: DTZ001
+
+
+def test_a_model_written_reference_never_reaches_the_document() -> None:
+    hostile = _report(cves=[_cve(nvd_url="https://evil.example/phish")])
+    doc = to_openvex(hostile, products=[_PURL], timestamp=_TS, author="x")
+    statement = doc["statements"][0]
+    name = statement["vulnerability"]["name"]
+    assert statement["vulnerability"]["@id"] == f"https://nvd.nist.gov/vuln/detail/{name}"
+    assert "evil.example" not in json.dumps(doc)

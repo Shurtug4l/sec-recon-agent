@@ -30,6 +30,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
+from sec_recon_agent.agent.references import nvd_url
 from sec_recon_agent.agent.schema import TriageReport
 from sec_recon_agent.export.records import VulnRecord
 
@@ -134,7 +135,7 @@ def to_openvex(
                 summary=cve.summary,
                 severity=cve.severity,
                 cvss_score=cve.cvss_v3_score,
-                url=str(cve.nvd_url),
+                url=nvd_url(cve.cve_id),
                 action=report.recommended_action,
                 in_kev=cve.in_kev_catalog,
                 kev_due_date=cve.kev_due_date,

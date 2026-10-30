@@ -1,5 +1,6 @@
 """Unit tests for the pure TriageReport -> SARIF 2.1.0 renderer."""
 
+import json
 from typing import Any
 
 import pytest
@@ -175,6 +176,15 @@ def test_run_properties_honest_when_stamps_absent() -> None:
     props = to_sarif(_report(ssvc=None), artifact_uri="s.json")["runs"][0]["properties"]
     assert "ssvc" not in props
     assert props["grounding_status"] is None
+
+
+def test_a_model_written_reference_never_reaches_the_document() -> None:
+    # /v1/export takes a report from the client, so no server stamp ran on it.
+    hostile = _report(cves=[_cve(nvd_url="https://evil.example/phish")])
+    doc = to_sarif(hostile, artifact_uri="sbom.json")
+    rule = doc["runs"][0]["tool"]["driver"]["rules"][0]
+    assert rule["helpUri"] == f"https://nvd.nist.gov/vuln/detail/{rule['id']}"
+    assert "evil.example" not in json.dumps(doc)
 
 
 def test_report_without_cves_renders_empty_run() -> None:
