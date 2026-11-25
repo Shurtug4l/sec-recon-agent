@@ -1,5 +1,6 @@
 """NVD CVE lookup tool. Returns a typed CVEDetail for a given CVE ID."""
 
+import re
 from typing import Any
 
 import httpx
@@ -10,7 +11,15 @@ from sec_recon_agent.mcp_server.errors import (
     CveNotFoundError,
     MalformedNvdPayloadError,
 )
-from sec_recon_agent.mcp_server.models import CVE_DESCRIPTION_CHARS, CVEDetail, CveIdStr
+from sec_recon_agent.mcp_server.models import (
+    CPE_MAX_CHARS,
+    CVE_CPES_MAX,
+    CVE_CWE_IDS_MAX,
+    CVE_DESCRIPTION_CHARS,
+    CWE_ID_PATTERN,
+    CVEDetail,
+    CveIdStr,
+)
 from sec_recon_agent.mcp_server.nvd_client import (
     HTTP_TIMEOUT_SECONDS,
     NVD_BASE_URL,
@@ -24,6 +33,15 @@ _tracer = get_tracer()
 
 # Re-exported for tests that previously imported NVD_BASE_URL from this module.
 __all__ = ["NVD_BASE_URL", "cve_lookup"]
+
+_CWE_ID_RE = re.compile(CWE_ID_PATTERN)
+# CPE 2.3 formatted string: `cpe:2.3:` + part (a/o/h, or a wildcard) + ten
+# more colon-separated components of printable ASCII. Inside a component a
+# character is either anything but `:` and `\`, or a `\`-escape; the two
+# alternatives never overlap, so a failing match stays linear (an earlier
+# `[^\s:]*` version let `\:` split two ways and backtracked exponentially).
+_CPE_RE = re.compile(r"cpe:2\.3:[aoh*\-](?::(?:[!-9;-\[\]-~]|\\[!-~])*){10}")
+_CVSS_V3_SEVERITIES = frozenset({"NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"})
 
 
 def _extract_english_description(cve: dict[str, Any]) -> str:
@@ -42,33 +60,45 @@ def _extract_cvss_v3(cve: dict[str, Any]) -> tuple[float | None, str | None]:
             data = entries[0].get("cvssData", {})
             score = data.get("baseScore")
             severity = data.get("baseSeverity")
+            # A CVSS v3 severity token or nothing: the field reaches the
+            # model unfenced, so an unexpected upstream string is dropped.
             return (
                 float(score) if score is not None else None,
-                str(severity) if severity is not None else None,
+                severity if isinstance(severity, str) and severity in _CVSS_V3_SEVERITIES else None,
             )
     return None, None
 
 
 def _extract_cwe_ids(cve: dict[str, Any]) -> list[str]:
+    # Whole-string CWE-N only: NVD's own placeholders (NVD-CWE-Other,
+    # NVD-CWE-noinfo) and anything with trailing text are dropped, so the
+    # field cannot carry prose to the model.
     cwe_ids: list[str] = []
     for weakness in cve.get("weaknesses", []):
         for desc in weakness.get("description", []):
             if desc.get("lang") == "en":
                 value = desc.get("value", "")
-                if isinstance(value, str) and value.startswith("CWE-") and value not in cwe_ids:
+                if isinstance(value, str) and _CWE_ID_RE.fullmatch(value) and value not in cwe_ids:
                     cwe_ids.append(value)
-    return cwe_ids[:20]
+    return cwe_ids[:CVE_CWE_IDS_MAX]
 
 
 def _extract_cpes(cve: dict[str, Any]) -> list[str]:
+    # Only a whole CPE 2.3 formatted string within the length cap is kept:
+    # anything else is dropped, never truncated into a different name.
     cpes: list[str] = []
     for config in cve.get("configurations", []):
         for node in config.get("nodes", []):
             for match in node.get("cpeMatch", []):
                 cpe = match.get("criteria")
-                if isinstance(cpe, str) and cpe not in cpes:
+                if (
+                    isinstance(cpe, str)
+                    and len(cpe) <= CPE_MAX_CHARS
+                    and _CPE_RE.fullmatch(cpe)
+                    and cpe not in cpes
+                ):
                     cpes.append(cpe)
-    return cpes[:50]
+    return cpes[:CVE_CPES_MAX]
 
 
 def _extract_references(cve: dict[str, Any]) -> list[str]:

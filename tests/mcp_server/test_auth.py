@@ -95,14 +95,46 @@ async def test_accepts_correct_token() -> None:
 
 
 @pytest.mark.asyncio
-async def test_passes_through_non_http_scope() -> None:
-    """Lifespan / websocket scopes must not be challenged."""
+async def test_passes_through_lifespan_scope() -> None:
+    """Lifespan carries no client request: it must not be challenged."""
     rec = _Recorder()
     mw = BearerAuthASGI(rec.passthrough_app, token="s3cret")
 
     await mw({"type": "lifespan"}, _empty_receive, rec.send)
 
     assert rec.app_called
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "headers",
+    [[], [(b"authorization", b"Bearer s3cret")]],
+    ids=["no-token", "valid-token"],
+)
+async def test_refuses_websocket_scope(headers: list[tuple[bytes, bytes]]) -> None:
+    """The SSE transport serves no websocket route; a websocket scope never
+    reaches the app, with or without the token, and the handshake is closed
+    with a policy-violation code."""
+    rec = _Recorder()
+    mw = BearerAuthASGI(rec.passthrough_app, token="s3cret")
+
+    scope = {"type": "websocket", "path": "/sse", "headers": headers}
+    await mw(scope, _empty_receive, rec.send)
+
+    assert not rec.app_called
+    assert rec.messages == [{"type": "websocket.close", "code": 1008}]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scope_type", ["webtransport", "", None])
+async def test_refuses_unknown_scope_types(scope_type: str | None) -> None:
+    rec = _Recorder()
+    mw = BearerAuthASGI(rec.passthrough_app, token="s3cret")
+
+    await mw({"type": scope_type, "headers": []}, _empty_receive, rec.send)
+
+    assert not rec.app_called
+    assert rec.messages == []
 
 
 def test_constructor_rejects_empty_token() -> None:

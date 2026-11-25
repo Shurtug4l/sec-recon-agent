@@ -102,7 +102,7 @@ The MCP server (`:8001`) is the more powerful surface in the stack: direct tool 
 MCP_AUTH_TOKEN="long-random-string"
 ```
 
-With the token set, every HTTP request to the MCP server must carry `Authorization: Bearer long-random-string` or the response is `401 Unauthorized` with `WWW-Authenticate: Bearer realm="mcp"`. Comparison is constant-time (`secrets.compare_digest`). Lifespan and non-HTTP ASGI scopes pass through untouched. The token is held as `SecretStr` in `config.py` so it never leaks into structured logs.
+With the token set, every HTTP request to the MCP server must carry `Authorization: Bearer long-random-string` or the response is `401 Unauthorized` with `WWW-Authenticate: Bearer realm="mcp"`. Comparison is constant-time (`secrets.compare_digest`). Only the ASGI `lifespan` scope passes through ungated; any other non-HTTP scope (`websocket` included) is refused without reaching the app, since the SSE transport serves no websocket route. The token is held as `SecretStr` in `config.py` so it never leaks into structured logs.
 
 The transport crosses a container boundary (the agent's Pydantic AI client speaks HTTP+SSE to `mcp-server:8001`), so the same secret has to reach both processes: docker-compose forwards `MCP_AUTH_TOKEN` to `mcp-server`, which enforces it, and to `agent-api`, whose MCP client presents it as `Authorization: Bearer <token>` on every request. One variable in `.env` enables the gate end to end; an integration test in `tests/mcp_server/test_auth.py` serves the real ASGI app on an ephemeral port, lists tools through the authenticated client, and asserts the unauthenticated one is refused. Standalone callers (third-party MCP clients, manual smoke from a separate host) must attach the header explicitly.
 
