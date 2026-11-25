@@ -58,16 +58,16 @@ should confirm.
 
 | Tool | Network egress | Untrusted free-text handling | Input caps / hardening | Side effects |
 |---|---|---|---|---|
-| `cve_lookup` | NVD (shared rate-limited client) | `references` marked UNTRUSTED (docstring + Field + prompt); description is data | `CveIdStr` regex-bounded | none (read) |
+| `cve_lookup` | NVD (shared rate-limited client) | `references` marked UNTRUSTED (docstring + Field + prompt); description is data; CWE ids kept only as whole `CWE-N`, CPEs capped at 400 chars (longer ones dropped) | `CveIdStr` regex-bounded | none (read) |
 | `cve_semantic_search` | none at query (local ChromaDB) | `summary` fenced via `fence_untrusted` | query truncated (`MAX_QUERY_CHARS`), `top_k` clamped, offloaded to a thread | local index write only (a cold volume creates the Chroma collection) |
 | `exploit_check` | Exploit-DB (`gitlab.com`, host-locked) + optional GitHub Code Search + GitHub repository metadata (`api.github.com`) | per-source status (`found` / `not_found` / `error` / `skipped`); GitHub hits as repository URLs only, from established repositories (5 stars or 30 days), bound to `HttpUrl`, capped; unverified candidates counted | host-lock on redirect (`EXPLOITDB_TRUSTED_HOST`), cached manifest, arms settle independently | local cache write only |
-| `kev_check` | CISA (`cisa.gov`, host-locked) | `vulnerability_name` / `required_action` / `notes` fenced, `max_length` includes marker overhead | host-lock on redirect (`KEV_TRUSTED_HOST`), 24h disk cache | local cache write only |
+| `kev_check` | CISA (`cisa.gov`, host-locked) | `vulnerability_name` / `required_action` / `notes` fenced, `max_length` includes marker overhead | host-lock on redirect (`KEV_TRUSTED_HOST`), 24h disk cache; cache read / write errors reach the client without the OS error text or the cache path | local cache write only |
 | `epss_score` | FIRST.org (`api.first.org`, host-locked) | no free text (numeric + status enum) | host-lock, 4 MB response cap, typed errors | none (read) |
 | `patch_lookup` | NVD (shared client) | `references` marked UNTRUSTED | `CveIdStr` bounded, fixed-entries capped | none (read) |
 | `osv_lookup` | OSV.dev (`api.osv.dev`, host-locked) | `summary` fenced; `references` filtered to http(s) before `HttpUrl` bind | host-lock on redirect, response byte cap, ecosystem `Literal` (no unknown fallback) | none (read) |
-| `nmap_parse_xml` | none (in-process) | `product` / `version` banners fenced (200-char budget); `service` / `protocol` / `state` / address / hostnames length-capped | `defusedxml(forbid_dtd=True)` (XXE-safe), 20 MB input cap, 1000-host cap, double-enforced | none (read) |
+| `nmap_parse_xml` | none (in-process) | `product` / `version` banners fenced (200-char budget); address parsed as IPv4/IPv6, `protocol` enum, `state` / `service` tokens; hostnames kept only in the RFC 1123 charset (plus underscore), `scan_start` only as epoch digits; errors echo no caller text | `defusedxml(forbid_dtd=True)` (XXE-safe), 20 MB input cap, 1000-host cap (double-enforced), 200 ports per host and 2000 per scan, 50 hostnames per host and 2000 per scan, `truncated` flag | none (read) |
 | `attack_mapping` | none (bundled JSON) | curated table, no untrusted text | 200-CWE list cap, 40-char per-entry cap, raises `InvalidCweInputError` | none (read) |
-| `sbom_ingest` | none (in-process) | component names bounded, not fenced | JSON-only (no XML), 500-component cap, `truncated` flag | none (read) |
+| `sbom_ingest` | none (in-process) | not fenced: name / version validated against a package-identifier charset, purl cut to type/namespace/name@version (qualifiers and subpath dropped) and checked against the Package URL shape; a bad name drops the component and is counted in `rejected_count`, a bad version or purl becomes null | JSON-only (no XML), 500-component cap, `truncated` flag | none (read) |
 
 ## Cross-cutting controls
 
@@ -116,7 +116,10 @@ should confirm.
 - **Rug-pull** (a tool changing behavior after approval): the tool surface is
   in-repo and versioned; there is no dynamic tool registration from an external
   server, so there is nothing to rug-pull. Adding/removing a tool is a code
-  change gated by the `/v1/meta` exact-set contract test.
+  change gated by the `/v1/meta` exact-set contract test. The served server
+  exposes no MCP resources, resource templates or prompts
+  (`tests/mcp_server/test_effects.py` asserts all three lists are empty), so
+  no LLM-reachable surface exists outside the `@declared_tool()` effects check.
 - **Confused deputy / token pass-through**: the server holds its own upstream
   credentials (`NVD_API_KEY`, `GITHUB_TOKEN`) as `SecretStr`; they are never
   echoed to the model or the client, and the model cannot cause the server to
@@ -132,7 +135,10 @@ should confirm.
   `epss.status` enum + numeric probability).
 - **Error leakage.** The API surface echoes only whitelisted exception messages
   to the SSE client; everything else is replaced with a generic message so
-  internal paths / library internals do not leak.
+  internal paths / library internals do not leak. On the MCP side, tool errors
+  name the failure class only: `kev_check` keeps the cache path and the OS
+  error text in the server log and the span, never in the error the client
+  receives.
 
 ## Residual risks (accept-and-document)
 
@@ -148,9 +154,16 @@ should confirm.
   could not actually be turned on in the shipped topology; see
   [`security_findings.md`](security_findings.md).
 - **Nmap output is attacker-controlled end to end.** `product` and `version`
-  banners are fenced with their own budget; `service`, `protocol`, `state`,
-  the address and the hostnames are short identifiers, length-capped but not
-  fenced. A crafted scan can still put up to 200 characters of prose inside
-  each fenced banner, which is a proportionate injection window, not a
-  megabyte one (the caps landed 2026-09-22; before that only the banners were
-  fenced and nothing was capped).
+  banners are fenced with their own budget. Everything else is validated
+  whole, never truncated: the address must parse as IPv4/IPv6, `protocol` is
+  one of tcp/udp/sctp/ip, `state` and `service` must be tokens, hostnames
+  must fit the RFC 1123 charset (plus underscore), `scan_start` must be epoch
+  digits, and parse errors echo no caller text. Ports are capped at 200 per
+  host and 2000 per scan, hostnames at 50 per host and 2000 per scan, with
+  `truncated` set when a cap cut the result. The charsets block spaces, not
+  words: a hyphen-joined name such as `ignore-previous-instructions` still
+  passes as a hostname or package name, bounded by its length cap. A
+  crafted scan can still put up to 200 characters of prose inside each fenced
+  banner, which is a proportionate injection window, not a megabyte one (the
+  caps landed 2026-09-22; before that only the banners were fenced and
+  nothing was capped).

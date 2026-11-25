@@ -14,6 +14,11 @@ Supported formats and the fields we extract:
 
 Anything more exotic (CycloneDX XML, SPDX tag-value, lockfiles) raises
 UnsupportedSbomFormatError. The caller can convert and retry.
+
+Every extracted field is caller-supplied text that reaches the model
+unfenced, so each one is validated as an identifier rather than truncated:
+a name outside the package-identifier charset drops the component (counted
+in `rejected_count`), a bad version or purl becomes None.
 """
 
 import json
@@ -29,6 +34,12 @@ from sec_recon_agent.mcp_server.errors import (
     UnsupportedSbomFormatError,
 )
 from sec_recon_agent.mcp_server.models import (
+    SBOM_NAME_CHARS,
+    SBOM_NAME_PATTERN,
+    SBOM_PURL_CHARS,
+    SBOM_PURL_PATTERN,
+    SBOM_VERSION_CHARS,
+    SBOM_VERSION_PATTERN,
     SbomComponent,
     SbomComponentList,
 )
@@ -48,6 +59,13 @@ _REQ_LINE = re.compile(
     r"\s*(?:;.*)?$",
 )
 _PURL_ECOSYSTEM = re.compile(r"^pkg:([a-z]+)/")
+_NAME_RE = re.compile(SBOM_NAME_PATTERN)
+_VERSION_RE = re.compile(SBOM_VERSION_PATTERN)
+_PURL_RE = re.compile(SBOM_PURL_PATTERN)
+# Percent-escapes an identifier needs (`%40` for an npm scope, `/`, `+`, `:`).
+# Any other escape, `%20` above all, would let encoded prose through the
+# charset, so a purl carrying one becomes None.
+_PURL_FOREIGN_ESCAPE = re.compile(r"%(?!40|2[Ff]|2[Bb]|3[Aa])")
 # purl type (https://github.com/package-url/purl-spec) -> OSV ecosystem
 # spelling (https://ossf.github.io/osv-schema/#affectedpackage-field). The two
 # vocabularies diverge (purl is lowercase, OSV is cased), so a raw purl type
@@ -110,62 +128,104 @@ def _ecosystem_from_purl(purl: str | None) -> str | None:
     return _PURL_TYPE_TO_OSV.get(purl_type, purl_type)
 
 
-def _parse_cyclonedx(payload: dict[str, Any]) -> list[SbomComponent]:
+def _identifier(value: Any, pattern: re.Pattern[str], max_chars: int) -> str | None:
+    """Return the stripped value when the whole of it matches `pattern`
+    within `max_chars`, else None. Never truncates: a cut identifier names a
+    different package."""
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    if not stripped or len(stripped) > max_chars or not pattern.fullmatch(stripped):
+        return None
+    return stripped
+
+
+def _purl_core(purl: Any) -> Any:
+    """The purl without its `?qualifiers` and `#subpath`.
+
+    Qualifiers and subpath are free-form key=value text (percent-encoded
+    prose passes any charset), and nothing downstream reads them: type,
+    namespace, name and version are what identify the package.
+    """
+    if not isinstance(purl, str):
+        return purl
+    return purl.split("#", 1)[0].split("?", 1)[0]
+
+
+def _component(
+    name: str, version: Any, purl: Any, *, ecosystem: str | None = None
+) -> SbomComponent | None:
+    """Build a component from raw fields, or None when the name is not a
+    valid package identifier. A bad version or purl degrades to None."""
+    valid_name = _identifier(name, _NAME_RE, SBOM_NAME_CHARS)
+    if valid_name is None:
+        return None
+    valid_purl = _identifier(_purl_core(purl), _PURL_RE, SBOM_PURL_CHARS)
+    if valid_purl is not None and _PURL_FOREIGN_ESCAPE.search(valid_purl):
+        valid_purl = None
+    return SbomComponent(
+        name=valid_name,
+        version=_identifier(version, _VERSION_RE, SBOM_VERSION_CHARS),
+        ecosystem=ecosystem if ecosystem is not None else _ecosystem_from_purl(valid_purl),
+        purl=valid_purl,
+    )
+
+
+def _parse_cyclonedx(payload: dict[str, Any]) -> tuple[list[SbomComponent], int]:
     raw = payload.get("components") or []
     if not isinstance(raw, list):
         raise MalformedSbomPayloadError("CycloneDX 'components' must be a list")
     out: list[SbomComponent] = []
+    rejected = 0
     for entry in raw:
         if not isinstance(entry, dict):
             continue
         name = entry.get("name")
         if not isinstance(name, str) or not name.strip():
             continue
-        version = entry.get("version") if isinstance(entry.get("version"), str) else None
-        purl = entry.get("purl") if isinstance(entry.get("purl"), str) else None
-        out.append(
-            SbomComponent(
-                name=name.strip()[:200],
-                version=((version.strip()[:100] or None) if version else None),
-                ecosystem=_ecosystem_from_purl(purl),
-                purl=(purl[:500] if purl else None),
-            ),
-        )
-    return out
+        component = _component(name, entry.get("version"), entry.get("purl"))
+        if component is None:
+            rejected += 1
+            continue
+        out.append(component)
+    return out, rejected
 
 
-def _parse_spdx(payload: dict[str, Any]) -> list[SbomComponent]:
+def _spdx_purl(entry: dict[str, Any]) -> str | None:
+    for ref in entry.get("externalRefs") or []:
+        if not isinstance(ref, dict):
+            continue
+        if ref.get("referenceType") == "purl" and isinstance(ref.get("referenceLocator"), str):
+            locator: str = ref["referenceLocator"]
+            return locator
+    return None
+
+
+def _parse_spdx(payload: dict[str, Any]) -> tuple[list[SbomComponent], int]:
     raw = payload.get("packages") or []
     if not isinstance(raw, list):
         raise MalformedSbomPayloadError("SPDX 'packages' must be a list")
     out: list[SbomComponent] = []
+    rejected = 0
     for entry in raw:
         if not isinstance(entry, dict):
             continue
         name = entry.get("name")
         if not isinstance(name, str) or not name.strip():
             continue
-        version = entry.get("versionInfo") if isinstance(entry.get("versionInfo"), str) else None
-        purl: str | None = None
-        for ref in entry.get("externalRefs") or []:
-            if not isinstance(ref, dict):
-                continue
-            if ref.get("referenceType") == "purl" and isinstance(ref.get("referenceLocator"), str):
-                purl = ref["referenceLocator"]
-                break
-        out.append(
-            SbomComponent(
-                name=name.strip()[:200],
-                version=((version.strip()[:100] or None) if version else None),
-                ecosystem=_ecosystem_from_purl(purl),
-                purl=(purl[:500] if purl else None),
-            ),
-        )
-    return out
+        component = _component(name, entry.get("versionInfo"), _spdx_purl(entry))
+        if component is None:
+            rejected += 1
+            continue
+        out.append(component)
+    return out, rejected
 
 
-def _parse_requirements(content: str) -> list[SbomComponent]:
+def _parse_requirements(content: str) -> tuple[list[SbomComponent], int]:
+    # _REQ_LINE already restricts the name and version charsets; _component
+    # adds the length bound, so an over-long name is counted, not truncated.
     out: list[SbomComponent] = []
+    rejected = 0
     for line in content.splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
@@ -173,25 +233,22 @@ def _parse_requirements(content: str) -> list[SbomComponent]:
         m = _REQ_LINE.match(stripped)
         if not m:
             continue
-        name = m.group(1)
-        version = m.group(3)
-        out.append(
-            SbomComponent(
-                name=name[:200],
-                version=(version[:100] if version else None),
-                ecosystem="PyPI",
-                purl=None,
-            ),
-        )
-    return out
+        component = _component(m.group(1), m.group(3), None, ecosystem="PyPI")
+        if component is None:
+            rejected += 1
+            continue
+        out.append(component)
+    return out, rejected
 
 
 def _dedupe(components: list[SbomComponent]) -> list[SbomComponent]:
-    """Drop exact duplicates while preserving input order."""
-    seen: set[tuple[str, str | None, str | None]] = set()
+    """Drop exact duplicates while preserving input order. The purl is part
+    of the key: two entries whose versions both failed validation (None)
+    still differ by the version in their purl."""
+    seen: set[tuple[str, str | None, str | None, str | None]] = set()
     out: list[SbomComponent] = []
     for c in components:
-        key = (c.name.lower(), c.version, c.ecosystem)
+        key = (c.name.lower(), c.version, c.ecosystem, c.purl)
         if key in seen:
             continue
         seen.add(key)
@@ -222,12 +279,12 @@ def sbom_ingest(
             fmt = _detect_format(content)
             if fmt == "cyclonedx":
                 payload = json.loads(content)
-                components = _parse_cyclonedx(payload)
+                components, rejected = _parse_cyclonedx(payload)
             elif fmt == "spdx":
                 payload = json.loads(content)
-                components = _parse_spdx(payload)
+                components, rejected = _parse_spdx(payload)
             elif fmt == "requirements":
-                components = _parse_requirements(content)
+                components, rejected = _parse_requirements(content)
             else:  # pragma: no cover -- _detect_format raises on unknowns
                 raise UnsupportedSbomFormatError(f"unhandled format: {fmt}")
         except Exception as exc:
@@ -243,15 +300,19 @@ def sbom_ingest(
             component_count=len(deduped),
             components=deduped,
             truncated=truncated,
+            rejected_count=rejected,
         )
         span.set_attribute("tool.success", True)
         span.set_attribute("sbom.format", fmt)
         span.set_attribute("sbom.component_count", len(deduped))
         span.set_attribute("sbom.truncated", truncated)
+        # A count only, never the rejected names: they are attacker-chosen.
+        span.set_attribute("sbom.rejected_count", rejected)
         log.info(
             "sbom_ingest_done",
             format=fmt,
             count=len(deduped),
             truncated=truncated,
+            rejected=rejected,
         )
         return result

@@ -2,6 +2,7 @@
 on-disk catalog cache lives under tmp_path."""
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -276,3 +277,58 @@ async def test_entry_with_truncatable_fields() -> None:
     assert len(result.required_action) <= KEV_REQUIRED_ACTION_CHARS + FENCE_OVERHEAD
     assert result.notes is not None
     assert len(result.notes) <= KEV_NOTES_CHARS + FENCE_OVERHEAD
+
+
+# --- errors reaching the client carry no OS text or server path --------------
+
+
+def _assert_no_server_detail(message: str, tmp_path: Path) -> None:
+    assert str(tmp_path) not in message
+    assert kev.KEV_CACHE_FILENAME not in message
+    assert "Errno" not in message
+    assert "directory" not in message.lower()
+
+
+async def test_unreadable_cache_error_hides_os_text_and_path(tmp_path: Path) -> None:
+    # A directory where the cache file should be: fresh by mtime, so no
+    # download, and open() fails with an OSError naming the path.
+    kev._cache_path().mkdir(parents=True)
+
+    with pytest.raises(MalformedKevPayloadError) as excinfo:
+        await kev_check("CVE-2021-41773")
+
+    _assert_no_server_detail(str(excinfo.value), tmp_path)
+    # The detail is kept server-side as the chained cause.
+    assert isinstance(excinfo.value.__cause__, OSError)
+
+
+@respx.mock
+async def test_unwritable_cache_error_hides_os_text_and_path(tmp_path: Path) -> None:
+    respx.get(KEV_CATALOG_URL).mock(
+        return_value=Response(200, content=json.dumps(SAMPLE_KEV).encode()),
+    )
+    cache = kev._cache_path()
+    cache.mkdir(parents=True)
+    os.utime(cache, (0, 0))  # stale: forces a download, then the write fails
+
+    with pytest.raises(KevDownloadError) as excinfo:
+        await kev_check("CVE-2021-41773")
+
+    _assert_no_server_detail(str(excinfo.value), tmp_path)
+    assert isinstance(excinfo.value.__cause__, OSError)
+
+
+async def test_served_tool_error_hides_os_text_and_path(tmp_path: Path) -> None:
+    """The message the MCP client receives, not just the Python exception."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    from sec_recon_agent.mcp_server.server import _register_tools, mcp
+
+    _register_tools()
+    kev._cache_path().mkdir(parents=True)
+
+    with pytest.raises(ToolError) as excinfo:
+        await mcp.call_tool("kev_check", {"cve_id": "CVE-2021-41773"})
+
+    _assert_no_server_detail(str(excinfo.value), tmp_path)
+    assert "could not be read" in str(excinfo.value)
