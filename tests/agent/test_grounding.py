@@ -9,6 +9,9 @@ short-circuit, and garbage input never raises.
 
 from typing import Any
 
+import pytest
+
+from sec_recon_agent.agent.evidence import build_evidence
 from sec_recon_agent.agent.grounding import (
     CVSS_SCORE_TOLERANCE,
     EPSS_TOLERANCE,
@@ -25,6 +28,7 @@ from sec_recon_agent.agent.schema import (
     TriageReport,
 )
 from sec_recon_agent.agent.trajectory import ToolInvocation
+from sec_recon_agent.mcp_server.effects import TOOL_EFFECTS
 from sec_recon_agent.mcp_server.models import AttackTechnique
 
 CVE = "CVE-2021-44228"
@@ -552,3 +556,38 @@ def test_the_report_itself_is_not_evidence_for_its_own_ids() -> None:
     assessment = verify_grounding(report, [final_result])
     assert assessment.status is GroundingStatus.SUSPECT
     assert assessment.findings[0].field == "cve_id"
+
+
+@pytest.mark.parametrize("tool", ["final_result", "final_result_TriageReport", "submit_report"])
+def test_no_output_tool_name_backs_the_report(tool: str) -> None:
+    """Evidence comes from served MCP tools only, whatever pydantic-ai names its output tool."""
+    fabricated = "CVE-2099-0001"
+    report = _report(_cve(cve_id=fabricated, in_kev_catalog=True))
+    output_call = _invocation(
+        tool,
+        {"cve_id": fabricated, "in_catalog": True},
+        args=report.model_dump(mode="json"),
+    )
+    assessment = verify_grounding(report, [output_call])
+    assert assessment.status is GroundingStatus.SUSPECT
+    assert [(f.subject, f.field, f.status) for f in assessment.findings] == [
+        (fabricated, "cve_id", GroundingClaimStatus.UNBACKED),
+    ]
+
+
+@pytest.mark.parametrize("tool", sorted(TOOL_EFFECTS))
+def test_every_served_tool_still_counts_as_evidence(tool: str) -> None:
+    """A CVE id the model asked any MCP tool about is a mention, parseable return or not."""
+    evidence = build_evidence([_invocation(tool, {}, args={"cve_id": _OMITTED})])
+    assert _OMITTED in evidence.mentioned_cve_ids
+
+
+def test_a_report_full_of_one_repeated_cve_still_had_room() -> None:
+    """Duplicates fill the list, not the report: one distinct CVE leaves room."""
+    report = _report().model_copy(update={"cves": [_listed(CVE)] * REPORT_CVE_CAP})
+    assessment = verify_grounding(report, [_kev_for(CVE), _kev_for(_OMITTED)])
+    assert assessment.status is GroundingStatus.SUSPECT
+    omissions = [f for f in assessment.findings if f.field == "cves"]
+    assert [(f.subject, f.status) for f in omissions] == [
+        (_OMITTED, GroundingClaimStatus.MISMATCH),
+    ]

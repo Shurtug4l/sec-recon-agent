@@ -4,7 +4,7 @@ This module owns the FastMCP instance. Tool modules register through
 `effects.declared_tool`, which wraps `mcp.tool` with annotations derived from
 TOOL_EFFECTS. main() triggers tool registration via side-effect imports, then
 starts the SSE HTTP transport. Never import effects or tools at this module's
-top level: effects imports `mcp` from here.
+top level: `declared_tool` imports `mcp` from here when a tool registers.
 
 When `MCP_AUTH_TOKEN` is set, the SSE ASGI app is wrapped in a bearer-token
 gate before being served by uvicorn. When unset, the server runs open

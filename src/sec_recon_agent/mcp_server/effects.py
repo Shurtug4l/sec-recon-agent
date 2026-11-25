@@ -14,11 +14,10 @@ the model, and they are outside the record-replay staleness hash
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
-from mcp.types import ToolAnnotations
-
-from sec_recon_agent.mcp_server.server import mcp
+if TYPE_CHECKING:
+    from mcp.types import ToolAnnotations
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -65,7 +64,11 @@ TOOL_EFFECTS: dict[str, ToolEffects] = {
 }
 
 
-def annotations_for(effects: ToolEffects) -> ToolAnnotations:
+def annotations_for(effects: ToolEffects) -> "ToolAnnotations":
+    # Imported here: `mcp`'s package __init__ loads FastMCP and uvicorn, which
+    # the agent side must not pay for to read TOOL_EFFECTS.
+    from mcp.types import ToolAnnotations
+
     mutates = effects.mutates_external_state
     return ToolAnnotations(
         readOnlyHint=not mutates,
@@ -80,7 +83,12 @@ def declared_tool() -> Callable[[F], F]:
 
     Raises KeyError at import for an undeclared tool, so the server never
     starts with one.
+
+    The server is imported here, not at module level: the agent side reads
+    TOOL_EFFECTS as its evidence allowlist (agent/evidence.py), and a module
+    import would load FastMCP and uvicorn in every agent-api process.
     """
+    from sec_recon_agent.mcp_server.server import mcp
 
     def decorator(fn: F) -> F:
         name = fn.__name__
