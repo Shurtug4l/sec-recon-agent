@@ -6,10 +6,11 @@ consumer reads statements, so a verdict left in a property bag says nothing.
 
 from datetime import UTC, datetime
 
-from sec_recon_agent.agent.schema import Confidence, Severity, TriageReport
+from sec_recon_agent.agent.schema import Confidence, CVEReference, Severity, TriageReport
 from sec_recon_agent.agent.ssvc import assess_ssvc
 from sec_recon_agent.agent.trajectory import ToolInvocation
 from sec_recon_agent.export.openvex import to_openvex
+from sec_recon_agent.export.records import omitted_driver_record
 from sec_recon_agent.export.sarif import to_sarif
 
 _DROPPED = "CVE-2021-44228"
@@ -56,14 +57,43 @@ def test_openvex_says_under_investigation_not_affected() -> None:
     assert "SSVC Act" in statement["status_notes"]
 
 
-def test_a_listed_driver_adds_nothing() -> None:
-    doc = to_sarif(
-        TriageReport(
-            summary="s",
-            severity=Severity.INFO,
-            confidence=Confidence.HIGH,
-            recommended_action="a",
-        ),
-        artifact_uri="sbom.json",
+def _listed_driver() -> TriageReport:
+    """A report that lists the CVE its stamped verdict rests on."""
+    report = TriageReport(
+        summary="Patch log4j.",
+        severity=Severity.CRITICAL,
+        confidence=Confidence.HIGH,
+        recommended_action="Upgrade log4j-core.",
+        cves=[
+            CVEReference(
+                cve_id=_DROPPED,
+                summary="Log4Shell RCE.",
+                severity=Severity.CRITICAL,
+                in_kev_catalog=True,
+                exploits_public=False,
+                nvd_url=f"https://nvd.nist.gov/vuln/detail/{_DROPPED}",
+            ),
+        ],
     )
-    assert doc["runs"][0]["results"] == []
+    kev = ToolInvocation(
+        tool_name="kev_check",
+        tool_call_id="c1",
+        args={"cve_id": _DROPPED},
+        content={"cve_id": _DROPPED, "in_catalog": True},
+        outcome="success",
+    )
+    stamped = report.model_copy(update={"ssvc": assess_ssvc(report.cves, [kev])})
+    assert stamped.ssvc is not None
+    assert stamped.ssvc.driving_cve == _DROPPED
+    return stamped
+
+
+def test_a_listed_driver_adds_nothing() -> None:
+    report = _listed_driver()
+    assert omitted_driver_record(report) is None
+    results = to_sarif(report, artifact_uri="sbom.json")["runs"][0]["results"]
+    assert [result["ruleId"] for result in results] == [_DROPPED]
+    assert "in_report" not in results[0]["properties"]
+    statements = to_openvex(report, products=[_PURL], timestamp=_TS)["statements"]
+    assert [s["vulnerability"]["name"] for s in statements] == [_DROPPED]
+    assert statements[0]["status"] == "affected"

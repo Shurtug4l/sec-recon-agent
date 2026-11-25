@@ -8,10 +8,11 @@ but not independent of the model, which is exactly the property a prompt
 injection would exploit. One index, built from the trajectory, feeds both
 stamps so they can never disagree about the evidence.
 
-Only STRUCTURED fields of SUCCESSFUL returns are indexed. Fenced free text
-is untrusted upstream prose and never becomes evidence. A successful return
-that does not parse back into its typed model is kept in `unparsed` so the
-consumers can degrade to "cannot tell" instead of "not backed".
+Only STRUCTURED fields of SUCCESSFUL returns from served MCP tools (the
+TOOL_EFFECTS allowlist) are indexed. Fenced free text is untrusted upstream
+prose and never becomes evidence. A successful return that does not parse
+back into its typed model is kept in `unparsed` so the consumers can degrade
+to "cannot tell" instead of "not backed".
 
 This module is pure and imports nothing from pydantic-ai at runtime: it
 consumes the ToolInvocation records produced by agent/trajectory.py, which
@@ -26,6 +27,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import TypeAdapter, ValidationError
 
+from sec_recon_agent.mcp_server.effects import TOOL_EFFECTS
 from sec_recon_agent.mcp_server.models import (
     AttackTechnique,
     CVECandidate,
@@ -42,9 +44,12 @@ if TYPE_CHECKING:
 
 _CVE_ID_RE = re.compile(r"CVE-\d{4}-\d{4,}", re.IGNORECASE)
 
-# The model's report arrives as a call to this output tool. It is the claim
-# under verification: indexed as evidence, every id it holds backs itself.
-_OUTPUT_TOOL = "final_result"
+# Only calls to a served MCP tool are evidence. The model's report arrives as
+# a call to pydantic-ai's output tool, whose name the framework picks
+# (`final_result`, `final_result_<Type>`, ...): it is the claim under
+# verification, and indexed as evidence every id it holds would back itself.
+# An allowlist keeps it out whatever it is called.
+_EVIDENCE_TOOLS: frozenset[str] = frozenset(TOOL_EFFECTS)
 
 _LIST_ATTACK = TypeAdapter(list[AttackTechnique])
 _LIST_CANDIDATES = TypeAdapter(list[CVECandidate])
@@ -82,7 +87,7 @@ def build_evidence(invocations: Sequence["ToolInvocation"]) -> Evidence:
     """Index every successful return; keep the unparseable ones aside."""
     evidence = Evidence()
     for invocation in invocations:
-        if invocation.outcome != "success" or invocation.tool_name == _OUTPUT_TOOL:
+        if invocation.outcome != "success" or invocation.tool_name not in _EVIDENCE_TOOLS:
             continue
         # Tool args are model-authored structured data: a queried CVE id
         # counts as a mention even when the tool's answer was empty.

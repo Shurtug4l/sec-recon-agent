@@ -114,16 +114,20 @@ def _absence_status(
 
 
 def _check_omissions(collector: _Collector, evidence: Evidence, report: TriageReport) -> None:
-    """Record each CVE the tools flagged that the report had room for and dropped."""
-    full = len(report.cves) >= REPORT_CVE_CAP
-    least_urgent = min(
-        (
-            decision_rank(decide_for_signals(signals_from_evidence(cve, evidence).signals)[0])
-            for cve in report.cves
-        ),
-        default=-1,
-    )
-    for omitted in omitted_cves((cve.cve_id for cve in report.cves), evidence):
+    """Record each CVE the tools flagged that the report had room for and dropped.
+
+    Room is counted in distinct CVE ids: a list padded with repeats of one CVE
+    is not full, so it cannot excuse leaving another out. Each distinct id
+    ranks at its most urgent reading, as several tool returns do in ssvc.py.
+    """
+    ranks: dict[str, int] = {}
+    for cve in report.cves:
+        cve_id = cve.cve_id.upper()
+        rank = decision_rank(decide_for_signals(signals_from_evidence(cve, evidence).signals)[0])
+        ranks[cve_id] = max(rank, ranks.get(cve_id, rank))
+    full = len(ranks) >= REPORT_CVE_CAP
+    least_urgent = min(ranks.values(), default=-1)
+    for omitted in omitted_cves(ranks, evidence):
         rank = decision_rank(omitted.decision)
         if rank < decision_rank(SsvcDecision.ATTEND) or (full and least_urgent >= rank):
             continue
