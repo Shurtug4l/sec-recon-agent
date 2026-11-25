@@ -49,7 +49,12 @@ FROM python:3.14-slim AS runtime
 # built from, even when fixes are already in the Debian archive. Picks up
 # glibc / systemd / libcap2 / sed patches that `docker scout` flags.
 # curl is needed for the healthcheck; everything else lives in the venv.
-RUN apt-get update \
+# OS_PATCH_EPOCH (CI passes the ISO week) is part of this layer's cache key:
+# without it a cached build reuses the upgrade layer until the base tag is
+# republished, and ships patches Debian already published.
+ARG OS_PATCH_EPOCH=unset
+RUN echo "OS patch epoch: ${OS_PATCH_EPOCH}" \
+    && apt-get update \
     && apt-get -y upgrade \
     && apt-get install -y --no-install-recommends curl \
     && apt-get clean \

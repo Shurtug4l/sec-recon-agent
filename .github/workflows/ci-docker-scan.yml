@@ -84,6 +84,18 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
+      # The backend runtime stage's `apt-get upgrade` layer stayed a GHA cache
+      # hit until python:3.14-slim was republished, so the weekly scan kept
+      # reporting Debian CVEs whose fixes were already in the archive (the
+      # frontend had no `apk upgrade` at all). The ISO week, passed as
+      # OS_PATCH_EPOCH, busts that layer at least once a week, so patches are
+      # at most 7 days stale. It costs one extra rerun a week of the layers
+      # after it (the backend's ONNX model bake, which already reruns on any
+      # src or lock change), not one per PR.
+      - name: Compute the OS patch epoch
+        id: epoch
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+
       - name: Build ${{ matrix.image.name }} image
         uses: docker/build-push-action@v7
         with:
@@ -93,6 +105,7 @@ jobs:
           push: false
           load: true
           tags: ${{ matrix.image.tag }}
+          build-args: OS_PATCH_EPOCH=${{ steps.epoch.outputs.week }}
           cache-from: type=gha,scope=${{ matrix.image.name }}
           cache-to: type=gha,scope=${{ matrix.image.name }},mode=max
 
