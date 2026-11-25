@@ -15,13 +15,15 @@ SBOM and binds each statement to the affected component's own purl. A
 bare-CVE triage has no trustworthy product identity: the export refuses
 with a typed error instead of guessing one.
 
-Status posture: every vulnerability kept by a producer was confirmed
-relevant to its product by the feeds, so statements are emitted as
-"affected" with the producer's remediation text as the action_statement
-(the spec prose makes it mandatory for that status). The status never
-derives from the LLM's confidence field: affectedness is not an LLM
-verdict in this codebase, and "not_affected" reachability analysis is out
-of scope.
+Status posture: two statuses are emitted. Every vulnerability kept by a
+producer was confirmed relevant to its product by the feeds, so its
+statement is "affected" with the producer's remediation text as the
+action_statement (the spec prose makes it mandatory for that status). When
+the verdict's driving CVE is missing from the triage report, that CVE gets
+one "under_investigation" statement with no action_statement: the run never
+asserted it affects the product. The status never derives from the LLM's
+confidence field: affectedness is not an LLM verdict in this codebase, and
+"not_affected" reachability analysis is out of scope.
 """
 
 import hashlib

