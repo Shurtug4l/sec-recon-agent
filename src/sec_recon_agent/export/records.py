@@ -14,7 +14,7 @@ security-severity, document @id).
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from sec_recon_agent.agent.references import nvd_url
 from sec_recon_agent.agent.schema import Severity, TriageReport
@@ -51,7 +51,7 @@ class VulnRecord:
     products: tuple[str, ...] = ()
     fingerprint_extra: str = ""
     extra_properties: Mapping[str, Any] = field(default_factory=dict)
-    vex_status: str = "affected"
+    vex_status: Literal["affected", "under_investigation"] = "affected"
 
 
 def omitted_driver_record(
