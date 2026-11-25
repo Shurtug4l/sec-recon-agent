@@ -78,6 +78,7 @@ jobs:
       ref: ${{ steps.plan.outputs.ref }}
       version: ${{ steps.plan.outputs.version }}
       tag-rules: ${{ steps.plan.outputs.tag-rules }}
+      os-patch-epoch: ${{ steps.plan.outputs.os-patch-epoch }}
     steps:
       - name: Resolve ref, version and image set
         id: plan
@@ -113,6 +114,9 @@ jobs:
           {
             echo "version=$version"
             echo "ref=$ref"
+            # ISO week, resolved once so every arch leg busts the OS-upgrade
+            # layer with the same value (see the build step).
+            echo "os-patch-epoch=$(date -u +%G-W%V)"
             echo "images=$images"
             # GHCR names are lowercase; metadata-action normalizes on its own, the
             # raw `outputs:` and `imagetools` references below do not.
@@ -192,6 +196,11 @@ jobs:
           outputs: type=image,name=${{ needs.plan.outputs.prefix }}/${{ matrix.image.repository }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=${{ matrix.image.name }}-${{ matrix.platform.arch }}
           cache-to: type=gha,scope=${{ matrix.image.name }}-${{ matrix.platform.arch }},mode=max
+          # Same reason as ci-docker-scan: a cached runtime stage ships the OS
+          # packages of whenever its upgrade layer was first built. The ISO
+          # week from `plan` busts that layer at least weekly, so a release is
+          # never more than 7 days behind the Debian and Alpine archives.
+          build-args: OS_PATCH_EPOCH=${{ needs.plan.outputs.os-patch-epoch }}
 
       - name: Export the digest
         env:

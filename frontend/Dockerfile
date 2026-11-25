@@ -26,7 +26,14 @@ FROM node:22-alpine AS runtime
 
 # node:22-alpine ships with a `node` user (uid 1000) — reuse it instead
 # of creating a parallel one (the explicit `adduser` would collide on gid 1000).
-RUN apk add --no-cache curl tini
+#
+# `apk upgrade` pulls the Alpine security fixes published after the base tag
+# was built (openssl, zlib); the backend image does the same with apt.
+# OS_PATCH_EPOCH (CI passes the ISO week) busts this layer's cache weekly.
+ARG OS_PATCH_EPOCH=unset
+RUN echo "OS patch epoch: ${OS_PATCH_EPOCH}" \
+    && apk upgrade --no-cache \
+    && apk add --no-cache curl tini
 
 # The base image bundles npm, corepack and yarn for build convenience, but this
 # stage only ever runs `node server.js`: no package manager is on any runtime
