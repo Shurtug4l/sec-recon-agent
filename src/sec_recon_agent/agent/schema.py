@@ -176,11 +176,16 @@ class GroundingClaimStatus(StrEnum):
     UNVERIFIABLE = "unverifiable"
 
 
+# Longest GroundingClaim.subject: the verifier cuts to it and the exporters
+# match against it, so a CVE id longer than the cap still meets its finding.
+GROUNDING_SUBJECT_MAX = 40
+
+
 class GroundingClaim(BaseModel):
     """One non-supported claim surfaced by the grounding verifier."""
 
     subject: str = Field(
-        max_length=40,
+        max_length=GROUNDING_SUBJECT_MAX,
         description='What the claim is about: a CVE id, an ATT&CK technique id, or "report".',
     )
     field: str = Field(

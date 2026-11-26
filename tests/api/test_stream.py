@@ -775,6 +775,7 @@ _EXPORT_REPORT: dict[str, Any] = {
             "in_kev_catalog": True,
         },
     ],
+    "grounding": {"status": "grounded", "claims_checked": 3, "supported": 3},
 }
 
 
@@ -821,6 +822,21 @@ def test_export_openvex_renders_affected_statements() -> None:
     statement = body["statements"][0]
     assert statement["status"] == "affected"
     assert statement["products"][0]["identifiers"]["purl"] == purl
+
+
+def test_export_openvex_asserts_nothing_for_an_unstamped_report() -> None:
+    # The honest path: a report this server never stamped must not come
+    # back as an "affected" assertion under this project's name.
+    client = TestClient(app)
+    unstamped = {k: v for k, v in _EXPORT_REPORT.items() if k != "grounding"}
+    resp = client.post(
+        "/v1/export/openvex",
+        json={"report": unstamped, "products": ["pkg:pypi/example@1.0.0"]},
+    )
+    assert resp.status_code == 200
+    statement = resp.json()["statements"][0]
+    assert statement["status"] == "under_investigation"
+    assert "action_statement" not in statement
 
 
 def test_export_openvex_requires_a_product_list() -> None:

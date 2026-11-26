@@ -31,6 +31,7 @@ from collections.abc import Sequence
 
 from sec_recon_agent.agent.evidence import Evidence, build_evidence, mentions_cve
 from sec_recon_agent.agent.schema import (
+    GROUNDING_SUBJECT_MAX,
     CVEReference,
     GroundingAssessment,
     GroundingClaim,
@@ -77,7 +78,7 @@ class _Collector:
         if status is not GroundingClaimStatus.SUPPORTED:
             self.findings.append(
                 GroundingClaim(
-                    subject=subject[:40],
+                    subject=subject[:GROUNDING_SUBJECT_MAX],
                     field=claim_field[:40],
                     status=status,
                     detail=detail[:200] if detail else None,

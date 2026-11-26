@@ -1,8 +1,8 @@
 """OpenVEX v0.2.0 renderer.
 
 Core (`render_openvex`) is a pure function over neutral VulnRecord rows;
-`to_openvex` is the TriageReport adapter and keeps the public signature and
-byte-for-byte output it had before the SBOM gate landed. The document `@id`
+`to_openvex` is the TriageReport adapter and keeps the public signature it
+had before the SBOM gate landed. The document `@id`
 follows the reference-tooling convention
 (`https://openvex.dev/docs/public/vex-<sha256>` over the canonicalized
 content), so identical inputs produce an identical document, `@id` included.
@@ -15,15 +15,17 @@ SBOM and binds each statement to the affected component's own purl. A
 bare-CVE triage has no trustworthy product identity: the export refuses
 with a typed error instead of guessing one.
 
-Status posture: two statuses are emitted. Every vulnerability kept by a
-producer was confirmed relevant to its product by the feeds, so its
-statement is "affected" with the producer's remediation text as the
-action_statement (the spec prose makes it mandatory for that status). When
-the verdict's driving CVE is missing from the triage report, that CVE gets
-one "under_investigation" statement with no action_statement: the run never
-asserted it affects the product. The status never derives from the LLM's
-confidence field: affectedness is not an LLM verdict in this codebase, and
-"not_affected" reachability analysis is out of scope.
+Status posture: two statuses are emitted. A vulnerability is "affected",
+with the producer's remediation text as the action_statement (the spec
+prose makes it mandatory for that status), only when its producer backs it:
+the SBOM gate matched it from the feeds, and a triage CVE has its identity
+backed by the grounding stamp (a flag on a signal field rides along in
+status_notes). Everything else is "under_investigation" with no
+action_statement and the reason in status_notes: a triage CVE whose id
+grounding found unbacked, one no stamp checked, and the verdict's driving
+CVE when the report left it out. The status never derives
+from the LLM's confidence field: affectedness is not an LLM verdict in this
+codebase, and "not_affected" reachability analysis is out of scope.
 """
 
 import hashlib
@@ -34,7 +36,7 @@ from typing import Any
 
 from sec_recon_agent.agent.references import nvd_url
 from sec_recon_agent.agent.schema import TriageReport
-from sec_recon_agent.export.records import VulnRecord, omitted_driver_record
+from sec_recon_agent.export.records import VulnRecord, cve_grounding, omitted_driver_record
 
 OPENVEX_CONTEXT = "https://openvex.dev/ns/v0.2.0"
 DEFAULT_AUTHOR = "https://github.com/Shurtug4l/sec-recon-agent"
@@ -92,8 +94,9 @@ def render_openvex(
         }
         if record.vex_status == "affected":
             statement["action_statement"] = record.action
-        if record.ssvc_note is not None:
-            statement["status_notes"] = record.ssvc_note
+        notes = [n for n in (record.grounding_note, record.ssvc_note) if n is not None]
+        if notes:
+            statement["status_notes"] = " ".join(notes)
         statements.append(statement)
 
     body: dict[str, Any] = {
@@ -119,8 +122,9 @@ def to_openvex(
 ) -> dict[str, Any]:
     """Render the report as a standalone OpenVEX v0.2.0 document.
 
-    TriageReport adapter over render_openvex: one "affected" statement per
-    distinct CVE, all bound to the supplied product purl(s), plus one
+    TriageReport adapter over render_openvex: one statement per distinct CVE,
+    all bound to the supplied product purl(s), "affected" when grounding
+    backs the CVE's identity and "under_investigation" otherwise, plus one
     "under_investigation" statement when the verdict rests on a CVE the report
     left out.
     """
@@ -135,6 +139,7 @@ def to_openvex(
         if cve.cve_id in seen:
             continue
         seen.add(cve.cve_id)
+        grounding = cve_grounding(report, cve.cve_id)
         records.append(
             VulnRecord(
                 rule_id=cve.cve_id,
@@ -151,6 +156,8 @@ def to_openvex(
                 epss_percentile=cve.epss_percentile,
                 ssvc_note=ssvc_note,
                 products=purls,
+                vex_status="affected" if grounding.asserted else "under_investigation",
+                grounding_note=grounding.note,
             )
         )
     driver = omitted_driver_record(report, purls)
