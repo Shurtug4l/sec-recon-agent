@@ -170,6 +170,8 @@ curl -s localhost:8000/v1/export/sarif \
 
 OpenVEX requires the purl(s) of the triaged product (`--product`, repeatable): product identity is never guessed, so a bare-CVE triage exports SARIF but refuses VEX.
 
+Both exports follow the report's grounding stamp per CVE. A CVE becomes an OpenVEX `affected` statement only when grounding backs its identity; a flag on a signal field (KEV, KEV due date, EPSS, CVSS, exploit, ransomware) keeps it `affected` with the note in `status_notes`. It becomes `under_investigation`, with the reason in `status_notes`, when grounding found its id unbacked or could only see it in unparseable tool output, when the report has no stamp or a `not_evaluated` one, or when a suspect stamp's findings were truncated and none of the listed ones names this CVE. SARIF keeps the severity level and labels every result with `properties.grounding` (`verified`, `flagged`, `unverified`). The export trusts the `grounding` block it is handed: it cannot re-verify a stamp without the run's trajectory.
+
 ## SBOM gate
 
 `sec-recon-gate` chains the same tool logic in-process with no LLM anywhere: `sbom_ingest` -> `osv_lookup` per component -> KEV / EPSS / exploit enrichment per unique CVE -> a deterministic SSVC decision per finding -> a CI verdict.

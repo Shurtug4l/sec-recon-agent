@@ -9,6 +9,8 @@ import pytest
 from sec_recon_agent.agent.schema import (
     Confidence,
     CVEReference,
+    GroundingAssessment,
+    GroundingStatus,
     Severity,
     SsvcAssessment,
     SsvcBasis,
@@ -53,6 +55,9 @@ def _report(**overrides: Any) -> TriageReport:
             rationale="on the CISA KEV catalog: actively exploited in the wild",
             driving_cve="CVE-2021-44228",
             basis=SsvcBasis.EVIDENCE,
+        ),
+        "grounding": GroundingAssessment(
+            status=GroundingStatus.GROUNDED, claims_checked=3, supported=3
         ),
     }
     base.update(overrides)

@@ -2,7 +2,7 @@
 
 Core (`render_sarif`) is a pure function over neutral VulnRecord rows plus a
 run-level property bag; `to_sarif` is the TriageReport adapter and keeps the
-public signature and byte-for-byte output it had before the SBOM gate landed.
+public signature it had before the SBOM gate landed.
 The record producer stays the single source of truth - the renderer never
 re-derives a verdict:
 
@@ -10,7 +10,10 @@ re-derives a verdict:
   (critical/high -> error, medium -> warning, low/info -> note; unknown ->
   warning), not a second prioritization. The authoritative SSVC verdict
   passes through verbatim in the run property bag, and its rationale is
-  echoed via the record's `ssvc_note`.
+  echoed via the record's `ssvc_note`. Every triage result also carries
+  `properties.grounding` (verified / flagged / unverified), and every
+  in-report result that is not verified leads its message with the reason:
+  the grounding stamp labels a result, it never changes its level.
 - `rule.properties["security-severity"]` carries the CVSS score as a
   string, the exact form GitHub maps onto critical/high/medium/low bands
   (>9.0 / 7.0-8.9 / 4.0-6.9 / 0.1-3.9); omitted when the score is absent
@@ -33,7 +36,7 @@ from typing import Any
 
 from sec_recon_agent.agent.references import nvd_url
 from sec_recon_agent.agent.schema import CVEReference, Severity, TriageReport
-from sec_recon_agent.export.records import VulnRecord, omitted_driver_record
+from sec_recon_agent.export.records import VulnRecord, cve_grounding, omitted_driver_record
 from sec_recon_agent.version import package_version
 
 SARIF_SCHEMA_URI = "https://json.schemastore.org/sarif-2.1.0.json"
@@ -81,7 +84,8 @@ def _rule(record: VulnRecord) -> dict[str, Any]:
 
 
 def _result_message(record: VulnRecord) -> str:
-    parts = [record.summary]
+    parts = [record.grounding_note] if record.grounding_note is not None else []
+    parts.append(record.summary)
     signals: list[str] = []
     if record.in_kev:
         due = f" (federal remediation due {record.kev_due_date})" if record.kev_due_date else ""
@@ -179,6 +183,9 @@ def _record_from_cve(report: TriageReport, cve: CVEReference) -> VulnRecord:
     ssvc_note: str | None = None
     if report.ssvc is not None and report.ssvc.driving_cve == cve.cve_id:
         ssvc_note = f"SSVC {report.ssvc.decision}: {report.ssvc.rationale}"
+    # The level stays the severity's: lowering it on a flag would hide a real
+    # vulnerability behind a verifier finding. The flag is labeled instead.
+    grounding = cve_grounding(report, cve.cve_id)
     return VulnRecord(
         rule_id=cve.cve_id,
         summary=cve.summary,
@@ -193,6 +200,8 @@ def _record_from_cve(report: TriageReport, cve: CVEReference) -> VulnRecord:
         epss_probability=cve.epss_probability,
         epss_percentile=cve.epss_percentile,
         ssvc_note=ssvc_note,
+        extra_properties={"grounding": grounding.label},
+        grounding_note=grounding.note,
     )
 
 

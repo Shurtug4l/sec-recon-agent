@@ -6,7 +6,14 @@ consumer reads statements, so a verdict left in a property bag says nothing.
 
 from datetime import UTC, datetime
 
-from sec_recon_agent.agent.schema import Confidence, CVEReference, Severity, TriageReport
+from sec_recon_agent.agent.grounding import verify_grounding
+from sec_recon_agent.agent.schema import (
+    Confidence,
+    CVEReference,
+    GroundingStatus,
+    Severity,
+    TriageReport,
+)
 from sec_recon_agent.agent.ssvc import assess_ssvc
 from sec_recon_agent.agent.trajectory import ToolInvocation
 from sec_recon_agent.export.openvex import to_openvex
@@ -33,7 +40,12 @@ def _stamped() -> TriageReport:
         content={"cve_id": _DROPPED, "in_catalog": True},
         outcome="success",
     )
-    return report.model_copy(update={"ssvc": assess_ssvc(report.cves, [kev])})
+    return report.model_copy(
+        update={
+            "ssvc": assess_ssvc(report.cves, [kev]),
+            "grounding": verify_grounding(report, [kev]),
+        }
+    )
 
 
 def test_sarif_gives_the_omitted_driver_a_result() -> None:
@@ -44,8 +56,16 @@ def test_sarif_gives_the_omitted_driver_a_result() -> None:
     assert result["properties"]["in_report"] is False
     # Unknown, not negative: the stamp does not carry the feed fields.
     assert result["properties"]["in_kev_catalog"] is None
+    # Grounding records the omission as a `cves` mismatch on the dropped id.
+    assert result["properties"]["grounding"] == "flagged"
     rule = run["tool"]["driver"]["rules"][0]
     assert rule["helpUri"] == f"https://nvd.nist.gov/vuln/detail/{_DROPPED}"
+
+
+def test_an_unstamped_omitted_driver_reads_unverified_never_verified() -> None:
+    report = _stamped().model_copy(update={"grounding": None})
+    result = to_sarif(report, artifact_uri="sbom.json")["runs"][0]["results"][0]
+    assert result["properties"]["grounding"] == "unverified"
 
 
 def test_openvex_says_under_investigation_not_affected() -> None:
@@ -82,9 +102,16 @@ def _listed_driver() -> TriageReport:
         content={"cve_id": _DROPPED, "in_catalog": True},
         outcome="success",
     )
-    stamped = report.model_copy(update={"ssvc": assess_ssvc(report.cves, [kev])})
+    stamped = report.model_copy(
+        update={
+            "ssvc": assess_ssvc(report.cves, [kev]),
+            "grounding": verify_grounding(report, [kev]),
+        }
+    )
     assert stamped.ssvc is not None
     assert stamped.ssvc.driving_cve == _DROPPED
+    assert stamped.grounding is not None
+    assert stamped.grounding.status is GroundingStatus.GROUNDED
     return stamped
 
 
