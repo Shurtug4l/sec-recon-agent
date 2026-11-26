@@ -10,6 +10,8 @@ presented as a verdict on the tools' word.
 
 from typing import Any
 
+import pytest
+
 from sec_recon_agent.agent.schema import (
     CVEReference,
     Severity,
@@ -392,6 +394,13 @@ def test_a_listed_cve_of_equal_urgency_stays_the_driver() -> None:
     assert assess_ssvc([_cve()], trajectory).driving_cve == CVE
 
 
-def test_a_failed_lookup_leaves_nothing_to_omit() -> None:
-    failed = _invocation("kev_check", "upstream error", cve_id=OTHER, outcome="failure")
+@pytest.mark.parametrize("outcome", ["failed", "denied", "no_return"])
+def test_a_failed_lookup_leaves_nothing_to_omit(outcome: str) -> None:
+    """Valid KEV content: only the outcome keeps it out of the verdict."""
+    failed = _invocation(
+        "kev_check",
+        {"cve_id": OTHER, "in_catalog": True, "known_ransomware_use": None},
+        cve_id=OTHER,
+        outcome=outcome,
+    )
     assert assess_ssvc([], [failed]).rule == "no-cves"

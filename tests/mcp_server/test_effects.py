@@ -38,6 +38,16 @@ def test_effects_table_matches_the_served_tool_set() -> None:
     assert set(_served_tools()) == set(TOOL_EFFECTS)
 
 
+def test_served_server_exposes_no_resources_and_no_prompts() -> None:
+    # The effects table only sees what @declared_tool registers. A resource,
+    # resource template or prompt would be an LLM-reachable surface outside
+    # that check, so none may be served.
+    _register_tools()
+    assert asyncio.run(mcp.list_resources()) == []
+    assert asyncio.run(mcp.list_resource_templates()) == []
+    assert asyncio.run(mcp.list_prompts()) == []
+
+
 def test_served_annotations_are_derived_from_the_effects_table() -> None:
     for name, annotations in _served_tools().items():
         assert annotations == annotations_for(TOOL_EFFECTS[name]), name

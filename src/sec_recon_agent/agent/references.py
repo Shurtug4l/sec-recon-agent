@@ -26,7 +26,9 @@ NVD_DETAIL = "https://nvd.nist.gov/vuln/detail"
 ATTACK_TECHNIQUES = "https://attack.mitre.org/techniques"
 ATTACK_MITIGATIONS = "https://attack.mitre.org/mitigations"
 
-_ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+# [0-9], not \d: Python's \d matches every Unicode decimal digit, the share
+# decoder's ISO_DATE only ASCII, and the server must not keep a date it drops.
+_ISO_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
 
 def nvd_url(cve_id: str) -> str:

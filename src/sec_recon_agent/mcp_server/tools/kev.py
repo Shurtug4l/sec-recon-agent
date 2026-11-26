@@ -94,20 +94,35 @@ async def _download_kev_catalog(path: Path) -> None:
     except httpx.TransportError as exc:
         raise KevDownloadError(f"Transport error fetching KEV catalog: {exc}") from exc
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # The catalog is 5-20 MB: hand the write to a thread so the event loop
-    # keeps serving other tool calls during a refresh.
-    await asyncio.to_thread(path.write_bytes, bytes(buffer))
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # The catalog is 5-20 MB: hand the write to a thread so the event loop
+        # keeps serving other tool calls during a refresh.
+        await asyncio.to_thread(path.write_bytes, bytes(buffer))
+    except OSError as exc:
+        # Same rule as the read side: the path and OS text stay server-side.
+        log.warning("kev_cache_write_failed", path=str(path), error=str(exc))
+        raise KevDownloadError("KEV catalog cache could not be written") from exc
     log.info("kev_catalog_download_done", bytes=len(buffer), path=str(path))
 
 
 def _parse_catalog_into_index(path: Path) -> dict[str, dict[str, Any]]:
-    """Build a cveID -> entry map from the CISA KEV JSON catalog."""
+    """Build a cveID -> entry map from the CISA KEV JSON catalog.
+
+    The error raised here reaches the MCP client, so it names the failure
+    class only. The OS error text and the cache path stay server-side, in
+    the log line and in the chained cause the span records.
+    """
     try:
         with path.open("r", encoding="utf-8") as f:
             payload = json.load(f)
-    except (json.JSONDecodeError, OSError) as exc:
-        raise MalformedKevPayloadError(f"Failed to parse KEV JSON: {exc}") from exc
+    except OSError as exc:
+        log.warning("kev_cache_read_failed", path=str(path), error=str(exc))
+        raise MalformedKevPayloadError("KEV catalog cache could not be read") from exc
+    except ValueError as exc:
+        # JSONDecodeError and UnicodeDecodeError: a corrupt or non-JSON cache.
+        log.warning("kev_cache_parse_failed", path=str(path), error=str(exc))
+        raise MalformedKevPayloadError("Failed to parse KEV JSON") from exc
 
     vulnerabilities = payload.get("vulnerabilities")
     if not isinstance(vulnerabilities, list):

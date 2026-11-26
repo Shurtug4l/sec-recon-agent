@@ -3,13 +3,14 @@
 from enum import StrEnum
 from typing import Annotated
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import AfterValidator, BaseModel, Field, HttpUrl
 
-from sec_recon_agent.mcp_server.models import AttackTechnique
+from sec_recon_agent.mcp_server.models import AttackTechnique, ascii_only
 
 CveIdStr = Annotated[
     str,
     Field(pattern=r"^CVE-\d{4}-\d{4,}$", examples=["CVE-2021-41773"]),
+    AfterValidator(ascii_only),
 ]
 
 

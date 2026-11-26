@@ -34,22 +34,42 @@ Where this is applied:
 - OsvVuln.summary (OSV.dev advisory text, authored upstream by ecosystem
   maintainers and security researchers)
 
-Where this is NOT applied (bounded in length, never treated as inert):
+Where this is NOT applied (validated identifiers, not fenced; bounded in
+length, never treated as inert):
 - CVE IDs (regex-constrained, no free text)
 - CVSS scores (numeric)
-- Severities (enum)
-- CWE IDs (CWE-N pattern)
-- CPE strings (CPE 2.3 format, structured)
+- CVEDetail.cvss_v3_severity (one of the five CVSS v3 tokens, else None)
+- CVEDetail.cwe_ids (whole-string CWE-N pattern; anything else is dropped)
+- CVEDetail.affected_cpes (whole CPE 2.3 formatted strings, whitespace-free,
+  capped at 400 chars per entry; anything else is dropped)
 - URLs / references (Pydantic HttpUrl validated; exploit_check returns
   repository URLs only, so no attacker-chosen path text rides inside one)
-- Hostnames, Nmap service / protocol / state names, host addresses (short,
-  length-capped identifiers)
+- SbomComponent.name / SbomComponent.version (package-identifier charset,
+  no whitespace or control characters; a bad name drops the component and
+  is counted in SbomComponentList.rejected_count, a bad version is None)
+- SbomComponent.purl (type/namespace/name@version in the Package URL
+  shape, qualifiers and subpath dropped, else None) and
+  SbomComponent.ecosystem (derived from the validated purl type)
+- NmapHost.ip (a parsed IPv4/IPv6 address in canonical form; a host
+  without one is dropped)
+- NmapHost.hostnames (RFC 1123 charset plus underscore, 253 chars; others
+  are dropped; capped per host and per scan)
+- NmapScanResult.scan_start (Unix epoch digits only, else None)
+- NmapPort.protocol (tcp/udp/sctp/ip, else the port is dropped),
+  NmapPort.state (state token, else "unknown"), NmapPort.service
+  (service-name token, else None)
+- Error messages of nmap_parse_xml echo no caller text (no DOCTYPE ids, no
+  root tag); the exception detail stays on the span
 - KEV vendor_project / product (short identifiers like "Apache", "HTTP Server")
 - KEV date_added / due_date (ISO date strings, _coerce_str-truncated to 32 chars)
 - EPSS probability / percentile / score_date (numeric or ISO date)
 
 Pydantic validators reject malformed structured fields at the boundary, and
 the length caps bound what a well-formed one can carry.
+
+Residual, accepted: identifier charsets block spaces, not words. A
+hyphen-joined hostname or package name (`ignore-previous-instructions`)
+still passes, bounded by the field's length cap.
 """
 
 import re

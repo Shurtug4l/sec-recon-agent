@@ -26,8 +26,11 @@ ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
 class BearerAuthASGI:
     """Plain ASGI middleware enforcing `Authorization: Bearer <token>`.
 
-    Lifespan and non-HTTP scopes (websocket, dispatched internally by
-    FastMCP) are passed through. Only http requests are checked.
+    Only `lifespan` scopes pass through ungated: they carry no client
+    request. Every `http` scope goes through the bearer check. Any other
+    scope type (`websocket`, or one a future server adds) is refused
+    without reaching the app: the SSE transport serves no websocket route,
+    so a scope the gate does not know is a scope it cannot vouch for.
 
     Comparison uses `secrets.compare_digest` to avoid timing oracles on
     the token value.
@@ -40,8 +43,12 @@ class BearerAuthASGI:
         self._expected = f"Bearer {token}".encode()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope.get("type") != "http":
+        scope_type = scope.get("type")
+        if scope_type == "lifespan":
             await self._app(scope, receive, send)
+            return
+        if scope_type != "http":
+            await self._refuse_non_http(scope, send)
             return
 
         header_value = b""
@@ -76,3 +83,19 @@ class BearerAuthASGI:
             return
 
         await self._app(scope, receive, send)
+
+    @staticmethod
+    async def _refuse_non_http(scope: Scope, send: Send) -> None:
+        scope_type = scope.get("type")
+        log.warning(
+            "mcp_auth_scope_refused",
+            scope_type=str(scope_type)[:32],
+            path=scope.get("path"),
+            client=scope.get("client"),
+        )
+        if scope_type == "websocket":
+            # Closing before accept makes the server answer the handshake
+            # with HTTP 403 (ASGI websocket spec). 1008 = policy violation.
+            await send({"type": "websocket.close", "code": 1008})
+        # Any other scope type has no response message we could send; not
+        # calling the app is the refusal.
